@@ -15,14 +15,17 @@ sandbox_image = (
 # Define the app image (matches backend/Dockerfile)
 web_dist_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 backend_path = os.path.dirname(__file__)
+courses_path = os.path.join(os.path.dirname(__file__), "../courses")
 
 app_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install("fastapi[all]", "sqlmodel", "uvicorn", "uv", "python-jose[cryptography]", "passlib[bcrypt]", "python-multipart", "google-genai")
-    .env({"EXECUTION_ENV": "modal"})
+    .env({"EXECUTION_ENV": "modal", "COURSES_DIR": "/courses"})
     .add_local_dir(web_dist_path, remote_path="/assets")
     .add_local_dir(backend_path, remote_path="/root")
+    .add_local_dir(courses_path, remote_path="/courses")
 )
+
 
 @app.function(image=sandbox_image)
 def run_in_sandbox(code: str, language: str):

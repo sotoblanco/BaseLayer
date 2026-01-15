@@ -19,8 +19,11 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/file-courses", tags=["file-courses"])
 
-# Base directory for courses (relative to backend folder)
-COURSES_DIR = Path(__file__).parent.parent.parent / "courses"
+# Base directory for courses
+# In Modal, courses are mounted at /courses
+# Locally, they're relative to the backend folder
+COURSES_DIR = Path(os.environ.get("COURSES_DIR", Path(__file__).parent.parent.parent / "courses"))
+
 
 
 class FileLessonSummary(BaseModel):
