@@ -31,7 +31,9 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174", # Added fallback port
     "http://127.0.0.1:5174",
+    "https://sotoblanco263542--code-app-fastapi-app.modal.run",
 ]
+
 
 app.add_middleware(
     CORSMiddleware,
