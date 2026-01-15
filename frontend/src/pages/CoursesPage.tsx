@@ -1,29 +1,47 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Terminal, ChevronRight, LogOut } from 'lucide-react';
+import { BookOpen, Terminal, ChevronRight, LogOut, FolderCode } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from "../config";
 
 interface Course {
     id: number;
     title: string;
-    description?: string; // Assuming description might be added later, or just title for now
-    exercises: any[]; // We just need the count
+    description?: string;
+    exercises: any[];
+}
+
+interface FileCourse {
+    slug: string;
+    title: string;
+    description: string;
+    lesson_count: number;
 }
 
 export default function CoursesPage() {
     const [courses, setCourses] = useState<Course[]>([]);
+    const [fileCourses, setFileCourses] = useState<FileCourse[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
     const { logout, isAuthenticated } = useAuth();
 
     useEffect(() => {
-        const fetchCourses = async () => {
+        const fetchAllCourses = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/courses/`);
-                if (res.ok) {
-                    const data = await res.json();
+                // Fetch both database and file-based courses in parallel
+                const [dbRes, fileRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/courses/`),
+                    fetch(`${API_BASE_URL}/file-courses/`)
+                ]);
+
+                if (dbRes.ok) {
+                    const data = await dbRes.json();
                     setCourses(data);
+                }
+
+                if (fileRes.ok) {
+                    const data = await fileRes.json();
+                    setFileCourses(data);
                 }
             } catch (err) {
                 console.error("Failed to fetch courses", err);
@@ -32,8 +50,10 @@ export default function CoursesPage() {
             }
         };
 
-        fetchCourses();
+        fetchAllCourses();
     }, []);
+
+    const hasNoCourses = courses.length === 0 && fileCourses.length === 0;
 
     return (
         <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
@@ -86,46 +106,89 @@ export default function CoursesPage() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {courses.length === 0 ? (
+                        {hasNoCourses ? (
                             <div className="col-span-full text-center py-20 text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
                                 <p>No courses available right now.</p>
                             </div>
                         ) : (
-                            courses.map((course) => (
-                                <div
-                                    key={course.id}
-                                    className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-blue-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer flex flex-col"
-                                    onClick={() => navigate(`/course/${course.id}`)}
-                                >
-                                    <div className="h-2 bg-gradient-to-r from-blue-600 to-indigo-600" />
-                                    <div className="p-6 flex-1 flex flex-col">
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div className="p-3 bg-slate-800 rounded-lg group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
-                                                <BookOpen size={24} />
+                            <>
+                                {/* Database Courses */}
+                                {courses.map((course) => (
+                                    <div
+                                        key={`db-${course.id}`}
+                                        className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-blue-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10 group cursor-pointer flex flex-col"
+                                        onClick={() => navigate(`/course/${course.id}`)}
+                                    >
+                                        <div className="h-2 bg-gradient-to-r from-blue-600 to-indigo-600" />
+                                        <div className="p-6 flex-1 flex flex-col">
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="p-3 bg-slate-800 rounded-lg group-hover:bg-blue-500/10 group-hover:text-blue-400 transition-colors">
+                                                    <BookOpen size={24} />
+                                                </div>
+                                            </div>
+
+                                            <h3 className="text-xl font-bold mb-2 group-hover:text-blue-400 transition-colors">
+                                                {course.title}
+                                            </h3>
+
+                                            {course.description && (
+                                                <p className="text-slate-400 text-sm mb-4 line-clamp-2">
+                                                    {course.description}
+                                                </p>
+                                            )}
+
+                                            <div className="mt-auto pt-4 flex items-center justify-between text-sm text-slate-400">
+                                                <span>
+                                                    {course.exercises?.length || 0} Exercises
+                                                </span>
+                                                <span className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-blue-400 opacity-0 group-hover:opacity-100 font-medium">
+                                                    Start <ChevronRight size={16} />
+                                                </span>
                                             </div>
                                         </div>
+                                    </div>
+                                ))}
 
-                                        <h3 className="text-xl font-bold mb-2 group-hover:text-blue-400 transition-colors">
-                                            {course.title}
-                                        </h3>
+                                {/* File-based Courses */}
+                                {fileCourses.map((course) => (
+                                    <div
+                                        key={`file-${course.slug}`}
+                                        className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-emerald-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10 group cursor-pointer flex flex-col"
+                                        onClick={() => navigate(`/file-course/${course.slug}`)}
+                                    >
+                                        <div className="h-2 bg-gradient-to-r from-emerald-600 to-teal-600" />
+                                        <div className="p-6 flex-1 flex flex-col">
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="p-3 bg-slate-800 rounded-lg group-hover:bg-emerald-500/10 group-hover:text-emerald-400 transition-colors">
+                                                    <FolderCode size={24} />
+                                                </div>
+                                                <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                                                    File
+                                                </span>
+                                            </div>
 
-                                        {course.description && (
-                                            <p className="text-slate-400 text-sm mb-4 line-clamp-2">
-                                                {course.description}
-                                            </p>
-                                        )}
+                                            <h3 className="text-xl font-bold mb-2 group-hover:text-emerald-400 transition-colors">
+                                                {course.title}
+                                            </h3>
 
-                                        <div className="mt-auto pt-4 flex items-center justify-between text-sm text-slate-400">
-                                            <span>
-                                                {course.exercises?.length || 0} Exercises
-                                            </span>
-                                            <span className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-blue-400 opacity-0 group-hover:opacity-100 font-medium">
-                                                Start <ChevronRight size={16} />
-                                            </span>
+                                            {course.description && (
+                                                <p className="text-slate-400 text-sm mb-4 line-clamp-2">
+                                                    {course.description}
+                                                </p>
+                                            )}
+
+                                            <div className="mt-auto pt-4 flex items-center justify-between text-sm text-slate-400">
+                                                <span>
+                                                    {course.lesson_count} Lessons
+                                                </span>
+                                                <span className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-emerald-400 opacity-0 group-hover:opacity-100 font-medium">
+                                                    Start <ChevronRight size={16} />
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))
+                                ))}
+                            </>
                         )}
                     </div>
                 )}

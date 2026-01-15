@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import CodingPage from './pages/CodingPage';
 import CoursesPage from './pages/CoursesPage';
+import FileCodingPage from './pages/FileCodingPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CourseEditor from './pages/admin/CourseEditor';
 import Login from './pages/Login';
@@ -16,6 +17,7 @@ function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/" element={<CoursesPage />} />
           <Route path="/course/:id" element={<CodingPage />} />
+          <Route path="/file-course/:slug" element={<FileCodingPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/courses/:id" element={<CourseEditor />} />
         </Routes>
@@ -25,3 +27,4 @@ function App() {
 }
 
 export default App;
+
