@@ -1,2 +1,25 @@
+# Environment
 .env
-node_modules
+*.local
+
+# Node.js
+node_modules/
+dist/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+.uv/
+
+# Database
+backend/database.db
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp

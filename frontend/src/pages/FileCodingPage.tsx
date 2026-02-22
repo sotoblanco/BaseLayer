@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut, Lightbulb } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL } from "../config";
@@ -15,6 +15,7 @@ interface Lesson {
     description: string;
     initial_code: string;
     test_code: string;
+    solution_code: string;
     order: number;
     language: string;
 }
@@ -31,7 +32,8 @@ export default function FileCodingPage() {
     const navigate = useNavigate();
     const [course, setCourse] = useState<FileCourse | null>(null);
     const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
-    const [editorTab, setEditorTab] = useState<'main' | 'tests'>('main');
+    const [editorTab, setEditorTab] = useState<'main' | 'tests' | 'solution'>('main');
+    const [showSolution, setShowSolution] = useState(false);
 
     const [code, setCode] = useState<string>("");
     const [output, setOutput] = useState<string>("");
@@ -69,6 +71,7 @@ export default function FileCodingPage() {
             setCode(lesson.initial_code);
             setOutput("");
             setEditorTab('main');
+            setShowSolution(false); // hide solution on lesson change
         }
     }, [lesson]);
 
@@ -284,6 +287,20 @@ export default function FileCodingPage() {
                                             >
                                                 🧪 {testsFilename}
                                             </button>
+                                            {lesson?.solution_code && (
+                                                <button
+                                                    onClick={() => {
+                                                        setShowSolution(true);
+                                                        setEditorTab('solution');
+                                                    }}
+                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'solution'
+                                                        ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50'
+                                                        : 'border-transparent text-yellow-500/70 hover:bg-yellow-900/20 hover:text-yellow-400'
+                                                        }`}
+                                                >
+                                                    <Lightbulb size={13} /> Solution
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
@@ -308,6 +325,18 @@ export default function FileCodingPage() {
                                                 filename={testsFilename}
                                             />
                                         </div>
+                                        {showSolution && (
+                                            <div className="absolute inset-0" style={{ display: editorTab === 'solution' ? 'block' : 'none' }}>
+                                                <CodeEditor
+                                                    key="editor-solution"
+                                                    code={lesson?.solution_code || ""}
+                                                    onChange={() => { }}
+                                                    readOnly={true}
+                                                    language={currentLang}
+                                                    filename={lesson?.language === 'rust' ? 'solution.rs' : 'solution.py'}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 </Panel>
 

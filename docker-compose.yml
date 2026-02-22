@@ -9,8 +9,12 @@ services:
       - ./backend:/app
       # Mount docker socket to allow spawning sibling containers for sandbox
       - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the courses folder so new courses added locally show up automatically
+      - ./courses:/courses
     environment:
       - DATABASE_URL=sqlite:///database.db
+      # Tell the backend where to find file-based courses
+      - COURSES_DIR=/courses
     # We need to make sure the image used by the backend exists.
     # Ideally, we build it separately or use a multi-stage build, but for now
     # the backend assumes 'sandbox-runner' exists on the host/context.

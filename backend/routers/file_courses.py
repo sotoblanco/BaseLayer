@@ -40,6 +40,7 @@ class FileLesson(BaseModel):
     description: str  # README content
     initial_code: str  # main.py content
     test_code: str  # test.py content
+    solution_code: str  # solution.py content (hidden from user until requested)
     order: int
     language: str = "python"
 
@@ -96,12 +97,17 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int) -> Optional[Fi
     if not readme_path.exists():
         return None
     
-    # Determine language from file extension
+    # Detect language and set file paths
     language = "python"
+    main_path = lesson_path / "main.py"
+    test_path = lesson_path / "test.py"
+    solution_path = lesson_path / "solution.py"
+
     if (lesson_path / "main.rs").exists():
         language = "rust"
         main_path = lesson_path / "main.rs"
         test_path = lesson_path / "test.rs"
+        solution_path = lesson_path / "solution.rs"
     
     return FileLesson(
         slug=lesson_slug,
@@ -109,6 +115,7 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int) -> Optional[Fi
         description=read_file_content(readme_path),
         initial_code=read_file_content(main_path),
         test_code=read_file_content(test_path),
+        solution_code=read_file_content(solution_path),
         order=order,
         language=language
     )
