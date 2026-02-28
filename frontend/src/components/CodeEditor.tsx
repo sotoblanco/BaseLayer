@@ -16,7 +16,7 @@ export function CodeEditor({
   filename = "main.py"
 }: CodeEditorProps) {
   return (
-    <div className="h-full w-full bg-[#1e1e1e] overflow-hidden rounded-lg shadow-xl border border-gray-800">
+    <div className="h-full w-full bg-[#1e1e1e] overflow-auto rounded-lg shadow-xl border border-gray-800">
       <div className="flex items-center justify-between px-4 py-2 bg-[#252526] text-gray-400 text-sm border-b border-gray-800">
         <span className="font-mono">{filename}</span>
         <div className="flex gap-2">
@@ -34,7 +34,7 @@ export function CodeEditor({
         options={{
           minimap: { enabled: false },
           fontSize: 14,
-          scrollBeyondLastLine: false,
+          scrollBeyondLastLine: true,
           padding: { top: 16 },
           automaticLayout: true,
           readOnly: readOnly,

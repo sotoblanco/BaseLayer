@@ -75,11 +75,11 @@ export default function FileCodingPage() {
         }
     }, [lesson]);
 
-    const handleRun = async () => {
+    const handleRun = async (isSubmit: boolean = false) => {
         if (!lesson) return;
 
         setIsRunning(true);
-        setOutput("Running...");
+        setOutput(isSubmit ? "Running all tests..." : "Running preliminary tests...");
 
         const headers: HeadersInit = {
             'Content-Type': 'application/json',
@@ -89,11 +89,24 @@ export default function FileCodingPage() {
         }
 
         try {
+            let testCalls = "";
+            if (lesson.language === "python" || !lesson.language) {
+                const testFuncRegex = /^def\s+(test_[a-zA-Z0-9_]+)\s*\(/gm;
+                const matches = [...lesson.test_code.matchAll(testFuncRegex)];
+                const testFuncs = matches.map(match => match[1]);
+
+                if (testFuncs.length > 0) {
+                    const numToRun = isSubmit ? testFuncs.length : Math.max(1, Math.ceil(testFuncs.length * 0.2));
+                    const funcsToRun = testFuncs.slice(0, numToRun);
+                    testCalls = "\n\n" + funcsToRun.map(fn => `${fn}()`).join("\n");
+                }
+            }
+
             const response = await fetch(`${API_BASE_URL}/run`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    code: code + "\n\n" + lesson.test_code,
+                    code: code + "\n\n" + lesson.test_code + testCalls,
                     language: lesson.language || "python"
                 })
             });
@@ -102,11 +115,13 @@ export default function FileCodingPage() {
 
             if (data.exit_code === 0) {
                 setOutput(data.stdout || "Success!");
-                confetti({
-                    particleCount: 100,
-                    spread: 70,
-                    origin: { y: 0.6 }
-                });
+                if (isSubmit) {
+                    confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 }
+                    });
+                }
             } else {
                 const errorMsg = data.stderr ? `Error:\n${data.stderr}` : "";
                 const outputMsg = data.stdout ? `\nOutput:\n${data.stdout}` : "";
@@ -352,11 +367,18 @@ export default function FileCodingPage() {
                                                 <RotateCw size={14} /> Reset
                                             </button>
                                             <button
-                                                onClick={handleRun}
+                                                onClick={() => handleRun(false)}
                                                 disabled={isRunning}
                                                 className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow shadow-emerald-900/20 transition-all disabled:opacity-50"
                                             >
                                                 <Play size={14} fill="currentColor" /> {isRunning ? 'Running...' : 'Run Code'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleRun(true)}
+                                                disabled={isRunning}
+                                                className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow shadow-blue-900/20 transition-all disabled:opacity-50"
+                                            >
+                                                Submit
                                             </button>
                                         </div>
                                     </div>

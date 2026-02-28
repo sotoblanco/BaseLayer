@@ -32,13 +32,17 @@ if ! command -v docker &> /dev/null || ! docker info &> /dev/null; then
     echo -e "${RED}[WARNING] Code execution features will NOT work.${NC}"
     echo -e "${BLUE}[INFO] Continuing to start frontend and backend...${NC}"
 else
-    # Build Sandbox Runner Image
-    log "Building sandbox-runner Docker image..."
-    docker build -t sandbox-runner ./sandbox
-    if [ $? -ne 0 ]; then
-        error "Failed to build sandbox-runner image. Proceeding anyway..."
+    # Build Sandbox Runner Image only if it doesn't already exist
+    if ! docker image inspect sandbox-runner:latest >/dev/null 2>&1; then
+        log "Building sandbox-runner Docker image..."
+        docker build -t sandbox-runner ./sandbox
+        if [ $? -ne 0 ]; then
+            error "Failed to build sandbox-runner image. Proceeding anyway..."
+        else
+            log "Sandbox image built successfully."
+        fi
     else
-        log "Sandbox image built successfully."
+        log "sandbox-runner image already exists, skipping build (use \`docker build\` manually after making changes)."
     fi
 fi
 

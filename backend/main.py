@@ -168,32 +168,48 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_optional_user)
             with open(code_path, "w") as f:
                 f.write(submission.code)
             
-            # Construct docker command
+            # Ensure temp dir is writable by container processes
+            try:
+                os.chmod(temp_dir, 0o777)
+            except Exception:
+                pass
+
+            # Construct docker command. Set PYTHONDONTWRITEBYTECODE to avoid __pycache__ creation
             docker_cmd = [
                 "docker", "run", "--rm",
+                "-e", "PYTHONDONTWRITEBYTECODE=1",
                 "-v", f"{temp_dir}:/app",
                 "-w", "/app",
                 "sandbox-runner"
             ] + cmd
 
             # Run the container
-            result = subprocess.run(
-                docker_cmd,
-                capture_output=True,
-                text=True,
-                timeout=5  # 5 second timeout
-            )
-            
-            return {
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "exit_code": result.returncode
-            }
+            try:
+                result = subprocess.run(
+                    docker_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=5  # 5 second timeout
+                )
+
+                return {
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "exit_code": result.returncode
+                }
+            except FileNotFoundError as e:
+                # Docker (or another required executable) not found on the host
+                return {"stdout": "", "stderr": f"Executable not found: {e}", "exit_code": -1}
+            except Exception as e:
+                # Return structured JSON instead of raising HTTPException so the frontend
+                # can display a helpful message instead of 'undefined'
+                return {"stdout": "", "stderr": str(e), "exit_code": -1}
             
     except subprocess.TimeoutExpired:
         return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Catch-all for unexpected errors during setup/writing files
+        return {"stdout": "", "stderr": str(e), "exit_code": -1}
 
 # --- Static Files & SPA Routing ---
 from fastapi.staticfiles import StaticFiles

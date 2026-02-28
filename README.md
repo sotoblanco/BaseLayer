@@ -17,7 +17,53 @@ A modern, interactive platform designed for learning and teaching programming th
 The frontend (Vite) runs on port **5173** and uses a developer proxy configured in `vite.config.ts` to forward API requests (`/courses`, `/file-courses`, `/run`, etc.) to the backend on port **8000**. This allows for a seamless development experience with cross-origin issues handled automatically.
 
 ### Code Execution Sandbox
-When you click "Run Code", the backend takes your code and runs it inside a specialized Docker container (`sandbox-runner`). This ensures that your local machine is protected from potentially malicious code and provides a consistent environment (including libraries like NumPy and PyTorch).
+
+When you click "Run Code", the backend takes your code and runs it inside a specialized Docker container (`sandbox-runner`). This ensures that your local machine is protected from potentially malicious code and provides a consistent environment.
+
+#### How the Sandbox Works
+
+*The embedded code editor was recently enhanced to ensure the full code is always visible. It now allows scrolling beyond the last line and the container uses `overflow-auto` so long files don't get clipped.*
+
+
+1. **Code Submission**: Your code is sent to the backend via the `/run` endpoint.
+2. **Temp Directory**: The backend creates a temporary directory on the host machine and writes your code to a file (`main.py` for Python or `main.rs` for Rust).
+3. **Docker Execution**: The backend runs the `sandbox-runner` Docker image, mounting the temp directory into the container at `/app`.
+4. **Code Execution**: Inside the container, Python or Rust executes your code. The environment is isolated and clean for each run.
+5. **Output Capture**: Standard output and error streams are captured and returned to the frontend.
+
+#### Where Code Is Written and Executed
+
+- **Host Side**: Your code is written to `/tmp/tmpXXXXXX/main.py` (temporary directory created by Python's `tempfile` module).
+- **Container Side**: This directory is mounted as `-v /tmp/tmpXXXXXX:/app`, making your code available at `/app/main.py` inside the container.
+- **Execution**: The container runs `cd /app && python main.py`, executing your code in an isolated environment.
+
+#### Adding Libraries to the Sandbox
+
+To add new Python or Rust libraries for use in exercises:
+
+1. **Edit `sandbox/Dockerfile`**:
+   ```dockerfile
+   RUN pip install numpy torch matplotlib  # Add more packages here
+   ```
+
+2. **Rebuild the Docker image**:
+   ```bash
+   ./dev.sh
+   ```
+
+3. **Use in Exercises**: Your new libraries will be available in all future code executions. For example, in a test or course exercise:
+   ```python
+   import numpy as np
+   import torch
+   ```
+
+#### Why This Architecture?
+
+- **Security**: Running code in an isolated Docker container prevents malicious student code from affecting the host system.
+- **Consistency**: Every execution runs in the same environment, ensuring reproducible results across different machines.
+- **Scalability**: When deployed to Modal (cloud), this architecture allows sandboxed execution to run serverlessly without local Docker.
+- **Clean Slate**: Each execution gets a fresh Python interpreter, preventing state pollution between runs.
+- **Environment Variables**: The backend sets `PYTHONDONTWRITEBYTECODE=1` to prevent Python from creating `__pycache__` directories in the mounted temp folder, avoiding permission issues.
 
 ### Dynamic Course Discovery
 The backend dynamically scans the `courses/` directory. Any folder that follows the required structure is automatically identified and displayed on the app's homepage upon initialization.
@@ -70,10 +116,19 @@ For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The p
 ## 📂 Project Structure
 
 -   `backend/`: FastAPI application, database models, and AI services.
+    - `main.py`: Core API endpoints including `/run` (code execution handler).
+    - `models.py`: SQLModel definitions for courses, exercises, and users.
+    - `database.py`: Database initialization and session management.
+    - `auth.py`: Authentication and user management routes.
+    - `routers/`: Modular API route handlers.
 -   `frontend/`: React components, pages, and state management.
--   `courses/`: Local directory where all file-based courses reside.
--   `sandbox/`: Dockerfile and scripts for the code execution environment.
--   `dev.sh`: Main orchestration script for local development.
+    - `pages/CodingPage.tsx`, `FileCodingPage.tsx`: Main exercise execution interfaces.
+    - `components/CodeEditor.tsx`: Monaco editor integration.
+    - `services/aiService.ts`: AI assistant integration.
+-   `courses/`: Local directory where all file-based courses reside (auto-discovered by the backend).
+-   `sandbox/`: Dockerfile and related files for the code execution environment.
+    - `Dockerfile`: Builds the `sandbox-runner` image with Python, Rust, and required libraries.
+-   `dev.sh`: Main orchestration script for local development (builds Docker images and starts services).
 
 ## ☁️ Deployment
 
@@ -81,5 +136,40 @@ The application supports deployment to **Modal** for serverless execution.
 -   The backend detects `EXECUTION_ENV` to switch between local Docker and Modal Sandboxes.
 -   See `backend/modal_app.py` for deployment configuration.
 
----
-*Happy Coding!*
+## 🔧 Troubleshooting & Known Issues
+
+### Docker Permission Errors (`Operation not permitted: '__pycache__'`)
+- **Cause**: Python tries to write bytecode cache when code is executed in a mounted volume.
+- **Solution**: The backend now sets `PYTHONDONTWRITEBYTECODE=1` environment variable in the Docker run command, preventing Python from creating cache files.
+
+### Package Installation Failures (`pytorch` vs `torch`)
+- **Cause**: Incorrect package name in `sandbox/Dockerfile`.
+- **Solution**: Use the correct PyPI package name: `torch` (not `pytorch`). Update `sandbox/Dockerfile` and rebuild with `./dev.sh`.
+
+### Changes Made to Core Execution
+1. **Structured Error Responses**: The `/run` endpoint now returns JSON with `stdout`, `stderr`, and `exit_code` even on errors, preventing "undefined" messages in the frontend.
+2. **Temp Directory Permissions**: The backend `chmod`s the temp directory to `0o777` to ensure containers can read/write as needed.
+3. **Environment Variables**: Docker is invoked with `-e PYTHONDONTWRITEBYTECODE=1` to avoid cache issues.
+
+### Docker Disk Space & Build Caching
+
+Repeatedly running `./dev.sh` used to rebuild the `sandbox-runner` image every time, which triggered a fresh download of all Python packages (numpy, torch, etc.). On systems with limited free space this could fill the disk and cause errors such as:
+
+```text
+ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device
+``` 
+
+To reduce bandwidth and disk usage:
+
+1. **Build only when necessary** – the `dev.sh` script now checks for an existing `sandbox-runner` image and skips rebuilding if it already exists. You only need to manually rebuild when you modify `sandbox/Dockerfile` or change dependencies:
+    ```bash
+    docker build -t sandbox-runner ./sandbox
+    ```
+2. **Cleanup unused images/layers**:
+    ```bash
+    docker system prune -a   # remove unused containers, images, networks
+    docker builder prune     # clean build cache
+    ```
+3. **Inspect disk usage** with `docker images` or `docker system df` and delete large dangling images if necessary.
+
+These steps ensure `./dev.sh` runs quickly after the initial build and avoids downloading the same packages repeatedly.
