@@ -8,14 +8,9 @@ class Tensor:
         self.shape = self.data.shape
         self.size = self.data.size
         self.dtype = self.data.dtype
-
-    def matmul(self, other):
-        """Perform matrix multiplication between self and other."""
+        
+    def reshape(self, *shape):
         ### BEGIN SOLUTION
 
         ### END SOLUTION
         pass
-
-    def __matmul__(self, other):
-            """Enable @ operator for matrix multiplication."""
-            return self.matmul(other)

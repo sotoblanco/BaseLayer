@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut, Lightbulb } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut, Lightbulb, Link, Trash2, ExternalLink } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL } from "../config";
@@ -18,6 +18,15 @@ interface Lesson {
     solution_code: string;
     order: number;
     language: string;
+    chapter?: string;
+    exercise_type?: "code" | "spreadsheet";
+    google_sheet_id?: string;
+    copy_on_open?: boolean;
+}
+
+interface Chapter {
+    name: string;
+    lessons: Lesson[];
 }
 
 interface FileCourse {
@@ -31,6 +40,8 @@ export default function FileCodingPage() {
     const { slug } = useParams();
     const navigate = useNavigate();
     const [course, setCourse] = useState<FileCourse | null>(null);
+    const [chapters, setChapters] = useState<Chapter[]>([]);
+    const [currentChapterIndex, setCurrentChapterIndex] = useState(0);
     const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
     const [editorTab, setEditorTab] = useState<'main' | 'tests' | 'solution'>('main');
     const [showSolution, setShowSolution] = useState(false);
@@ -39,6 +50,37 @@ export default function FileCodingPage() {
     const [output, setOutput] = useState<string>("");
     const [isRunning, setIsRunning] = useState(false);
     const { token, logout, isAuthenticated } = useAuth();
+    const [userSheetUrl, setUserSheetUrl] = useState<string>("");
+    const [sheetCopyId, setSheetCopyId] = useState<string | null>(null);
+    const [creatingCopy, setCreatingCopy] = useState(false);
+
+    // Extract chapters from lessons
+    const extractChapters = (lessons: Lesson[]): Chapter[] => {
+        if (lessons.length === 0) return [];
+
+        // Check if lessons have chapter information
+        const hasChapters = lessons.some(l => l.chapter);
+
+        if (hasChapters) {
+            // Group lessons by chapter
+            const chapterMap = new Map<string, Lesson[]>();
+            lessons.forEach(lesson => {
+                const chapter = lesson.chapter || "default";
+                if (!chapterMap.has(chapter)) {
+                    chapterMap.set(chapter, []);
+                }
+                chapterMap.get(chapter)!.push(lesson);
+            });
+
+            // Convert to array and sort by chapter name
+            return Array.from(chapterMap.entries())
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([name, lessons]) => ({ name, lessons }));
+        } else {
+            // No chapters, treat all lessons as one group
+            return [{ name: "Lessons", lessons }];
+        }
+    };
 
     // Fetch Course Data
     useEffect(() => {
@@ -48,10 +90,12 @@ export default function FileCodingPage() {
                 if (res.ok) {
                     const data = await res.json();
                     setCourse(data);
+                    const extractedChapters = extractChapters(data.lessons);
+                    setChapters(extractedChapters);
 
                     // Initialize code if lessons exist
-                    if (data.lessons && data.lessons.length > 0) {
-                        setCode(data.lessons[0].initial_code);
+                    if (extractedChapters.length > 0 && extractedChapters[0].lessons.length > 0) {
+                        setCode(extractedChapters[0].lessons[0].initial_code);
                     }
                 } else {
                     console.error("Course not found");
@@ -64,7 +108,8 @@ export default function FileCodingPage() {
     }, [slug]);
 
     // Handle Lesson Change
-    const lesson = course?.lessons[currentLessonIndex];
+    const currentChapter = chapters[currentChapterIndex];
+    const lesson = currentChapter?.lessons[currentLessonIndex];
 
     useEffect(() => {
         if (lesson) {
@@ -72,8 +117,33 @@ export default function FileCodingPage() {
             setOutput("");
             setEditorTab('main');
             setShowSolution(false); // hide solution on lesson change
+            // Load saved spreadsheet URL if any
+            const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
+            setUserSheetUrl(savedUrl || "");
+            setSheetCopyId(null);
         }
-    }, [lesson]);
+    }, [lesson, slug]);
+
+    // Save spreadsheet URL when it changes
+    useEffect(() => {
+        if (lesson && userSheetUrl) {
+            localStorage.setItem(`spreadsheet_copy_${slug}_${lesson.slug}`, userSheetUrl);
+        } else if (lesson) {
+            localStorage.removeItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
+        }
+    }, [userSheetUrl, lesson, slug]);
+
+    const extractSheetId = (url: string) => {
+        const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+        return match ? match[1] : null;
+    };
+
+    const displaySheetId = userSheetUrl ? extractSheetId(userSheetUrl) : lesson?.google_sheet_id;
+    const isUsingPersonalCopy = !!(userSheetUrl && extractSheetId(userSheetUrl));
+    const sheetMode = 'edit';
+    const iframeUrl = displaySheetId
+        ? `https://docs.google.com/spreadsheets/d/${displaySheetId}/${sheetMode}?usp=sharing`
+        : "";
 
     const handleRun = async (isSubmit: boolean = false) => {
         if (!lesson) return;
@@ -134,7 +204,7 @@ export default function FileCodingPage() {
         }
     };
 
-    if (!course) {
+    if (!course || chapters.length === 0) {
         return (
             <div className="flex h-screen w-full bg-slate-950 items-center justify-center text-slate-400">
                 <div className="text-center">
@@ -145,7 +215,7 @@ export default function FileCodingPage() {
         );
     }
 
-    if (course.lessons.length === 0) {
+    if (!currentChapter || currentChapter.lessons.length === 0) {
         return (
             <div className="flex h-screen w-full bg-slate-950 items-center justify-center text-slate-400">
                 <div className="text-center">
@@ -172,20 +242,58 @@ export default function FileCodingPage() {
                     <FolderCode size={24} className="text-white" />
                 </div>
 
-                {/* Navigation Dots */}
-                <div className="flex flex-col gap-2 mt-4">
-                    {course.lessons.map((les, idx) => (
-                        <div
-                            key={les.slug}
-                            onClick={() => setCurrentLessonIndex(idx)}
-                            className={`
-                        w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors font-bold text-sm
-                        ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : 'hover:bg-slate-800 text-slate-400'}
-                    `}
+                {/* Chapter Navigation */}
+                <div className="flex flex-col gap-2 mt-4 w-full items-center">
+                    {/* Previous Chapter Button */}
+                    {chapters.length > 1 && (
+                        <button
+                            onClick={() => setCurrentChapterIndex(Math.max(0, currentChapterIndex - 1))}
+                            disabled={currentChapterIndex === 0}
+                            className="p-2 rounded text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Previous Chapter"
                         >
-                            {idx + 1}
+                            <ChevronLeft size={16} />
+                        </button>
+                    )}
+
+                    {/* Chapter Name */}
+                    {chapters.length > 1 && currentChapter && (
+                        <div className="text-xs font-semibold text-slate-400 text-center px-2 py-1">
+                            {currentChapter.name.replace('chapter', 'Ch ')}
                         </div>
-                    ))}
+                    )}
+
+                    {/* Lesson Dots for Current Chapter */}
+                    <div className="flex flex-col gap-2">
+                        {currentChapter?.lessons.map((les, idx) => (
+                            <div
+                                key={les.slug}
+                                onClick={() => setCurrentLessonIndex(idx)}
+                                className={`
+                            w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors font-bold text-sm
+                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : 'hover:bg-slate-800 text-slate-400'}
+                        `}
+                                title={les.title}
+                            >
+                                {idx + 1}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Next Chapter Button */}
+                    {chapters.length > 1 && (
+                        <button
+                            onClick={() => {
+                                setCurrentChapterIndex(Math.min(chapters.length - 1, currentChapterIndex + 1));
+                                setCurrentLessonIndex(0);
+                            }}
+                            disabled={currentChapterIndex === chapters.length - 1}
+                            className="p-2 rounded text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
+                            title="Next Chapter"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -206,18 +314,40 @@ export default function FileCodingPage() {
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setCurrentLessonIndex(Math.max(0, currentLessonIndex - 1))}
-                            disabled={currentLessonIndex === 0}
+                            onClick={() => {
+                                if (currentLessonIndex > 0) {
+                                    setCurrentLessonIndex(currentLessonIndex - 1);
+                                } else if (currentChapterIndex > 0) {
+                                    setCurrentChapterIndex(currentChapterIndex - 1);
+                                    const prevChapter = chapters[currentChapterIndex - 1];
+                                    setCurrentLessonIndex(prevChapter.lessons.length - 1);
+                                }
+                            }}
+                            disabled={currentChapterIndex === 0 && currentLessonIndex === 0}
                             className="p-2 rounded hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <ChevronLeft size={20} />
                         </button>
                         <span className="text-sm text-slate-400">
-                            {currentLessonIndex + 1} / {course.lessons.length}
+                            {currentChapter ? (
+                                <>
+                                    {currentLessonIndex + 1} / {currentChapter.lessons.length}
+                                    {chapters.length > 1 && ` • ${currentChapter.name.replace('chapter', 'Ch ')}`}
+                                </>
+                            ) : (
+                                '0 / 0'
+                            )}
                         </span>
                         <button
-                            onClick={() => setCurrentLessonIndex(Math.min(course.lessons.length - 1, currentLessonIndex + 1))}
-                            disabled={currentLessonIndex === course.lessons.length - 1}
+                            onClick={() => {
+                                if (currentChapter && currentLessonIndex < currentChapter.lessons.length - 1) {
+                                    setCurrentLessonIndex(currentLessonIndex + 1);
+                                } else if (currentChapterIndex < chapters.length - 1) {
+                                    setCurrentChapterIndex(currentChapterIndex + 1);
+                                    setCurrentLessonIndex(0);
+                                }
+                            }}
+                            disabled={currentChapterIndex === chapters.length - 1 && currentChapter && currentLessonIndex === currentChapter.lessons.length - 1}
                             className="p-2 rounded hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             <ChevronRight size={20} />
@@ -276,121 +406,185 @@ export default function FileCodingPage() {
 
                         <Separator className="w-1.5 bg-slate-900 border-l border-slate-800 hover:bg-emerald-500 transition-colors cursor-col-resize flex items-center justify-center z-10" />
 
-                        {/* Right: Code & Output */}
+                        {/* Right: Code & Output or Spreadsheet */}
                         <Panel defaultSize={50} minSize={20} id="code-output-panel" className="flex flex-col bg-[#1e1e1e]">
-                            <Group orientation="vertical" id="editor-group" style={{ height: '100%', width: '100%' }}>
-                                {/* Editor */}
-                                <Panel defaultSize={70} minSize={20} id="editor-panel" className="flex flex-col">
-                                    {/* Editor Toolbar */}
-                                    <div className="h-10 border-b border-[#333] flex items-center px-4 justify-between bg-[#252526]">
-                                        <div className="flex items-center gap-2 text-sm text-slate-400">
-                                            <button
-                                                onClick={() => setEditorTab('main')}
-                                                className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'main'
-                                                    ? 'bg-[#1e1e1e] text-slate-200 border-[#333]'
-                                                    : 'border-transparent hover:bg-[#2d2d2d]'
-                                                    }`}
-                                            >
-                                                📄 {mainFilename}
-                                            </button>
-                                            <button
-                                                onClick={() => setEditorTab('tests')}
-                                                className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'tests'
-                                                    ? 'bg-[#1e1e1e] text-slate-200 border-[#333]'
-                                                    : 'border-transparent hover:bg-[#2d2d2d]'
-                                                    }`}
-                                            >
-                                                🧪 {testsFilename}
-                                            </button>
-                                            {lesson?.solution_code && (
+                            {lesson?.exercise_type === 'spreadsheet' && lesson?.google_sheet_id ? (
+                                // Spreadsheet Exercise - Google Sheets
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    <div className="h-12 border-b border-[#333] flex items-center px-4 bg-[#252526] justify-between gap-4">
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                            <span className="text-sm text-slate-400 whitespace-nowrap">📊 {isUsingPersonalCopy ? 'My Copy' : 'Template'}</span>
+
+                                            <div className="flex-1 max-w-lg flex items-center gap-2 bg-[#1e1e1e] border border-[#444] rounded px-2 py-1">
+                                                <Link size={14} className="text-slate-500" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Paste your private copy link here..."
+                                                    className="bg-transparent border-none text-xs text-slate-300 w-full focus:outline-none"
+                                                    value={userSheetUrl}
+                                                    onChange={(e) => setUserSheetUrl(e.target.value)}
+                                                />
+                                                {userSheetUrl && (
+                                                    <button
+                                                        onClick={() => setUserSheetUrl("")}
+                                                        className="text-slate-500 hover:text-red-400 transition-colors"
+                                                        title="Remove link"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            {lesson.copy_on_open && (
                                                 <button
-                                                    onClick={() => {
-                                                        setShowSolution(true);
-                                                        setEditorTab('solution');
-                                                    }}
-                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'solution'
-                                                        ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50'
-                                                        : 'border-transparent text-yellow-500/70 hover:bg-yellow-900/20 hover:text-yellow-400'
-                                                        }`}
+                                                    onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${lesson.google_sheet_id}/copy`, '_blank')}
+                                                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow-lg shadow-emerald-900/20"
                                                 >
-                                                    <Lightbulb size={13} /> Solution
+                                                    <ExternalLink size={14} /> Make a private copy
                                                 </button>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Editor Area */}
-                                    <div className="flex-1 min-h-0 relative">
-                                        <div className="absolute inset-0" style={{ display: editorTab === 'main' ? 'block' : 'none' }}>
-                                            <CodeEditor
-                                                key="editor-main"
-                                                code={code}
-                                                onChange={(val) => setCode(val || "")}
-                                                language={currentLang}
-                                                filename={mainFilename}
+                                    {/* If copy_on_open is true we encourage user to make a private copy; still embed the template for preview */}
+                                    <div style={{ flex: 1, backgroundColor: '#fff' }}>
+                                        {iframeUrl ? (
+                                            <iframe
+                                                src={iframeUrl}
+                                                style={{
+                                                    flex: 1,
+                                                    border: 'none',
+                                                    width: '100%',
+                                                    height: '100%'
+                                                }}
+                                                title="Google Sheet Exercise"
+                                                allow="autorepair;usercopy;useredit"
                                             />
-                                        </div>
-                                        <div className="absolute inset-0" style={{ display: editorTab === 'tests' ? 'block' : 'none' }}>
-                                            <CodeEditor
-                                                key="editor-tests"
-                                                code={lesson?.test_code || ""}
-                                                onChange={() => { }}
-                                                readOnly={true}
-                                                language={currentLang}
-                                                filename={testsFilename}
-                                            />
-                                        </div>
-                                        {showSolution && (
-                                            <div className="absolute inset-0" style={{ display: editorTab === 'solution' ? 'block' : 'none' }}>
-                                                <CodeEditor
-                                                    key="editor-solution"
-                                                    code={lesson?.solution_code || ""}
-                                                    onChange={() => { }}
-                                                    readOnly={true}
-                                                    language={currentLang}
-                                                    filename={lesson?.language === 'rust' ? 'solution.rs' : 'solution.py'}
-                                                />
+                                        ) : (
+                                            <div className="flex items-center justify-center h-full text-slate-500 italic">
+                                                Sheet ID not found in metadata...
                                             </div>
                                         )}
                                     </div>
-                                </Panel>
-
-                                <Separator className="h-1.5 bg-[#252526] border-t border-[#333] hover:bg-emerald-500 transition-colors cursor-row-resize flex items-center justify-center z-10" />
-
-                                {/* Output / Console Panel */}
-                                <Panel defaultSize={30} minSize={10} id="console-panel" className="flex flex-col bg-[#1e1e1e]">
-                                    <div className="h-10 flex items-center justify-between px-4 border-b border-[#333] bg-[#252526]">
-                                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Console Output</span>
-
-                                        <div className="flex gap-2">
-                                            <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded transition-colors">
-                                                <RotateCw size={14} /> Reset
-                                            </button>
-                                            <button
-                                                onClick={() => handleRun(false)}
-                                                disabled={isRunning}
-                                                className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow shadow-emerald-900/20 transition-all disabled:opacity-50"
-                                            >
-                                                <Play size={14} fill="currentColor" /> {isRunning ? 'Running...' : 'Run Code'}
-                                            </button>
-                                            <button
-                                                onClick={() => handleRun(true)}
-                                                disabled={isRunning}
-                                                className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow shadow-blue-900/20 transition-all disabled:opacity-50"
-                                            >
-                                                Submit
-                                            </button>
+                                </div>
+                            ) : (
+                                // Code Exercise
+                                <Group orientation="vertical" id="editor-group" style={{ height: '100%', width: '100%' }}>
+                                    {/* Editor */}
+                                    <Panel defaultSize={70} minSize={20} id="editor-panel" className="flex flex-col">
+                                        {/* Editor Toolbar */}
+                                        <div className="h-10 border-b border-[#333] flex items-center px-4 justify-between bg-[#252526]">
+                                            <div className="flex items-center gap-2 text-sm text-slate-400">
+                                                <button
+                                                    onClick={() => setEditorTab('main')}
+                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'main'
+                                                        ? 'bg-[#1e1e1e] text-slate-200 border-[#333]'
+                                                        : 'border-transparent hover:bg-[#2d2d2d]'
+                                                        }`}
+                                                >
+                                                    📄 {mainFilename}
+                                                </button>
+                                                <button
+                                                    onClick={() => setEditorTab('tests')}
+                                                    className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'tests'
+                                                        ? 'bg-[#1e1e1e] text-slate-200 border-[#333]'
+                                                        : 'border-transparent hover:bg-[#2d2d2d]'
+                                                        }`}
+                                                >
+                                                    🧪 {testsFilename}
+                                                </button>
+                                                {lesson?.solution_code && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setShowSolution(true);
+                                                            setEditorTab('solution');
+                                                        }}
+                                                        className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'solution'
+                                                            ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50'
+                                                            : 'border-transparent text-yellow-500/70 hover:bg-yellow-900/20 hover:text-yellow-400'
+                                                            }`}
+                                                    >
+                                                        <Lightbulb size={13} /> Solution
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex-1 p-4 font-mono text-sm overflow-auto custom-scrollbar">
-                                        {output ? (
-                                            <pre className="text-slate-300 whitespace-pre-wrap">{output}</pre>
-                                        ) : (
-                                            <span className="text-slate-600 italic">Run your code to see output...</span>
-                                        )}
-                                    </div>
-                                </Panel>
-                            </Group>
+
+                                        {/* Editor Area */}
+                                        <div className="flex-1 min-h-0 relative">
+                                            <div className="absolute inset-0" style={{ display: editorTab === 'main' ? 'block' : 'none' }}>
+                                                <CodeEditor
+                                                    key="editor-main"
+                                                    code={code}
+                                                    onChange={(val) => setCode(val || "")}
+                                                    language={currentLang}
+                                                    filename={mainFilename}
+                                                />
+                                            </div>
+                                            <div className="absolute inset-0" style={{ display: editorTab === 'tests' ? 'block' : 'none' }}>
+                                                <CodeEditor
+                                                    key="editor-tests"
+                                                    code={lesson?.test_code || ""}
+                                                    onChange={() => { }}
+                                                    readOnly={true}
+                                                    language={currentLang}
+                                                    filename={testsFilename}
+                                                />
+                                            </div>
+                                            {showSolution && (
+                                                <div className="absolute inset-0" style={{ display: editorTab === 'solution' ? 'block' : 'none' }}>
+                                                    <CodeEditor
+                                                        key="editor-solution"
+                                                        code={lesson?.solution_code || ""}
+                                                        onChange={() => { }}
+                                                        readOnly={true}
+                                                        language={currentLang}
+                                                        filename={lesson?.language === 'rust' ? 'solution.rs' : 'solution.py'}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Panel>
+
+                                    <Separator className="h-1.5 bg-[#252526] border-t border-[#333] hover:bg-emerald-500 transition-colors cursor-row-resize flex items-center justify-center z-10" />
+
+                                    {/* Output / Console Panel */}
+                                    <Panel defaultSize={30} minSize={10} id="console-panel" className="flex flex-col bg-[#1e1e1e]">
+                                        <div className="h-10 flex items-center justify-between px-4 border-b border-[#333] bg-[#252526]">
+                                            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Console Output</span>
+
+                                            <div className="flex gap-2">
+                                                <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded transition-colors">
+                                                    <RotateCw size={14} /> Reset
+                                                </button>
+                                                <button
+                                                    onClick={() => handleRun(false)}
+                                                    disabled={isRunning}
+                                                    className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow shadow-emerald-900/20 transition-all disabled:opacity-50"
+                                                >
+                                                    <Play size={14} fill="currentColor" /> {isRunning ? 'Running...' : 'Run Code'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleRun(true)}
+                                                    disabled={isRunning}
+                                                    className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded shadow shadow-blue-900/20 transition-all disabled:opacity-50"
+                                                >
+                                                    Submit
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 p-4 font-mono text-sm overflow-auto custom-scrollbar">
+                                            {output ? (
+                                                <pre className="text-slate-300 whitespace-pre-wrap">{output}</pre>
+                                            ) : (
+                                                <span className="text-slate-600 italic">Run your code to see output...</span>
+                                            )}
+                                        </div>
+                                    </Panel>
+                                </Group>
+                            )}
                         </Panel>
 
                     </Group>

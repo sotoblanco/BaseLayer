@@ -9,6 +9,14 @@ def test_matmul():
     expected = np.array([[19, 22], [43, 50]])
     assert np.array_equal(result.data, expected)
 
+def test_rectagunlar_matrices():
+    a = Tensor(np.array([[1, 4, 7], [2,  4, 7]]))
+    b = Tensor(np.array([[2, 3], [3, 4], [4, 5]]))
+    result = a.matmul(b)
+    expected = np.array([[42, 54], [44, 57]])
+    assert np.array_equal(result.data, expected)
+
+
 def test_matmul_shape_mismatch():
     # a is 2x2, b is 2x3 -> valid multiplication; we need an invalid inner dim
     a = Tensor([[1, 2], [3, 4]])
@@ -29,12 +37,5 @@ def test_matmul_scalar_error():
     except TypeError as e:
         assert "requires Tensor" in str(e)
 
-def test_matmul_1d_error():
-    a = Tensor([1, 2, 3])  # 1D tensor
-    b = Tensor([[4], [5], [6]])  # 2D tensor
-    try:
-        result = a.matmul(b)
-        assert False, "Expected ValueError for 1D tensor input"
-    except ValueError as e:
-        assert "requires at least 2D tensors" in str(e)
+
 

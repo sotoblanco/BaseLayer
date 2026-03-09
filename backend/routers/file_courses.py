@@ -11,10 +11,12 @@ courses/
 """
 
 import os
+import json
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+import time
 
 
 router = APIRouter(prefix="/file-courses", tags=["file-courses"])
@@ -43,6 +45,10 @@ class FileLesson(BaseModel):
     solution_code: str  # solution.py content (hidden from user until requested)
     order: int
     language: str = "python"
+    chapter: Optional[str] = None  # Chapter slug (e.g., "chapter1")
+    exercise_type: str = "code"  # "code", "spreadsheet"
+    google_sheet_id: Optional[str] = None  # Google Sheet ID for spreadsheet exercises
+    copy_on_open: bool = False  # If true, create a per-user copy when opening
 
 
 class FileCourseSummary(BaseModel):
@@ -81,7 +87,14 @@ def read_file_content(path: Path) -> str:
         return ""
 
 
-def parse_lesson(course_path: Path, lesson_slug: str, order: int) -> Optional[FileLesson]:
+def is_lesson_directory(dir_path: Path) -> bool:
+    """Check if a directory is a lesson (contains README.md, main.py/main.rs, etc)"""
+    readme_exists = (dir_path / "README.md").exists()
+    has_main = (dir_path / "main.py").exists() or (dir_path / "main.rs").exists()
+    return readme_exists and has_main
+
+
+def parse_lesson(course_path: Path, lesson_slug: str, order: int, chapter_slug: Optional[str] = None) -> Optional[FileLesson]:
     """Parse a lesson directory into a FileLesson object"""
     lesson_path = course_path / lesson_slug
     
@@ -96,6 +109,23 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int) -> Optional[Fi
     # At minimum, we need README.md
     if not readme_path.exists():
         return None
+    
+    # Check for metadata.json for exercise configuration
+    exercise_type = "code"
+    google_sheet_id = None
+    copy_on_open = False
+    metadata_path = lesson_path / "metadata.json"
+    
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                exercise_type = metadata.get("exercise_type", "code")
+                google_sheet_id = metadata.get("google_sheet_id")
+                copy_on_open = bool(metadata.get("copy_on_open", False))
+        except (json.JSONDecodeError, IOError):
+            # If metadata.json is invalid, fall back to defaults
+            pass
     
     # Detect language and set file paths
     language = "python"
@@ -117,7 +147,11 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int) -> Optional[Fi
         test_code=read_file_content(test_path),
         solution_code=read_file_content(solution_path),
         order=order,
-        language=language
+        language=language,
+        chapter=chapter_slug,
+        exercise_type=exercise_type,
+        google_sheet_id=google_sheet_id,
+        copy_on_open=copy_on_open
     )
 
 
@@ -136,14 +170,36 @@ def parse_course(course_slug: str) -> Optional[FileCourse]:
     lessons = []
     order = 1
     
-    # Sort lesson directories to maintain order
-    lesson_dirs = sorted([d for d in course_path.iterdir() if d.is_dir()])
+    # Get all subdirectories sorted by name
+    subdirs = sorted([d for d in course_path.iterdir() if d.is_dir() and not d.name.startswith(".")])
     
-    for lesson_dir in lesson_dirs:
-        lesson = parse_lesson(course_path, lesson_dir.name, order)
-        if lesson:
-            lessons.append(lesson)
-            order += 1
+    # Check if we have chapters (directories that contain lesson directories)
+    # A chapter is a directory that contains lesson subdirectories
+    has_chapters = any(
+        d.is_dir() and 
+        any(is_lesson_directory(sub) for sub in d.iterdir() if sub.is_dir())
+        for d in subdirs
+    )
+    
+    if has_chapters:
+        # Parse chapters and lessons within chapters
+        for chapter_dir in subdirs:
+            if chapter_dir.is_dir():
+                chapter_slug = chapter_dir.name
+                # Get lessons within this chapter
+                lesson_dirs = sorted([d for d in chapter_dir.iterdir() if d.is_dir() and not d.name.startswith(".")])
+                for lesson_dir in lesson_dirs:
+                    lesson = parse_lesson(chapter_dir, lesson_dir.name, order, chapter_slug=chapter_slug)
+                    if lesson:
+                        lessons.append(lesson)
+                        order += 1
+    else:
+        # Parse lessons directly in course directory (backward compatibility)
+        for lesson_dir in subdirs:
+            lesson = parse_lesson(course_path, lesson_dir.name, order)
+            if lesson:
+                lessons.append(lesson)
+                order += 1
     
     return FileCourse(
         slug=course_slug,
@@ -198,3 +254,47 @@ def get_file_lesson(course_slug: str, lesson_slug: str):
             return lesson
     
     raise HTTPException(status_code=404, detail=f"Lesson '{lesson_slug}' not found in course '{course_slug}'")
+
+
+@router.post("/{course_slug}/{lesson_slug}/copy-sheet")
+def create_sheet_copy(course_slug: str, lesson_slug: str):
+    """Create a per-user copy of a template Google Sheet for a lesson.
+
+    Requires environment variable `GOOGLE_SERVICE_ACCOUNT_FILE` pointing to a service
+    account JSON key with Drive permissions. Returns the new sheet id and URL.
+    """
+    course = parse_course(course_slug)
+    if not course:
+        raise HTTPException(status_code=404, detail=f"Course '{course_slug}' not found")
+
+    lesson = None
+    for l in course.lessons:
+        if l.slug == lesson_slug:
+            lesson = l
+            break
+
+    if not lesson:
+        raise HTTPException(status_code=404, detail=f"Lesson '{lesson_slug}' not found in course '{course_slug}'")
+
+    if lesson.exercise_type != 'spreadsheet' or not lesson.google_sheet_id:
+        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise or has no template sheet id")
+
+    sa_file = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE') or os.environ.get('SERVICE_ACCOUNT_FILE')
+    if not sa_file:
+        raise HTTPException(status_code=501, detail="Service account file not configured. Set GOOGLE_SERVICE_ACCOUNT_FILE env var.")
+
+    try:
+        from google.oauth2.service_account import Credentials
+        from googleapiclient.discovery import build
+    except Exception:
+        raise HTTPException(status_code=501, detail="googleapiclient not installed on server")
+
+    try:
+        creds = Credentials.from_service_account_file(sa_file, scopes=["https://www.googleapis.com/auth/drive"])
+        drive = build('drive', 'v3', credentials=creds)
+        new_title = f"{course_slug}-{lesson_slug}-copy-{int(time.time())}"
+        copied = drive.files().copy(fileId=lesson.google_sheet_id, body={"name": new_title}).execute()
+        new_id = copied.get('id')
+        return {"google_sheet_id": new_id, "url": f"https://docs.google.com/spreadsheets/d/{new_id}/edit"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {e}")
