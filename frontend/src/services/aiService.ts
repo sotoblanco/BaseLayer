@@ -23,7 +23,7 @@ export const generateExercise = async (prompt: string, language: string = 'pytho
     return response.json();
 };
 
-export const discussImplementation = async (message: string, context?: string) => {
+export const discussImplementation = async (message: string, context?: string, understandingLevel: string = "Intermediate") => {
     const token = localStorage.getItem('token');
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
@@ -35,7 +35,7 @@ export const discussImplementation = async (message: string, context?: string) =
     const response = await fetch(`${API_BASE_URL}/ai/discuss`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ message, context }),
+        body: JSON.stringify({ message, context, understanding_level: understandingLevel }),
     });
 
     if (!response.ok) {

@@ -34,7 +34,7 @@ class AIService:
             *   Provide a clear, concept-first explanation.
             *   **Examples**: Provide *generic* syntax examples that clearly show HOW to use the feature. (e.g., if teaching 'structs', show a generic struct definition).
             *   **Why**: Explain *why* this feature exists and when to use it.
-            *   Keep the tone encouraging ("Boots the Wise").
+            *   Keep the tone encouraging ("SocratiQ the Wise").
         3.  **Assignment**:
             *   Describe a specific, actionable task.
             *   Be precise about what functions/structs need to be implemented.
@@ -82,7 +82,7 @@ class AIService:
             # print(f"Raw response: {response.text}") # response might not exist if generation failed
             return {"error": f"Failed to generate valid exercise data: {str(e)}"}
 
-    def chat(self, message: str, context: str = "") -> str:
+    def chat(self, message: str, context: str = "", understanding_level: str = "Intermediate") -> str:
         """
         Chat with the AI about implementation details.
         """
@@ -90,18 +90,27 @@ class AIService:
              return "AI service not configured."
 
         system_prompt = """
-        You are Boots, the Master of Code and Casting, a wise and slightly mischievous bear wizard who teaches coding.
+        You are SocratiQ, an expert AI coding tutor.
         
-        Your Goal: Help the student understand the code and solving the problem WITHOUT giving away the answer.
+        Your Goal: Help the student understand the current exercise and solve the problem WITHOUT giving away the answer.
         
         Guidelines:
-        1.  **Persona**: Speak like a friendly wizard (use terms like "spell", "enchantment", "mana"). Be encouraging but concise.
+        1.  **Persona**: Be encouraging, clear, and highly practical. Avoid magical jargon.
         2.  **No Solutions**: Never write the full code solution. If asked, explain the *logic* or give a small syntax example unrelated to the exact solution.
         3.  **Socratic Method**: Ask guiding questions to help them realize the answer.
-        4.  **Context**: Use the provided context (code and assignment) to give specific advice.
+        4.  **Use Context**: Always integrate the specific details of the exercise description and the student's current code provided in the context into your guidance.
         """
 
-        full_prompt = f"{system_prompt}\n\nContext: {context}\n\nUser: {message}"
+        level_prompts = {
+            "Beginner": "You are conversing with a Beginner learner: Focus on foundational concepts, definitions, and straightforward applications in machine learning systems, suitable for learners with little to no prior knowledge.",
+            "Intermediate": "You are conversing with an Intermediate learner: Emphasize problem-solving, system design, and practical implementations, targeting learners with a basic understanding of machine learning principles.",
+            "Advanced": "You are conversing with an Advanced learner: Challenge learners to analyze, innovate, and optimize complex machine learning systems, requiring deep expertise and a holistic grasp of advanced techniques.",
+            "Bloom's Taxonomy": "You are an expert ML teacher using Bloom’s Taxonomy: Create responses that progress through Bloom’s levels: remember, understand, apply, analyze, evaluate, and create. Guide my learning."
+        }
+        
+        level_instruction = level_prompts.get(understanding_level, level_prompts["Intermediate"])
+
+        full_prompt = f"{system_prompt}\n\nUnderstanding Level Context:\n{level_instruction}\n\nContext: {context}\n\nUser: {message}"
         try:
             # Using the new SDK's generate_content for single turn, or we could use chats.create for multi-turn
             # For now, sticking to single turn as per original implementation

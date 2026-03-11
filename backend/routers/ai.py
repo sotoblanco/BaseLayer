@@ -13,6 +13,7 @@ class GenerateExerciseRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     context: Optional[str] = ""
+    understanding_level: str = "Intermediate"
 
 @router.post("/generate/exercise")
 def generate_exercise(request: GenerateExerciseRequest, admin: User = Depends(get_current_admin)):
@@ -23,5 +24,5 @@ def generate_exercise(request: GenerateExerciseRequest, admin: User = Depends(ge
 
 @router.post("/discuss")
 def discuss_implementation(request: ChatRequest, user: Optional[User] = Depends(get_optional_user)):
-    response = ai_service.chat(request.message, request.context)
+    response = ai_service.chat(request.message, request.context, request.understanding_level)
     return {"response": response}

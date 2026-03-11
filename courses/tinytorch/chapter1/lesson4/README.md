@@ -11,9 +11,9 @@ This helper checks three conditions before any computation begins:
 TODO: Implement the three validation checks for matrix multiplication.
 
 APPROACH:
-1. Check isinstance(other, Tensor) - raise TypeError if not
-2. Check both tensors are at least 1D - raise ValueError if 0D
-3. For 2D+ tensors, check self.shape[-1] == other.shape[-2]
+- [ ] Check isinstance(other, Tensor) - raise TypeError if not
+- [ ] Check both tensors are at least 1D - raise ValueError if 0D
+- [ ] For 2D+ tensors, check self.shape[-1] == other.shape[-2]
 
 EXAMPLE:
 ```py

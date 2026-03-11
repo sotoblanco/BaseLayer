@@ -383,25 +383,41 @@ export default function FileCodingPage() {
                 {/* Split View */}
                 <div className="flex-1 flex overflow-hidden">
                     <Group orientation="horizontal" id="main-group" style={{ height: '100%', width: '100%' }}>
-                        {/* Left: Instructions & AI */}
-                        <Panel defaultSize={40} minSize={20} id="left-panel" className="flex flex-col bg-slate-950/50">
-                            <Group orientation="vertical" id="left-group" style={{ height: '100%' }}>
+                        {/* Left: Instructions & AI (inline) */}
+                        <Panel defaultSize={40} minSize={20} id="left-panel" className="flex flex-col bg-slate-950/50 border-r border-slate-800 overflow-hidden">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0">
                                 {/* Instructions */}
-                                <Panel defaultSize={60} minSize={20} id="instructions-panel" className="flex flex-col border-r border-slate-800 overflow-hidden">
-                                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                        {lesson && <MarkdownViewer content={lesson.description} />}
-                                    </div>
-                                </Panel>
+                                <div className="flex-shrink-0">
+                                    {lesson && <MarkdownViewer content={lesson.description} />}
+                                </div>
 
-                                <Separator className="h-1.5 bg-slate-900 border-t border-slate-800 hover:bg-emerald-500 transition-colors cursor-row-resize flex items-center justify-center z-10" />
+                                {/* Divider */}
+                                <div className="mx-4 border-t border-slate-700/60" />
 
-                                {/* AI Assistant */}
-                                <Panel defaultSize={40} minSize={20} id="ai-panel" className="flex flex-col border-r border-slate-800">
+                                {/* AI Assistant — inline below explanation, min height so it's usable */}
+                                <div style={{ minHeight: '380px', flex: '1 0 380px' }}>
                                     <AIChatPanel
-                                        context={`Current Lesson: ${lesson?.title}\nDescription: ${lesson?.description}\nCurrent Code:\n${code}`}
+                                        lessonId={lesson?.slug ?? ''}
+                                        context={[
+                                            `## Lesson: ${lesson?.title}`,
+                                            `### Assignment`,
+                                            lesson?.description ?? '',
+                                            `### Student's Current Code`,
+                                            '```' + (lesson?.language ?? 'python'),
+                                            code,
+                                            '```',
+                                            `### Test Suite`,
+                                            '```' + (lesson?.language ?? 'python'),
+                                            lesson?.test_code ?? '',
+                                            '```',
+                                            `### Reference Solution`,
+                                            '```' + (lesson?.language ?? 'python'),
+                                            lesson?.solution_code ?? '',
+                                            '```',
+                                        ].join('\n')}
                                     />
-                                </Panel>
-                            </Group>
+                                </div>
+                            </div>
                         </Panel>
 
                         <Separator className="w-1.5 bg-slate-900 border-l border-slate-800 hover:bg-emerald-500 transition-colors cursor-col-resize flex items-center justify-center z-10" />
