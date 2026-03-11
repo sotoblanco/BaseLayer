@@ -2,7 +2,7 @@
 
 A modern, interactive platform designed for learning and teaching programming through hands-on, file-based exercises. Features an integrated AI assistant, Google Sheets integration for mathematical intuition, and a secure code execution environment.
 
-![Integrated AI and Spreadsheet Layout](/home/pastor/.gemini/antigravity/brain/e9c85781-9487-47c8-99fe-23565b0e21de/ai_chat_layout_verification_1773191874977.png)
+![Integrated AI and Spreadsheet Layout](images/image.png)
 
 ## 🚀 Key Features
 
