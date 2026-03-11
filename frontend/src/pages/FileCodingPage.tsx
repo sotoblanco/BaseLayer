@@ -51,8 +51,7 @@ export default function FileCodingPage() {
     const [isRunning, setIsRunning] = useState(false);
     const { token, logout, isAuthenticated } = useAuth();
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
-    const [sheetCopyId, setSheetCopyId] = useState<string | null>(null);
-    const [creatingCopy, setCreatingCopy] = useState(false);
+
 
     // Extract chapters from lessons
     const extractChapters = (lessons: Lesson[]): Chapter[] => {
@@ -120,7 +119,7 @@ export default function FileCodingPage() {
             // Load saved spreadsheet URL if any
             const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
             setUserSheetUrl(savedUrl || "");
-            setSheetCopyId(null);
+
         }
     }, [lesson, slug]);
 

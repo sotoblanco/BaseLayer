@@ -3,6 +3,8 @@ from typing import List
 from sqlmodel import Session, select
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import subprocess
 import tempfile
@@ -48,8 +50,10 @@ class CodeSubmission(BaseModel):
     language: str = "python"
 
 @app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Coding App Backend Running"}
+async def read_root():
+    if os.path.exists("/assets/index.html"):
+        return FileResponse("/assets/index.html")
+    return {"status": "ok", "message": "BaseLayer App Backend Running"}
 
 # --- Admin / Course Routes ---
 
@@ -210,10 +214,6 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_optional_user)
     except Exception as e:
         # Catch-all for unexpected errors during setup/writing files
         return {"stdout": "", "stderr": str(e), "exit_code": -1}
-
-# --- Static Files & SPA Routing ---
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 # Serve static assets (JS, CSS, images)
 # Check if /assets exists (it will in Modal, but maybe not locally without mount)

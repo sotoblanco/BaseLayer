@@ -4,7 +4,7 @@ A modern, interactive platform designed for learning and teaching programming th
 
 ![Integrated AI and Spreadsheet Layout](images/image.png)
 
-## 🚀 Key Features
+## Key Features
 
 -   **Interactive Web IDE**: A full-featured code editor with syntax highlighting (Monaco Editor) for Python and Rust.
 -   **File-Based Course System**: Courses are loaded directly from the filesystem, making it easy to add content by simply creating folders.
@@ -14,7 +14,7 @@ A modern, interactive platform designed for learning and teaching programming th
 -   **Google Sheets Integration**: Build mechanical intuition for tensors and matrices using familiar spreadsheet formulas like `MMULT` and `ARRAYFORMULA`.
 -   **Multi-language Support**: Currently supports Python and Rust execution.
 
-## ⚙️ How It Works
+## How It Works
 
 ### Frontend Proxy
 The frontend (Vite) runs on port **5173** and uses a developer proxy configured in `vite.config.ts` to forward API requests (`/courses`, `/file-courses`, `/run`, etc.) to the backend on port **8000**. This allows for a seamless development experience with cross-origin issues handled automatically.
@@ -71,7 +71,7 @@ To add new Python or Rust libraries for use in exercises:
 ### Dynamic Course Discovery
 The backend dynamically scans the `courses/` directory. Any folder that follows the required structure is automatically identified and displayed on the app's homepage upon initialization.
 
-## 🚦 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -90,7 +90,7 @@ Use the provided `dev.sh` script to start everything in one go:
 
 This script builds the sandbox image, starts the FastAPI backend (port 8000), and starts the Vite frontend (port 5173).
 
-## 📚 Adding New Courses
+## Adding New Courses
 
 You can add new courses by simply creating a folder structure in the `courses/` directory.
 
@@ -122,7 +122,7 @@ For exercises focused on mathematical intuition, use the `spreadsheet` type in t
 ### Multi-language Support
 For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The platform automatically detects the language based on these file extensions.
 
-## 📂 Project Structure
+## Project Structure
 
 -   `backend/`: FastAPI application, database models, and AI services.
     - `main.py`: Core API endpoints including `/run` (code execution handler).
@@ -139,46 +139,43 @@ For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The p
     - `Dockerfile`: Builds the `sandbox-runner` image with Python, Rust, and required libraries.
 -   `dev.sh`: Main orchestration script for local development (builds Docker images and starts services).
 
-## ☁️ Deployment
+## Deployment to Modal
 
-The application supports deployment to **Modal** for serverless execution.
--   The backend detects `EXECUTION_ENV` to switch between local Docker and Modal Sandboxes.
--   See `backend/modal_app.py` for deployment configuration.
+The application is optimized for serverless deployment on [Modal](https://modal.com). This allows the backend and code execution sandboxes to scale automatically.
 
-## 🔧 Troubleshooting & Known Issues
+### Prerequisites
 
-### Docker Permission Errors (`Operation not permitted: '__pycache__'`)
-- **Cause**: Python tries to write bytecode cache when code is executed in a mounted volume.
-- **Solution**: The backend now sets `PYTHONDONTWRITEBYTECODE=1` environment variable in the Docker run command, preventing Python from creating cache files.
-
-### Package Installation Failures (`pytorch` vs `torch`)
-- **Cause**: Incorrect package name in `sandbox/Dockerfile`.
-- **Solution**: Use the correct PyPI package name: `torch` (not `pytorch`). Update `sandbox/Dockerfile` and rebuild with `./dev.sh`.
-
-### Changes Made to Core Execution
-1. **Structured Error Responses**: The `/run` endpoint now returns JSON with `stdout`, `stderr`, and `exit_code` even on errors, preventing "undefined" messages in the frontend.
-2. **Temp Directory Permissions**: The backend `chmod`s the temp directory to `0o777` to ensure containers can read/write as needed.
-3. **Environment Variables**: Docker is invoked with `-e PYTHONDONTWRITEBYTECODE=1` to avoid cache issues.
-
-### Docker Disk Space & Build Caching
-
-Repeatedly running `./dev.sh` used to rebuild the `sandbox-runner` image every time, which triggered a fresh download of all Python packages (numpy, torch, etc.). On systems with limited free space this could fill the disk and cause errors such as:
-
-```text
-ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device
-``` 
-
-To reduce bandwidth and disk usage:
-
-1. **Build only when necessary** – the `dev.sh` script now checks for an existing `sandbox-runner` image and skips rebuilding if it already exists. You only need to manually rebuild when you modify `sandbox/Dockerfile` or change dependencies:
+1.  **Modal Account**: Create an account at [modal.com](https://modal.com).
+2.  **Modal CLI**: Install the `modal` package:
     ```bash
-    docker build -t sandbox-runner ./sandbox
+    pip install modal
     ```
-2. **Cleanup unused images/layers**:
+3.  **Authentication**: Authenticate your local machine:
     ```bash
-    docker system prune -a   # remove unused containers, images, networks
-    docker builder prune     # clean build cache
+    modal setup
     ```
-3. **Inspect disk usage** with `docker images` or `docker system df` and delete large dangling images if necessary.
 
-These steps ensure `./dev.sh` runs quickly after the initial build and avoids downloading the same packages repeatedly.
+### Deployment Steps
+
+Before deploying, ensure you have a fresh build of the frontend:
+
+1.  **Build Frontend**:
+    ```bash
+    cd frontend
+    npm install
+    npm run build
+    ```
+
+2.  **Deploy to Modal**:
+    From the `backend` directory, run:
+    ```bash
+    cd ../backend
+    modal deploy modal_app.py
+    ```
+
+### Architecture on Modal
+
+-   **Web Endpoint**: The FastAPI app is deployed as an ASGI app. It serves the static frontend files from the `/assets` directory.
+-   **Persistent Storage**: A Modal Volume (`code-app-volume`) is used to persist the SQLite database.
+-   **Serverless Sandboxes**: When code is executed, the backend spawns a new Modal Sandbox using the `sandbox_image` defined in `modal_app.py`, providing isolation and security without requiring local Docker.
+-   **Environment Variables**: The `COURSES_DIR` is set to `/courses` inside the Modal container, where the course files are mounted.

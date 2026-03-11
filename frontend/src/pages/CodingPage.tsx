@@ -252,6 +252,7 @@ export default function CodingPage() {
                                 {/* AI Assistant */}
                                 <Panel defaultSize={40} minSize={20} id="ai-panel" className="flex flex-col border-r border-slate-800">
                                     <AIChatPanel
+                                        lessonId={exercise?.slug ?? String(exercise?.id ?? '')}
                                         context={`Current Exercise: ${exercise?.title}\nDescription: ${exercise?.description}\nCurrent Code:\n${code}`}
                                     />
                                 </Panel>
