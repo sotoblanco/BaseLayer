@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
 
-app = FastAPI(title="Coding Exercise App API", lifespan=lifespan)
+app = FastAPI(title="BaseLayer App API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(file_courses_router)

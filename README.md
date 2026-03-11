@@ -1,6 +1,8 @@
-# Coding Exercise App
+# BaseLayer App
 
-A modern, interactive platform designed for learning and teaching programming through hands-on, file-based exercises. Features an integrated AI assistant and a secure code execution environment.
+A modern, interactive platform designed for learning and teaching programming through hands-on, file-based exercises. Features an integrated AI assistant, Google Sheets integration for mathematical intuition, and a secure code execution environment.
+
+![Integrated AI and Spreadsheet Layout](/home/pastor/.gemini/antigravity/brain/e9c85781-9487-47c8-99fe-23565b0e21de/ai_chat_layout_verification_1773191874977.png)
 
 ## 🚀 Key Features
 
@@ -8,7 +10,8 @@ A modern, interactive platform designed for learning and teaching programming th
 -   **File-Based Course System**: Courses are loaded directly from the filesystem, making it easy to add content by simply creating folders.
 -   **Seamless No-Login Flow**: Just start! Browse and complete courses without mandatory account creation or login prompts.
 -   **Secure Code Execution**: Run code safely in a sandboxed environment using Docker (locally) or Modal (cloud).
--   **AI Coding Assistant**: Integrated AI to provide hints, explain concepts, and help debug exercises.
+-   **Integrated AI Coding Assistant**: SocratiQ provides hints, explains concepts, and helps debug exercises with full lesson context (assignment, current code, and tests).
+-   **Google Sheets Integration**: Build mechanical intuition for tensors and matrices using familiar spreadsheet formulas like `MMULT` and `ARRAYFORMULA`.
 -   **Multi-language Support**: Currently supports Python and Rust execution.
 
 ## ⚙️ How It Works
@@ -109,6 +112,12 @@ courses/
 -   **main.py**: The code that will be loaded into the editor for the student.
 -   **test.py**: Code that is appended to the student's code and executed to verify the results.
 -   **solution.py**: Reference code that students can reveal by clicking the "Solution" button. If this file is missing, the button will not be displayed.
+
+### Spreadsheet Exercises
+For exercises focused on mathematical intuition, use the `spreadsheet` type in the lesson metadata.
+- **google_sheet_id**: Link to a template spreadsheet.
+- **copy_on_open**: Automatically prompts the user to make a private copy for editing.
+
 
 ### Multi-language Support
 For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The platform automatically detects the language based on these file extensions.

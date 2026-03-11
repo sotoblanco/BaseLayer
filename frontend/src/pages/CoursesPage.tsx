@@ -47,7 +47,7 @@ export default function CoursesPage() {
                     <div className="p-2 bg-blue-600 rounded-lg">
                         <Terminal size={20} className="text-white" />
                     </div>
-                    <h1 className="font-bold text-xl tracking-tight">Code App</h1>
+                    <h1 className="font-bold text-xl tracking-tight">BaseLayer App</h1>
                 </div>
                 <div className="flex items-center gap-3">
                     {isAuthenticated ? (
