@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut, Lightbulb, Link, Trash2, ExternalLink } from 'lucide-react';
+import DrawingCanvas from '../components/DrawingCanvas';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut, Lightbulb, Link, Trash2, ExternalLink, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL } from "../config";
@@ -19,9 +20,12 @@ interface Lesson {
     order: number;
     language: string;
     chapter?: string;
-    exercise_type?: "code" | "spreadsheet";
+    exercise_type?: "code" | "spreadsheet" | "drawing";
     google_sheet_id?: string;
     copy_on_open?: boolean;
+    image_url?: string;
+    stroke_color?: string;
+    stroke_width?: number;
 }
 
 interface Chapter {
@@ -49,8 +53,12 @@ export default function FileCodingPage() {
     const [code, setCode] = useState<string>("");
     const [output, setOutput] = useState<string>("");
     const [isRunning, setIsRunning] = useState(false);
+    const [drawingOutput, setDrawingOutput] = useState<string>("");
+    const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
+    const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const { token, logout, isAuthenticated } = useAuth();
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
+    const instructionScrollRef = useRef<HTMLDivElement>(null);
 
 
     // Extract chapters from lessons
@@ -120,6 +128,10 @@ export default function FileCodingPage() {
             const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
             setUserSheetUrl(savedUrl || "");
 
+            // Reset scroll position to top
+            if (instructionScrollRef.current) {
+                instructionScrollRef.current.scrollTop = 0;
+            }
         }
     }, [lesson, slug]);
 
@@ -200,6 +212,32 @@ export default function FileCodingPage() {
             setOutput("Failed to connect to execution server.");
         } finally {
             setIsRunning(false);
+        }
+    };
+
+    const handleDrawingSubmit = async () => {
+        if (!lesson || !drawingCanvasRef.current) return;
+        setIsSubmittingDrawing(true);
+        setDrawingOutput('Evaluating your drawing...');
+        try {
+            const imageData = drawingCanvasRef.current.toDataURL('image/png');
+            const response = await fetch(
+                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/submit-drawing`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_data: imageData }),
+                }
+            );
+            const data = await response.json();
+            setDrawingOutput(data.message);
+            if (data.passed) {
+                confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+            }
+        } catch {
+            setDrawingOutput('Failed to submit drawing.');
+        } finally {
+            setIsSubmittingDrawing(false);
         }
     };
 
@@ -384,7 +422,7 @@ export default function FileCodingPage() {
                     <Group orientation="horizontal" id="main-group" style={{ height: '100%', width: '100%' }}>
                         {/* Left: Instructions & AI (inline) */}
                         <Panel defaultSize={40} minSize={20} id="left-panel" className="flex flex-col bg-slate-950/50 border-r border-slate-800 overflow-hidden">
-                            <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0">
+                            <div ref={instructionScrollRef} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0">
                                 {/* Instructions */}
                                 <div className="flex-shrink-0">
                                     {lesson && <MarkdownViewer content={lesson.description} />}
@@ -421,9 +459,35 @@ export default function FileCodingPage() {
 
                         <Separator className="w-1.5 bg-slate-900 border-l border-slate-800 hover:bg-emerald-500 transition-colors cursor-col-resize flex items-center justify-center z-10" />
 
-                        {/* Right: Code & Output or Spreadsheet */}
+                        {/* Right: Code & Output or Spreadsheet or Drawing */}
                         <Panel defaultSize={50} minSize={20} id="code-output-panel" className="flex flex-col bg-[#1e1e1e]">
-                            {lesson?.exercise_type === 'spreadsheet' && lesson?.google_sheet_id ? (
+                            {lesson?.exercise_type === 'drawing' ? (
+                                // Drawing Exercise
+                                <div className="flex flex-col h-full">
+                                    <DrawingCanvas
+                                        imageUrl={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/image`}
+                                        strokeColor={lesson.stroke_color}
+                                        strokeWidth={lesson.stroke_width}
+                                        onCanvasRef={(ref) => { drawingCanvasRef.current = ref; }}
+                                    />
+                                    {/* Drawing Submit Bar */}
+                                    <div className="h-14 shrink-0 flex items-center justify-between px-4 bg-[#252526] border-t border-[#333]">
+                                        <span className={`text-sm ${
+                                            drawingOutput.includes('Great job') ? 'text-emerald-400' :
+                                            drawingOutput.includes('empty') ? 'text-yellow-400' :
+                                            'text-slate-400'
+                                        }`}>{drawingOutput || 'Draw your answer on the canvas above, then submit.'}</span>
+                                        <button
+                                            onClick={handleDrawingSubmit}
+                                            disabled={isSubmittingDrawing}
+                                            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded shadow shadow-blue-900/30 transition-all disabled:opacity-50"
+                                        >
+                                            <Send size={15} />
+                                            {isSubmittingDrawing ? 'Submitting...' : 'Submit Drawing'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : lesson?.exercise_type === 'spreadsheet' && lesson?.google_sheet_id ? (
                                 // Spreadsheet Exercise - Google Sheets
                                 <div className="flex-1 flex flex-col overflow-hidden">
                                     <div className="h-12 border-b border-[#333] flex items-center px-4 bg-[#252526] justify-between gap-4">

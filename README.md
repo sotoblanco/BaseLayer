@@ -75,10 +75,23 @@ The backend dynamically scans the `courses/` directory. Any folder that follows 
 
 ### Prerequisites
 
--   **Docker**: Required for local code execution.
+-   **Docker**: Required for local code execution. [Download Docker Desktop](https://www.docker.com/products/docker-desktop/).
+-   **Homebrew**: (macOS) The easiest way to install development tools.
+    ```bash
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
 -   **Node.js & npm**: For running the frontend.
+    ```bash
+    brew install node
+    ```
 -   **Python 3.10+**: For the backend.
--   **uv**: Recommended Python package manager ([Installation Guide](https://docs.astral.sh/uv/getting-started/installation/)).
+    ```bash
+    brew install python
+    ```
+-   **uv**: Fast Python package manager.
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
 
 ### Local Development
 
@@ -88,7 +101,120 @@ Use the provided `dev.sh` script to start everything in one go:
 ./dev.sh
 ```
 
-This script builds the sandbox image, starts the FastAPI backend (port 8000), and starts the Vite frontend (port 5173).
+This script builds the sandbox image, starts the FastAPI backend (port 8000), and starts the Vite frontend (port 5173). It will also automatically install frontend dependencies (`npm install`) if they are missing.
+
+### Troubleshooting
+
+- **`uv` not found**: Run `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+- **`npm` not found**: Install Node.js via `brew install node`.
+- **Docker not running**: Ensure Docker Desktop is open and active.
+- **Frontend port 5173 taken**: Check if another instance of the app is running with `ps aux | grep npm`.
+- **Backend port 8000 taken**: Check with `ps aux | grep uvicorn`.
+
+## Exercise Types
+
+BaseLayer supports three types of exercises, each suited to a different learning style.
+
+| Type | Description |
+|------|-------------|
+| **Coding** | Write Python or Rust code in a real editor, run tests, submit for grading |
+| **Spreadsheet** | Use Google Sheets formulas (e.g. `MMULT`) to build mathematical intuition |
+| **Hand Drawing** | Draw directly on a diagram with the mouse to show data flow or connections |
+
+---
+
+### Coding Exercise
+
+![Coding exercise screenshot](images/exercise-coding.png)
+
+The default exercise type. Students write code in a Monaco editor, run tests, and submit.
+
+#### File Structure
+```text
+courses/my-course/my-lesson/
+├── README.md       # Lesson instructions (Markdown, shown on the left panel)
+├── main.py         # Starter code loaded into the editor
+├── test.py         # Tests automatically run on submission
+└── solution.py     # (Optional) Reference solution, shown via the "Solution" button
+```
+
+> For **Rust** lessons, use `main.rs`, `test.rs`, and `solution.rs` instead. The platform auto-detects the language.
+
+No `metadata.json` needed — the default exercise type is `code`.
+
+---
+
+### Spreadsheet Exercise
+
+![Spreadsheet exercise screenshot](images/exercise-spreadsheet.png)
+
+Students work directly inside a Google Sheet embedded in the right panel. Great for building intuition for matrix operations and tensor math.
+
+#### File Structure
+```text
+courses/my-course/my-lesson/
+├── README.md         # Lesson instructions
+└── metadata.json     # Declares the exercise type and links the Sheet
+```
+
+#### `metadata.json`
+```json
+{
+  "exercise_type": "spreadsheet",
+  "google_sheet_id": "YOUR_GOOGLE_SHEET_ID_HERE",
+  "copy_on_open": true
+}
+```
+
+- **`google_sheet_id`**: The ID from the spreadsheet URL: `https://docs.google.com/spreadsheets/d/SHEET_ID/edit`
+- **`copy_on_open`**: When `true`, students are prompted to make a private copy before editing.
+
+---
+
+### Hand Drawing Exercise
+
+![Drawing exercise screenshot](images/exercise-drawing.png)
+
+Students draw on top of a diagram image using their mouse. Useful for exercises that require showing connections, arrows, or data flow — like matrix multiplication paths.
+
+#### File Structure
+```text
+courses/my-course/chapter1/my-lesson/
+├── README.md         # Instructions telling the student what to draw
+├── metadata.json     # Declares the drawing exercise type
+├── question.png      # The background diagram students will draw on top of
+└── solution.png      # (Optional) Reference answer image
+```
+
+#### AI-Powered Grading
+The platform uses **Gemini 3 Flash** to grade drawing submissions. The AI analyzes:
+1.  The **Instructions** (`README.md`).
+2.  The **Background Diagram** (`question.png`).
+3.  The **Reference Solution** (`solution.png` - if provided).
+4.  The **Student's Drawing**.
+
+This allows for intelligent grading that understands visual intent. Providing a `solution.png` (the original diagram with the correct answer drawn on it) significantly improves accuracy.
+
+#### Metadata and Routing
+For lessons nested inside chapters, the system automatically generates a unique slug:
+`{chapter_folder}--{lesson_folder}` (e.g., `chapter1--lesson1`).
+
+#### `metadata.json`
+```json
+{
+  "exercise_type": "drawing",
+  "stroke_color": "#e11d48",
+  "stroke_width": 4
+}
+```
+
+- **`stroke_color`**: Default pencil color (any CSS hex color). Default: red `#e11d48`.
+- **`stroke_width`**: Default brush size in pixels. Default: `4`.
+- **`question.png`**: The background diagram. Students see this image and draw on the canvas layer above it.
+
+The drawing toolbar includes: Pencil, Eraser, Color picker, Stroke size slider, Undo, and Clear.
+
+---
 
 ## Adding New Courses
 
@@ -113,14 +239,9 @@ courses/
 -   **test.py**: Code that is appended to the student's code and executed to verify the results.
 -   **solution.py**: Reference code that students can reveal by clicking the "Solution" button. If this file is missing, the button will not be displayed.
 
-### Spreadsheet Exercises
-For exercises focused on mathematical intuition, use the `spreadsheet` type in the lesson metadata.
-- **google_sheet_id**: Link to a template spreadsheet.
-- **copy_on_open**: Automatically prompts the user to make a private copy for editing.
-
-
 ### Multi-language Support
 For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The platform automatically detects the language based on these file extensions.
+
 
 ## Project Structure
 

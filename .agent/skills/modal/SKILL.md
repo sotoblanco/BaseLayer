@@ -1,3 +1,8 @@
+---
+name: Modal Guidelines
+description: Rules and guidelines for implementing Modal code, including core concepts, coding style, and common commands.
+---
+
 # Modal Rules and Guidelines for LLMs
 
 This file provides rules and guidelines for LLMs when implementing Modal code.

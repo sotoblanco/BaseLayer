@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
@@ -36,6 +36,7 @@ export default function CodingPage() {
     const [output, setOutput] = useState<string>("");
     const [isRunning, setIsRunning] = useState(false);
     const { token, logout, isAuthenticated } = useAuth();
+    const instructionScrollRef = useRef<HTMLDivElement>(null);
 
 
 
@@ -73,6 +74,11 @@ export default function CodingPage() {
             setOutput("");
             // Reset to main tab on new exercise
             setEditorTab('main');
+            
+            // Reset scroll position to top
+            if (instructionScrollRef.current) {
+                instructionScrollRef.current.scrollTop = 0;
+            }
         }
     }, [exercise]);
 
@@ -242,7 +248,7 @@ export default function CodingPage() {
                             <Group orientation="vertical" id="left-group" style={{ height: '100%' }}>
                                 {/* Instructions */}
                                 <Panel defaultSize={60} minSize={20} id="instructions-panel" className="flex flex-col border-r border-slate-800 overflow-hidden">
-                                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                    <div ref={instructionScrollRef} className="flex-1 overflow-y-auto custom-scrollbar">
                                         {exercise && <MarkdownViewer content={exercise.description} />}
                                     </div>
                                 </Panel>

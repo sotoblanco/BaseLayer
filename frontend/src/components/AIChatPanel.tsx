@@ -22,14 +22,16 @@ export default function AIChatPanel({ context, lessonId }: AIChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([GREETING]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [understandingLevel, setUnderstandingLevel] = useState(1); // 0=Beginner, 1=Intermediate, 2=Advanced, 3=Bloom's
     const levelNames = ["Beginner", "Intermediate", "Advanced", "Bloom's Taxonomy"];
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
     };
 
     useEffect(() => {
@@ -90,7 +92,10 @@ export default function AIChatPanel({ context, lessonId }: AIChatPanelProps) {
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar relative">
+            <div 
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar relative"
+            >
                 {isSettingsOpen && (
                     <div className="absolute inset-0 bg-[#1e1e1e] z-10 flex flex-col p-4 overflow-y-auto">
                         <div className="flex items-center justify-between mb-4">
@@ -212,7 +217,6 @@ export default function AIChatPanel({ context, lessonId }: AIChatPanelProps) {
                         </div>
                     </div>
                 )}
-                {(!isSettingsOpen) && <div ref={messagesEndRef} />}
             </div>
 
             {/* Input */}

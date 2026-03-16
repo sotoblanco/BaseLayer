@@ -13,53 +13,15 @@ y = x.reshape(2, 2)  # y is a VIEW of x
 y.data[0, 0] = 99    # This also changes x!
 ```
 
-## Exercise: Implement `reshape` from Scratch
+## Build the reshape method
 
-### Why does `reshape` exist?
-In neural networks, data constantly changes shape. For example, an image batch `(32, 28, 28)` needs to become `(32, 784)` before entering a fully connected layer. Reshape lets us **reinterpret** the same data in a new shape.
+- Reshape allows to change the shape of a tensor without changing its data. 
+- Total number of elements must stay the same
+- `[1, 2, 3, 4, 5, 6]` : `(shape (6,))` → `reshape(2, 3)` → `[[1,2,3],[4,5,6]]`: `(shape (2,3))`
 
----
+Reshape can be called two ways: `reshape(2, 3)` or `reshape((2, 3))`. We need to handle both styles.
 
-### Part 1: Handling two calling styles
-Users might call reshape two ways:
-```python
-t.reshape(2, 3)    # integers → shape = (2, 3)
-t.reshape((2, 3))  # tuple   → shape = ((2, 3),) ← needs unwrapping!
-```
-**Why**: Convenience — both styles are common in ML code.
-
-**Your task**: Normalise both into `new_shape = (2, 3)`.
-
----
-
-### Part 2: The `-1` wildcard
-```python
-t.reshape(2, -1)   # "I know one dim is 2, figure out the rest"
-```
-**Why**: Very common when flattening — you know the batch size but not the feature count.
-
-**Your task**: Find `-1`, multiply all *other* dims, divide `self.size` by that.
-
----
-
-### Part 3: Validation
-```python
-t.reshape(2, 2)  # 6 elements can't fit in 2×2=4 → error!
-```
-**Why**: Catch mistakes early with a clear error message.
-
-**Your task**: Check `np.prod(new_shape) == self.size`.
-
----
-
-### Part 4: Do the reshape
-**Why**: Finally use NumPy to actually rearrange the data.
-
-**Your task**: Use `np.reshape` and return a new `Tensor`.
-
----
-
-Try implementing each part one at a time. Start with Part 1 — what do you have?
+So, it uses `*shape` to accept variable arguments, and if the first argument is a tuple, we unpack it. This allows for flexible calling styles while keeping the implementation straightforward.
 
 
 ## TODO: Reshape tensor while preserving total element count.

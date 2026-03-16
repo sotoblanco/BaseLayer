@@ -12,11 +12,14 @@ courses/
 
 import os
 import json
+import base64
 from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import time
+from ai_service import ai_service
 
 
 router = APIRouter(prefix="/file-courses", tags=["file-courses"])
@@ -46,9 +49,12 @@ class FileLesson(BaseModel):
     order: int
     language: str = "python"
     chapter: Optional[str] = None  # Chapter slug (e.g., "chapter1")
-    exercise_type: str = "code"  # "code", "spreadsheet"
+    exercise_type: str = "code"  # "code", "spreadsheet", "drawing"
     google_sheet_id: Optional[str] = None  # Google Sheet ID for spreadsheet exercises
     copy_on_open: bool = False  # If true, create a per-user copy when opening
+    image_url: Optional[str] = None  # URL for question image (drawing exercises)
+    stroke_color: str = "#e11d48"  # Default stroke color for drawing exercises
+    stroke_width: int = 4  # Default stroke width for drawing exercises
 
 
 class FileCourseSummary(BaseModel):
@@ -94,9 +100,9 @@ def is_lesson_directory(dir_path: Path) -> bool:
     return readme_exists and has_main
 
 
-def parse_lesson(course_path: Path, lesson_slug: str, order: int, chapter_slug: Optional[str] = None) -> Optional[FileLesson]:
+def parse_lesson(course_path: Path, lesson_dir_name: str, order: int, chapter_slug: Optional[str] = None) -> Optional[FileLesson]:
     """Parse a lesson directory into a FileLesson object"""
-    lesson_path = course_path / lesson_slug
+    lesson_path = course_path / lesson_dir_name
     
     if not lesson_path.is_dir():
         return None
@@ -114,6 +120,8 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int, chapter_slug: 
     exercise_type = "code"
     google_sheet_id = None
     copy_on_open = False
+    stroke_color = "#e11d48"
+    stroke_width = 4
     metadata_path = lesson_path / "metadata.json"
     
     if metadata_path.exists():
@@ -123,9 +131,17 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int, chapter_slug: 
                 exercise_type = metadata.get("exercise_type", "code")
                 google_sheet_id = metadata.get("google_sheet_id")
                 copy_on_open = bool(metadata.get("copy_on_open", False))
+                stroke_color = metadata.get("stroke_color", "#e11d48")
+                stroke_width = int(metadata.get("stroke_width", 4))
         except (json.JSONDecodeError, IOError):
             # If metadata.json is invalid, fall back to defaults
             pass
+
+    # Resolve image_url for drawing exercises
+    image_url = None
+    if exercise_type == "drawing" and (lesson_path / "question.png").exists():
+        # This will be resolved into a full URL by the frontend using the course/lesson slug
+        image_url = "__image__"  # sentinel; replaced with real URL in the endpoint
     
     # Detect language and set file paths
     language = "python"
@@ -139,9 +155,11 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int, chapter_slug: 
         test_path = lesson_path / "test.rs"
         solution_path = lesson_path / "solution.rs"
     
+    final_slug = f"{chapter_slug}--{lesson_dir_name}" if chapter_slug else lesson_dir_name
+    
     return FileLesson(
-        slug=lesson_slug,
-        title=get_lesson_title(lesson_slug, order),
+        slug=final_slug,
+        title=get_lesson_title(lesson_dir_name, order),
         description=read_file_content(readme_path),
         initial_code=read_file_content(main_path),
         test_code=read_file_content(test_path),
@@ -151,7 +169,10 @@ def parse_lesson(course_path: Path, lesson_slug: str, order: int, chapter_slug: 
         chapter=chapter_slug,
         exercise_type=exercise_type,
         google_sheet_id=google_sheet_id,
-        copy_on_open=copy_on_open
+        copy_on_open=copy_on_open,
+        image_url=image_url,
+        stroke_color=stroke_color,
+        stroke_width=stroke_width,
     )
 
 
@@ -254,6 +275,89 @@ def get_file_lesson(course_slug: str, lesson_slug: str):
             return lesson
     
     raise HTTPException(status_code=404, detail=f"Lesson '{lesson_slug}' not found in course '{course_slug}'")
+
+
+def get_lesson_path(course_slug: str, lesson_slug: str) -> Optional[Path]:
+    """Resolve the slug to its physical directory path."""
+    course_path = COURSES_DIR / course_slug
+    if "--" in lesson_slug:
+        chapter_dir, lesson_dir = lesson_slug.split("--", 1)
+        path = course_path / chapter_dir / lesson_dir
+    else:
+        path = course_path / lesson_slug
+        
+    if path.is_dir():
+        return path
+        
+    # Fallback to rglob for backward compatibility
+    for entry in course_path.rglob(f"{lesson_slug}"):
+        if entry.is_dir():
+            return entry
+    return None
+
+@router.get("/{course_slug}/{lesson_slug}/image")
+def get_lesson_image(course_slug: str, lesson_slug: str):
+    """Serve the question.png image for a drawing exercise."""
+    lesson_dir = get_lesson_path(course_slug, lesson_slug)
+    if not lesson_dir:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+        
+    image_path = lesson_dir / "question.png"
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found for this lesson")
+
+    return FileResponse(str(image_path), media_type="image/png")
+
+
+class DrawingSubmission(BaseModel):
+    image_data: str  # base64-encoded PNG from the canvas
+
+
+@router.post("/{course_slug}/{lesson_slug}/submit-drawing")
+def submit_drawing(course_slug: str, lesson_slug: str, submission: DrawingSubmission):
+    """Evaluate a drawing submission using AI."""
+    lesson_dir = get_lesson_path(course_slug, lesson_slug)
+
+    if not lesson_dir:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    # Read README.md for instructions
+    readme_path = lesson_dir / "README.md"
+    instructions = ""
+    if readme_path.exists():
+        instructions = readme_path.read_text()
+
+    # Read question.png for context
+    question_path = lesson_dir / "question.png"
+    if not question_path.exists():
+        raise HTTPException(status_code=500, detail="Lesson diagram missing (question.png)")
+    question_img_bytes = question_path.read_bytes()
+
+    # Read optional solution.png for reference
+    solution_path = lesson_dir / "solution.png"
+    solution_img_bytes = None
+    if solution_path.exists():
+        solution_img_bytes = solution_path.read_bytes()
+
+    # Decode student sketch
+    try:
+        # Expected format: data:image/png;base64,...
+        data = submission.image_data
+        if "," in data:
+            data = data.split(",", 1)[1]
+        
+        sketch_img_bytes = base64.b64decode(data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image data: {e}")
+
+    # AI Evaluation
+    result = ai_service.evaluate_drawing(instructions, question_img_bytes, sketch_img_bytes, solution_img_bytes)
+    
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    return result
 
 
 @router.post("/{course_slug}/{lesson_slug}/copy-sheet")

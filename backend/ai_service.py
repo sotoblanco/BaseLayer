@@ -2,7 +2,7 @@ from google import genai
 import os
 import json
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class AIService:
     def __init__(self):
@@ -121,5 +121,83 @@ class AIService:
             return response.text
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
+
+    def evaluate_drawing(self, instructions: str, question_img_bytes: bytes, sketch_img_bytes: bytes, solution_img_bytes: Optional[bytes] = None) -> Dict[str, Any]:
+        """
+        Evaluates a drawing submission using Gemini 3.
+        """
+        if not hasattr(self, "client"):
+            return {"error": "AI service not configured"}
+
+        solution_ref_text = ""
+        if solution_img_bytes:
+            solution_ref_text = "\n3. Look at the THIRD image provided (the 'solution.png' reference answer)."
+
+        prompt = f"""
+        You are an expert tutor grading a visual exercise.
+        
+        **Instructions for the student:**
+        {instructions}
+
+        **Your Task:**
+        1. Look at the FIRST image provided (the background diagram 'question.png').
+        2. Look at the SECOND image provided (the student's drawing 'sketch.png').{solution_ref_text}
+        4. Evaluate if the student correctly followed the instructions.
+        5. {"If a solution image was provided, ensure the student's sketch matches the intent of the solution." if solution_img_bytes else ""}
+        6. Be encouraging but accurate.
+
+        Provide the result in raw JSON format (no markdown) with:
+        {{
+            "passed": boolean,
+            "score": float (0.0 to 1.0),
+            "message": "Feedback for the student"
+        }}
+        """
+
+        try:
+            import base64 as b64
+            
+            # Interactions API requires plain dicts with explicit "type" keys
+            parts = [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image",
+                    "data": b64.b64encode(question_img_bytes).decode("utf-8"),
+                    "mime_type": "image/png"
+                },
+                {
+                    "type": "image",
+                    "data": b64.b64encode(sketch_img_bytes).decode("utf-8"),
+                    "mime_type": "image/png"
+                },
+            ]
+
+            if solution_img_bytes:
+                parts.append({
+                    "type": "image",
+                    "data": b64.b64encode(solution_img_bytes).decode("utf-8"),
+                    "mime_type": "image/png"
+                })
+
+            interaction = self.client.interactions.create(
+                model="gemini-3.1-flash-lite-preview",
+                input=parts
+            )
+            
+            # Find JSON block in the output
+            text = interaction.outputs[-1].text
+            json_match = re.search(r"(\{.*?\})", text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(1))
+            
+            # Fallback if AI didn't return valid JSON
+            return {
+                "passed": "pass" in text.lower() or "correct" in text.lower(),
+                "score": 1.0 if "pass" in text.lower() else 0.0,
+                "message": text
+            }
+        except Exception as e:
+            print(f"Error in evaluate_drawing: {e}")
+            return {"error": f"AI evaluation failed: {str(e)}"}
 
 ai_service = AIService()

@@ -11,6 +11,15 @@ log() {
     echo -e "${GREEN}[DEV]${NC} $1"
 }
 
+# Load environment variables if .env exists
+if [ -f .env ]; then
+    log "Loading .env file"
+    source ./.env
+fi
+
+# Ensure common paths are in PATH (for uv, etc.)
+export PATH="$HOME/.cargo/bin:$PATH"
+
 error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
@@ -51,7 +60,8 @@ log "Starting Backend..."
 cd backend
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then
-    error "uv not found. Please install uv (https://docs.astral.sh/uv/)."
+    error "uv not found."
+    echo -e "${BLUE}[TIP] Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh${NC}"
     exit 1
 fi
 
@@ -62,11 +72,24 @@ cd ..
 # Start Frontend
 log "Starting Frontend..."
 cd frontend
+
 # Check if npm is installed
 if ! command -v npm &> /dev/null; then
-    error "npm not found. Please install Node.js/npm."
+    error "npm not found."
+    echo -e "${BLUE}[TIP] Install it with: brew install node${NC}"
     kill $BACKEND_PID
     exit 1
+fi
+
+# Proactively check for node_modules
+if [ ! -d "node_modules" ]; then
+    log "node_modules missing. Running npm install..."
+    npm install
+    if [ $? -ne 0 ]; then
+        error "npm install failed."
+        kill $BACKEND_PID
+        exit 1
+    fi
 fi
 
 npm run dev &
