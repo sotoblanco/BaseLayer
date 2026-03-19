@@ -310,6 +310,21 @@ def get_lesson_image(course_slug: str, lesson_slug: str):
     return FileResponse(str(image_path), media_type="image/png")
 
 
+@router.get("/{course_slug}/{lesson_slug}/solution")
+def get_lesson_solution(course_slug: str, lesson_slug: str):
+    """Serve the solution.png image for a drawing exercise."""
+    lesson_dir = get_lesson_path(course_slug, lesson_slug)
+    if not lesson_dir:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+        
+    image_path = lesson_dir / "solution.png"
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Solution image not found for this lesson")
+
+    return FileResponse(str(image_path), media_type="image/png")
+
+
 class DrawingSubmission(BaseModel):
     image_data: str  # base64-encoded PNG from the canvas
 

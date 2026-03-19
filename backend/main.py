@@ -28,13 +28,16 @@ app.include_router(file_courses_router)
 
 
 # CORS Setup
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+env_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://localhost:5174", # Added fallback port
+    "http://localhost:5174",
     "http://127.0.0.1:5174",
     "https://sotoblanco263542--code-app-fastapi-app.modal.run",
-]
+] + env_origins
 
 
 app.add_middleware(

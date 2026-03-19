@@ -55,6 +55,7 @@ export default function FileCodingPage() {
     const [isRunning, setIsRunning] = useState(false);
     const [drawingOutput, setDrawingOutput] = useState<string>("");
     const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
+    const [showDrawingSolution, setShowDrawingSolution] = useState(false);
     const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const { token, logout, isAuthenticated } = useAuth();
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
@@ -123,7 +124,8 @@ export default function FileCodingPage() {
             setCode(lesson.initial_code);
             setOutput("");
             setEditorTab('main');
-            setShowSolution(false); // hide solution on lesson change
+            setShowSolution(false); // hide code solution on lesson change
+            setShowDrawingSolution(false); // hide drawing solution on lesson change
             // Load saved spreadsheet URL if any
             const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
             setUserSheetUrl(savedUrl || "");
@@ -464,27 +466,82 @@ export default function FileCodingPage() {
                             {lesson?.exercise_type === 'drawing' ? (
                                 // Drawing Exercise
                                 <div className="flex flex-col h-full">
-                                    <DrawingCanvas
-                                        imageUrl={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/image`}
-                                        strokeColor={lesson.stroke_color}
-                                        strokeWidth={lesson.stroke_width}
-                                        onCanvasRef={(ref) => { drawingCanvasRef.current = ref; }}
-                                    />
-                                    {/* Drawing Submit Bar */}
-                                    <div className="h-14 shrink-0 flex items-center justify-between px-4 bg-[#252526] border-t border-[#333]">
-                                        <span className={`text-sm ${
-                                            drawingOutput.includes('Great job') ? 'text-emerald-400' :
-                                            drawingOutput.includes('empty') ? 'text-yellow-400' :
-                                            'text-slate-400'
-                                        }`}>{drawingOutput || 'Draw your answer on the canvas above, then submit.'}</span>
-                                        <button
-                                            onClick={handleDrawingSubmit}
-                                            disabled={isSubmittingDrawing}
-                                            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded shadow shadow-blue-900/30 transition-all disabled:opacity-50"
-                                        >
-                                            <Send size={15} />
-                                            {isSubmittingDrawing ? 'Submitting...' : 'Submit Drawing'}
-                                        </button>
+                                    <div className="flex-1 flex overflow-hidden">
+                                        <div className={`${showDrawingSolution ? 'w-1/2' : 'w-full'} border-r border-[#333] transition-all duration-300`}>
+                                            <DrawingCanvas
+                                                imageUrl={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/image`}
+                                                strokeColor={lesson.stroke_color}
+                                                strokeWidth={lesson.stroke_width}
+                                                onCanvasRef={(ref) => { drawingCanvasRef.current = ref; }}
+                                            />
+                                        </div>
+                                        {showDrawingSolution && (
+                                            <div className="w-1/2 bg-slate-900/30 overflow-auto flex flex-col p-4 animate-in fade-in slide-in-from-right-4 duration-300 custom-scrollbar">
+                                                <div className="flex items-center justify-between mb-3 shrink-0">
+                                                    <h3 className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
+                                                        <Lightbulb size={14} className="fill-yellow-500/20" />
+                                                        Reference Solution
+                                                    </h3>
+                                                    <span className="text-[10px] text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/30">
+                                                        Compare with your drawing
+                                                    </span>
+                                                </div>
+                                                <div className="relative flex-1 rounded-lg border border-yellow-700/30 overflow-hidden shadow-2xl shadow-black/40 group bg-[#111]">
+                                                    <img
+                                                        src={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/solution`}
+                                                        alt="Solution"
+                                                        className="w-full h-auto object-contain max-h-[60vh] mx-auto block"
+                                                    />
+                                                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <p className="text-[10px] text-slate-400 leading-tight">
+                                                            This is the expected architectural map for this challenge.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Drawing Feedback & Submit */}
+                                    <div className="shrink-0 flex flex-col bg-[#252526] border-t border-[#333]">
+                                        {/* Feedback area — scrollable, grows to fit content */}
+                                        {drawingOutput && (
+                                            <div className="max-h-[40%] overflow-y-auto px-4 py-3 custom-scrollbar">
+                                                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${
+                                                    drawingOutput.toLowerCase().includes('pass') || drawingOutput.toLowerCase().includes('great job') || drawingOutput.toLowerCase().includes('correct')
+                                                        ? 'text-emerald-400'
+                                                        : drawingOutput.includes('empty')
+                                                            ? 'text-yellow-400'
+                                                            : 'text-slate-300'
+                                                }`}>{drawingOutput}</p>
+                                            </div>
+                                        )}
+                                        {/* Submit button row */}
+                                        <div className="h-14 flex items-center justify-between px-4 border-t border-[#333]/50">
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs text-slate-500 italic">
+                                                    {!drawingOutput && 'Draw your answer on the canvas above, then submit.'}
+                                                </span>
+                                                <button
+                                                    onClick={() => setShowDrawingSolution(!showDrawingSolution)}
+                                                    className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold border transition-all ${
+                                                        showDrawingSolution
+                                                            ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50 hover:bg-yellow-900/60'
+                                                            : 'bg-[#2d2d2d] text-slate-300 border-[#444] hover:bg-[#3d3d3d] hover:text-white'
+                                                    }`}
+                                                >
+                                                    <Lightbulb size={14} />
+                                                    {showDrawingSolution ? 'Hide Solution' : 'Show Solution'}
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={handleDrawingSubmit}
+                                                disabled={isSubmittingDrawing}
+                                                className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded shadow shadow-blue-900/30 transition-all disabled:opacity-50"
+                                            >
+                                                <Send size={15} />
+                                                {isSubmittingDrawing ? 'Submitting...' : 'Submit Drawing'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ) : lesson?.exercise_type === 'spreadsheet' && lesson?.google_sheet_id ? (

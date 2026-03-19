@@ -3,7 +3,8 @@ import os
 import subprocess
 import tempfile
 
-app = modal.App("code-app")
+app_name = os.environ.get("MODAL_APP_NAME", "code-app")
+app = modal.App(app_name)
 
 # Define the sandbox image (matches sandbox/Dockerfile)
 sandbox_image = (
@@ -75,11 +76,12 @@ def run_in_sandbox(code: str, language: str):
             }
 
 # Define the volume for database persistence
-volume = modal.Volume.from_name("code-app-volume", create_if_missing=True)
+volume_name = os.environ.get("MODAL_VOLUME_NAME", "code-app-volume")
+volume = modal.Volume.from_name(volume_name, create_if_missing=True)
 
 @app.function(
     image=app_image, 
-    secrets=[modal.Secret.from_name("code-app-secrets")],
+    secrets=[modal.Secret.from_name(os.environ.get("MODAL_SECRET_NAME", "code-app-secrets"))],
     volumes={"/data": volume},
     # Set DATABASE_URL to verify we use the persistent volume
     timeout=600

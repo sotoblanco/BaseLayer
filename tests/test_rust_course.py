@@ -2,8 +2,8 @@ import requests
 import os
 import time
 
-# Production Modal URL
-BASE_URL = "https://sotoblanco263542--code-app-fastapi-app.modal.run"
+# Production Modal URL (or local fallback)
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 
 def test_remote_fix():
     print(f"Testing against Production: {BASE_URL}")

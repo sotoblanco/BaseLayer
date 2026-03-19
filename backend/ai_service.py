@@ -57,11 +57,11 @@ class AIService:
         }}
         """
         try:
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=full_prompt
+            interaction = self.client.interactions.create(
+                model="gemini-3-flash-preview",
+                input=full_prompt
             )
-            text = response.text.strip()
+            text = interaction.outputs[-1].text.strip()
             
             # Try to find JSON within code blocks first
             json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
@@ -112,13 +112,12 @@ class AIService:
 
         full_prompt = f"{system_prompt}\n\nUnderstanding Level Context:\n{level_instruction}\n\nContext: {context}\n\nUser: {message}"
         try:
-            # Using the new SDK's generate_content for single turn, or we could use chats.create for multi-turn
-            # For now, sticking to single turn as per original implementation
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=full_prompt
+            # Using the new Interactions API for chat
+            interaction = self.client.interactions.create(
+                model="gemini-3-flash-preview",
+                input=full_prompt
             )
-            return response.text
+            return interaction.outputs[-1].text
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
 
@@ -143,8 +142,10 @@ class AIService:
         1. Look at the FIRST image provided (the background diagram 'question.png').
         2. Look at the SECOND image provided (the student's drawing 'sketch.png').{solution_ref_text}
         4. Evaluate if the student correctly followed the instructions.
-        5. {"If a solution image was provided, ensure the student's sketch matches the intent of the solution." if solution_img_bytes else ""}
-        6. Be encouraging but accurate.
+        5. **Flexibility is Key**: If the student demonstrates the correct *idea* or *intent*, even if the drawing is imperfect, they should PASS.
+        6. Focus on the core concept being taught. Minor aesthetic issues or slight inaccuracies that don't compromise the understanding of the concept should be ignored.
+        7. {"If a solution image was provided, ensure the student's sketch matches the intent of the solution." if solution_img_bytes else ""}
+        8. Be encouraging and focus on what they got right.
 
         Provide the result in raw JSON format (no markdown) with:
         {{
