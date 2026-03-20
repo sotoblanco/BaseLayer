@@ -1,4 +1,4 @@
-# Lesson 1: Tensors and Operations
+# Lesson 2: Tensors and Operations
 
 ### Tensor Creation and Initialization
 

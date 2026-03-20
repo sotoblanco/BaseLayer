@@ -140,7 +140,7 @@ export default function DrawingCanvas({
     );
 
     return (
-        <div className="flex flex-col h-full bg-[#1a1a2e]">
+        <div className="flex flex-col h-full bg-[#1a1a2e] overflow-hidden min-h-0">
             {/* Toolbar */}
             <div className="h-12 flex items-center gap-3 px-4 bg-[#252526] border-b border-[#333] shrink-0">
                 {toolBtn('pencil', <Pencil size={16} />, 'Pencil')}
@@ -200,15 +200,15 @@ export default function DrawingCanvas({
             {/* Canvas Area */}
             <div
                 ref={containerRef}
-                className="flex-1 overflow-auto flex items-center justify-center p-4"
+                className="flex-1 overflow-hidden flex items-center justify-center p-2 min-h-0"
                 style={{ background: 'repeating-conic-gradient(#1e1e2e 0% 25%, #252535 0% 50%) 0 0 / 20px 20px' }}
             >
-                <div className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden">
+                <div className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden" style={{ maxWidth: '100%', maxHeight: '100%' }}>
                     {/* Background image canvas */}
                     <canvas
                         ref={bgCanvasRef}
                         className="block"
-                        style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain' }}
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                     />
                     {/* Drawing canvas (transparent overlay) */}
                     <canvas
@@ -216,7 +216,7 @@ export default function DrawingCanvas({
                         className="absolute inset-0"
                         style={{
                             maxWidth: '100%',
-                            maxHeight: '60vh',
+                            maxHeight: '100%',
                             cursor: activeTool === 'eraser' ? 'cell' : 'crosshair',
                             touchAction: 'none',
                         }}
