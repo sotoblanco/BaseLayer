@@ -28,13 +28,14 @@ The physical reality. At the very bottom, specialized instructions like **SIMD**
 
 ---
 
-### Final Project: The Whiteboard Test
+### Final Project: The Identification Test
 
-As the final task for this module, you must pass the "Whiteboard Test." 
+As the final task for this module, you must pass the "Identification Test." 
 
 1.  Use the drawing tool below.
 2.  Draw the 4 main layers of the deep learning stack from **Top (Highest Abstraction)** to **Bottom (Physical Hardware)**.
-3.  Label each box clearly and provide one example for each layer.
+3.  Label each box clearly with its **Name** and its **Primary Responsibility** (e.g., "Manages Tensors," "User Interface," etc.).
+4.  Provide one general example for each layer.
 
 > [!IMPORTANT]
-> Mastery of this diagram proves you understand how modern AI actually works. Take your time to get it right!
+> Mastery of this diagram proves you understand the structure of modern AI. Take your time to get the layers in the right order!
