@@ -23,6 +23,7 @@ export default function DrawingCanvas({
     const [currentColor, setCurrentColor] = useState(strokeColor);
     const [currentWidth, setCurrentWidth] = useState(strokeWidth);
     const [history, setHistory] = useState<ImageData[]>([]);
+    const [aspectRatio, setAspectRatio] = useState<number | undefined>();
     const isDrawing = useRef(false);
     const lastPos = useRef<{ x: number; y: number } | null>(null);
 
@@ -39,6 +40,7 @@ export default function DrawingCanvas({
             bgCanvas.height = img.naturalHeight;
             drawCanvas.width = img.naturalWidth;
             drawCanvas.height = img.naturalHeight;
+            setAspectRatio(img.naturalWidth / img.naturalHeight);
 
             const ctx = bgCanvas.getContext('2d')!;
             ctx.drawImage(img, 0, 0);
@@ -203,20 +205,24 @@ export default function DrawingCanvas({
                 className="flex-1 overflow-hidden flex items-center justify-center p-2 min-h-0"
                 style={{ background: 'repeating-conic-gradient(#1e1e2e 0% 25%, #252535 0% 50%) 0 0 / 20px 20px' }}
             >
-                <div className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden" style={{ maxWidth: '100%', maxHeight: '100%' }}>
+                <div 
+                    className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden flex-shrink-0 bg-white" 
+                    style={{ 
+                        maxWidth: '100%', 
+                        maxHeight: '100%',
+                        aspectRatio: aspectRatio,
+                    }}
+                >
                     {/* Background image canvas */}
                     <canvas
                         ref={bgCanvasRef}
-                        className="block"
-                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        className="block w-full h-full"
                     />
                     {/* Drawing canvas (transparent overlay) */}
                     <canvas
                         ref={drawCanvasRef}
-                        className="absolute inset-0"
+                        className="absolute inset-0 w-full h-full"
                         style={{
-                            maxWidth: '100%',
-                            maxHeight: '100%',
                             cursor: activeTool === 'eraser' ? 'cell' : 'crosshair',
                             touchAction: 'none',
                         }}

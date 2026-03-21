@@ -422,20 +422,25 @@ export default function FileCodingPage() {
                 {/* Split View */}
                 <div className="flex-1 flex overflow-hidden">
                     <Group orientation="horizontal" id="main-group" style={{ height: '100%', width: '100%' }}>
-                        {/* Left: Instructions & AI (inline) */}
-                        <Panel defaultSize={40} minSize={20} id="left-panel" className="flex flex-col bg-slate-950/50 border-r border-slate-800 overflow-hidden">
-                            <div ref={instructionScrollRef} className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0">
-                                {/* Instructions */}
-                                <div className="flex-shrink-0">
+                        {/* Left: Instructions & AI (integrated) */}
+                        <Panel defaultSize={40} minSize={20} id="left-panel" className="flex flex-col bg-slate-950 border-r border-slate-800 overflow-hidden">
+                            <div 
+                                id="instruction-scroll-container"
+                                ref={instructionScrollRef} 
+                                className="flex-1 overflow-y-auto custom-scrollbar flex flex-col min-h-0 bg-[#0b0e14]"
+                            >
+                                {/* Instructions Section */}
+                                <div className="p-2 pt-4">
                                     {lesson && <MarkdownViewer content={lesson.description} />}
                                 </div>
 
                                 {/* Divider */}
-                                <div className="mx-4 border-t border-slate-700/60" />
+                                <div className="mx-8 border-t border-slate-800/60 my-2" />
 
-                                {/* AI Assistant — inline below explanation, min height so it's usable */}
-                                <div style={{ minHeight: '380px', flex: '1 0 380px' }}>
+                                {/* AI Assistant — integrated into the same scroll flow */}
+                                <div className="flex-1 flex flex-col">
                                     <AIChatPanel
+                                        variant="integrated"
                                         lessonId={lesson?.slug ?? ''}
                                         context={[
                                             `## Lesson: ${lesson?.title}`,
