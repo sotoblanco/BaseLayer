@@ -47,6 +47,9 @@ jobs:
           npm install
           npm run build
 
+      - name: Sync Dependencies
+        run: uv sync
+
       - name: Deploy to Modal
         run: |
           uv run modal deploy backend/modal_app.py
