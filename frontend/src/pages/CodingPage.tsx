@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
-import { Play, RotateCw, ChevronLeft, ChevronRight, BookOpen, LogOut } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL, APP_VERSION } from "../config";
 import { Panel, Group, Separator } from "react-resizable-panels";
+import { UserMenu } from '../components/UserMenu';
 
 interface Exercise {
     id: number;
@@ -35,7 +36,7 @@ export default function CodingPage() {
     const [code, setCode] = useState<string>("");
     const [output, setOutput] = useState<string>("");
     const [isRunning, setIsRunning] = useState(false);
-    const { token, logout, isAuthenticated } = useAuth();
+    const { token, isAuthenticated } = useAuth();
     const instructionScrollRef = useRef<HTMLDivElement>(null);
 
 
@@ -214,15 +215,12 @@ export default function CodingPage() {
                         </button>
                         <div className="w-px h-6 bg-slate-800 mx-2" />
                         {isAuthenticated ? (
-                            <button
-                                onClick={logout}
-                                className="p-2 rounded hover:bg-slate-800 text-slate-400 hover:text-red-400 transition-colors"
-                                title="Sign Out"
-                            >
-                                <LogOut size={20} />
-                            </button>
+                            <UserMenu />
                         ) : (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
+                                <div className="hidden sm:flex items-center px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 text-slate-400 text-xs font-mono">
+                                    v{APP_VERSION || 'dev'}
+                                </div>
                                 <button
                                     onClick={() => navigate('/login')}
                                     className="text-sm text-slate-400 hover:text-white font-medium transition-colors"

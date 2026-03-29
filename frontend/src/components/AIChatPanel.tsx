@@ -43,7 +43,9 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
     };
 
     useEffect(() => {
-        scrollToBottom();
+        if (messages.length > 1) {
+            scrollToBottom();
+        }
     }, [messages]);
 
     // Reset conversation when the lesson changes

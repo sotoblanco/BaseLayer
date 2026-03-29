@@ -1,0 +1,47 @@
+name: Automated Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'package.json'
+      - 'pyproject.toml'
+      - 'frontend/package.json'
+      - 'frontend/.env'
+
+jobs:
+  release:
+    name: Release & Tag
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Release Tools
+        run: npm install
+
+      - name: Bump Version & Generate Tag
+        run: npx standard-version
+
+      - name: Push Changes & Tag
+        run: |
+          git push origin main --follow-tags

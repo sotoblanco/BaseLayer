@@ -7,8 +7,8 @@ def get_db_path():
     # Modal/Docker path
     if os.path.exists("/data/database.db"):
         return "/data/database.db"
-    # Local dev path (same directory as this script)
-    local_path = Path(__file__).parent / "database.db"
+    # Local dev path (one level up from this scripts directory)
+    local_path = Path(__file__).parent.parent / "database.db"
     if local_path.exists():
         return str(local_path)
     return None

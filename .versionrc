@@ -1,0 +1,36 @@
+{
+  "types": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "chore", "hidden": true },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "style", "hidden": true },
+    { "type": "refactor", "section": "Improvements" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "test", "hidden": true }
+  ],
+  "bumpFiles": [
+    {
+      "filename": "package.json",
+      "type": "json"
+    },
+    {
+      "filename": "frontend/package.json",
+      "type": "json"
+    },
+    {
+      "filename": "pyproject.toml",
+      "updater": "scripts/version-updater.cjs"
+    },
+    {
+      "filename": "frontend/.env",
+      "updater": "scripts/version-updater.cjs"
+    }
+  ],
+  "packageFiles": [
+    {
+      "filename": "package.json",
+      "type": "json"
+    }
+  ]
+}

@@ -73,43 +73,31 @@ The backend dynamically scans the `courses/` directory. Any folder that follows 
 
 ## Getting Started
 
-### Prerequisites
+### 1. Prerequisites
 
 -   **Docker**: Required for local code execution. [Download Docker Desktop](https://www.docker.com/products/docker-desktop/).
--   **Homebrew**: (macOS) The easiest way to install development tools.
-    ```bash
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    ```
--   **Node.js & npm**: For running the frontend.
-    ```bash
-    brew install node
-    ```
--   **Python 3.10+**: For the backend.
-    ```bash
-    brew install python
-    ```
+-   **Node.js**: For the frontend. `brew install node`.
 -   **uv**: Fast Python package manager.
     ```bash
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-### Local Development
+### 2. Quick Start
 
-Use the provided `dev.sh` script to start everything in one go:
+Clone the repository and run the development script. It will automatically set up your Python environment and start all services:
 
 ```bash
 ./dev.sh
 ```
 
-This script builds the sandbox image, starts the FastAPI backend (port 8000), and starts the Vite frontend (port 5173). It will also automatically install frontend dependencies (`npm install`) if they are missing.
+-   **Backend**: http://localhost:8000
+-   **Frontend**: http://localhost:5173
 
 ### Troubleshooting
 
-- **`uv` not found**: Run `curl -LsSf https://astral.sh/uv/install.sh | sh`.
-- **`npm` not found**: Install Node.js via `brew install node`.
-- **Docker not running**: Ensure Docker Desktop is open and active.
-- **Frontend port 5173 taken**: Check if another instance of the app is running with `ps aux | grep npm`.
-- **Backend port 8000 taken**: Check with `ps aux | grep uvicorn`.
+- **`uv` not found**: Ensure `~/.cargo/bin` is in your `PATH`.
+- **Docker not running**: Ensure Docker Desktop is open.
+- **Port Conflict**: Check for existing processes on 8000 (backend) or 5173 (frontend).
 
 ## Exercise Types
 
@@ -251,14 +239,14 @@ For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The p
     - `database.py`: Database initialization and session management.
     - `auth.py`: Authentication and user management routes.
     - `routers/`: Modular API route handlers.
+    - `scripts/`: Utility scripts (e.g., `migrate_db.py`, `create_lesson.py`).
 -   `frontend/`: React components, pages, and state management.
     - `pages/CodingPage.tsx`, `FileCodingPage.tsx`: Main exercise execution interfaces.
     - `components/CodeEditor.tsx`: Monaco editor integration.
-    - `services/aiService.ts`: AI assistant integration.
--   `courses/`: Local directory where all file-based courses reside (auto-discovered by the backend).
--   `sandbox/`: Dockerfile and related files for the code execution environment.
-    - `Dockerfile`: Builds the `sandbox-runner` image with Python, Rust, and required libraries.
--   `dev.sh`: Main orchestration script for local development (builds Docker images and starts services).
+-   `courses/`: Local directory where all file-based courses reside.
+-   `docs/`: Technical guides and project documentation (e.g., `modal_deployment_guide.md`).
+-   `research/`: Experimental notebooks and code sandboxes.
+-   `dev.sh`: Main orchestration script for local development.
 
 ## Deployment to Modal
 

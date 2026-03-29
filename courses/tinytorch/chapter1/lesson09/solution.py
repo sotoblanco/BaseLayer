@@ -9,20 +9,18 @@ class Tensor:
         self.size = self.data.size
         self.dtype = self.data.dtype
         
-    def reshape(self, *shape):
+        
+    def transpose(self, dim0=None, dim1=None):
         ### BEGIN SOLUTION
-        if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
-            new_shape = tuple(shape[0])
-        else:
-            new_shape = shape
-        if -1 in new_shape:
-            if new_shape.count(-1) > 1:
-                raise ValueError(
-                    f"Cannot reshape {self.shape} with multiple unknown dimensions\n"
-                    f" X Found {new_shape.count(-1)} set to -1 in {new_shape}\n"
-                    f" Only one dimension can be inferred; others must be specified\n"
-                    f" Replace all but one -1 with explicit sizes (total elements: {self.size})")
-            know_size = 1
-            unknown_idx = new_shape.index(-1)
-        ### END SOLUTION
-        pass
+        if dim0 is None and dim1 is None:
+            if len(self.shape) < 2:
+                # 1D case - what goes here?
+                return Tensor(self.data)
+            else:
+                # build axes list, swap last two, call np.transpose
+                axes = list(range(len(self.shape)))
+                axes[-1], axes[-2] = axes[-2], axes[-1]
+                return Tensor(np.transpose(self.data, axes))
+
+            ### END SOLUTION
+            pass

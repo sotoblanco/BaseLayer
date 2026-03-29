@@ -4,12 +4,12 @@ import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
 import DrawingCanvas from '../components/DrawingCanvas';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, LogOut, Lightbulb, Link, Trash2, ExternalLink, Send } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL, APP_VERSION } from "../config";
 import { Panel, Group, Separator } from "react-resizable-panels";
-
+import { UserMenu } from '../components/UserMenu';
 interface Lesson {
     slug: string;
     title: string;
@@ -57,7 +57,7 @@ export default function FileCodingPage() {
     const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
     const [showDrawingSolution, setShowDrawingSolution] = useState(false);
     const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const { token, logout, isAuthenticated } = useAuth();
+    const { token, isAuthenticated } = useAuth();
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
     const instructionScrollRef = useRef<HTMLDivElement>(null);
 
@@ -393,15 +393,12 @@ export default function FileCodingPage() {
                         </button>
                         <div className="w-px h-6 bg-slate-800 mx-2" />
                         {isAuthenticated ? (
-                            <button
-                                onClick={logout}
-                                className="p-2 rounded hover:bg-slate-800 text-slate-400 hover:text-red-400 transition-colors"
-                                title="Sign Out"
-                            >
-                                <LogOut size={20} />
-                            </button>
+                            <UserMenu />
                         ) : (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
+                                <div className="hidden sm:flex items-center px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 text-slate-400 text-xs font-mono">
+                                    v{APP_VERSION || 'dev'}
+                                </div>
                                 <button
                                     onClick={() => navigate('/login')}
                                     className="text-sm text-slate-400 hover:text-white font-medium transition-colors"

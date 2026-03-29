@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Terminal, ChevronRight, LogOut, FolderCode } from 'lucide-react';
+import { Terminal, ChevronRight, FolderCode } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL, APP_VERSION } from "../config";
+import { UserMenu } from '../components/UserMenu';
 
 interface FileCourse {
     slug: string;
@@ -15,7 +16,7 @@ export default function CoursesPage() {
     const [fileCourses, setFileCourses] = useState<FileCourse[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
-    const { logout, isAuthenticated } = useAuth();
+    const { isAuthenticated } = useAuth();
 
     useEffect(() => {
         const fetchCourses = async () => {
@@ -47,19 +48,16 @@ export default function CoursesPage() {
                     <div className="p-2 bg-blue-600 rounded-lg">
                         <Terminal size={20} className="text-white" />
                     </div>
-                    <h1 className="font-bold text-xl tracking-tight">BaseLayer App</h1>
+                    <h1 className="font-bold text-xl tracking-tight">🪜 BaseLayer App</h1>
                 </div>
                 <div className="flex items-center gap-3">
                     {isAuthenticated ? (
-                        <button
-                            onClick={logout}
-                            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-                        >
-                            <LogOut size={18} />
-                            <span className="text-sm font-medium">Sign Out</span>
-                        </button>
+                        <UserMenu />
                     ) : (
-                        <div className="flex items-center gap-3 text-sm font-medium">
+                        <div className="flex items-center gap-4 text-sm font-medium">
+                            <div className="hidden sm:flex items-center px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 text-slate-400 text-xs font-mono">
+                                v{APP_VERSION || 'dev'}
+                            </div>
                             <button
                                 onClick={() => navigate('/login')}
                                 className="text-slate-400 hover:text-white transition-colors"

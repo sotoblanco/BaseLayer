@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { KeyRound, User } from 'lucide-react';
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL, APP_VERSION } from "../config";
 
 export default function Login() {
     const [username, setUsername] = useState('');
@@ -104,10 +104,13 @@ export default function Login() {
                     </Link>
                 </p>
 
-                <div className="mt-8 pt-6 border-t border-slate-800 text-center">
+                <div className="mt-8 pt-6 border-t border-slate-800 text-center flex flex-col items-center gap-4">
                     <Link to="/" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">
                         Continue as Guest
                     </Link>
+                    <div className="text-slate-600 text-[10px] font-mono tracking-wider">
+                        v{APP_VERSION || 'dev'}
+                    </div>
                 </div>
             </div>
         </div>

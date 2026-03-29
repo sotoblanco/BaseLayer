@@ -20,9 +20,24 @@ fi
 # Ensure common paths are in PATH (for uv, etc.)
 export PATH="$HOME/.cargo/bin:$PATH"
 
-error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
+# --- Environment Setup ---
+
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    error "uv not found."
+    echo -e "${BLUE}[TIP] Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh${NC}"
+    exit 1
+fi
+
+# Automatically sync dependencies if .venv is missing
+if [ ! -d ".venv" ]; then
+    log "Virtual environment missing. Initializing with uv sync..."
+    uv sync
+    if [ $? -ne 0 ]; then
+        error "uv sync failed. Please check your pyproject.toml."
+        exit 1
+    fi
+fi
 
 # Cleanup function to kill background processes
 cleanup() {

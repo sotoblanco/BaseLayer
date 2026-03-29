@@ -6,7 +6,7 @@ import tempfile
 app_name = os.environ.get("MODAL_APP_NAME", "code-app")
 app = modal.App(app_name)
 
-# Define the sandbox image (matches sandbox/Dockerfile)
+# Define the sandbox image (matches research/sandbox/Dockerfile)
 sandbox_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("rustc")
@@ -17,10 +17,12 @@ sandbox_image = (
 web_dist_path = os.path.join(os.path.dirname(__file__), "../frontend/dist")
 backend_path = os.path.dirname(__file__)
 courses_path = os.path.join(os.path.dirname(__file__), "../courses")
+pyproject_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
 
 app_image = (
     modal.Image.debian_slim(python_version="3.11")
-    .pip_install("fastapi[all]", "sqlmodel", "uvicorn", "uv", "python-jose[cryptography]", "passlib[bcrypt]", "python-multipart", "google-genai")
+    .pip_install_from_pyproject(pyproject_path)
+    .pip_install("uv") # Modal needs uv if we want to use it inside the container
     .env({"EXECUTION_ENV": "modal", "COURSES_DIR": "/courses"})
     .add_local_dir(web_dist_path, remote_path="/assets")
     .add_local_dir(backend_path, remote_path="/root")
@@ -28,12 +30,18 @@ app_image = (
 )
 
 
-@app.function(image=sandbox_image)
+@app.function(
+    image=sandbox_image,
+    restrict_modal_access=True,
+    single_use_containers=True,
+    block_network=True,
+    timeout=30
+)
 def run_in_sandbox(code: str, language: str):
     """
-    Executes code in a secure Modal sandbox.
+    Executes code in a secure, restricted Modal sandbox.
     """
-    print(f"Running {language} code in sandbox...")
+    print(f"Running {language} code in restricted sandbox...")
     
     with tempfile.TemporaryDirectory() as temp_dir:
         filename = "main.py"
@@ -100,6 +108,6 @@ def fastapi_app():
     volumes={"/data": volume},
 )
 def migrate_db():
-    from migrate_db import migrate
+    from scripts.migrate_db import migrate
     migrate()
 

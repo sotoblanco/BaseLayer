@@ -1,53 +1,44 @@
-# Reshape tensor to new dimensions
+# Transpose
 
-## Views vs. Copies
-When you reshape a tensor, does it allocate new memory or just create a different view of the same data? The answer has huge implications for both performance and correctness.
+A transpose is an operation that flips a tensor along it dimensions. For 2D matrix, it turns rows into columns and columns into rows.
 
-A view shares memory with its source. Reshaping a 1 GB tensor is instant because you’re just changing the metadata that describes how to interpret the bytes, not copying the bytes themselves. But this creates an important gotcha: modifying a view modifies the original.
-
-Shape manipulation operations change how data is interpreted without changing the values themselves. Understanding when data is copied versus viewed is crucial for both correctness and performance.
-
-```python
-x = Tensor([1, 2, 3, 4])
-y = x.reshape(2, 2)  # y is a VIEW of x
-y.data[0, 0] = 99    # This also changes x!
+```
+Original (2 × 3):     Transposed (3 × 2):
+[[1, 2, 3],    →→→    [[1, 4],
+ [4, 5, 6]]            [2, 5],
+                        [3, 6]]
 ```
 
-## Build the reshape method
+**Why is it needed?**
 
-- Reshape allows to change the shape of a tensor without changing its data. 
-- Total number of elements must stay the same
-- `[1, 2, 3, 4, 5, 6]` : `(shape (6,))` → `reshape(2, 3)` → `[[1,2,3],[4,5,6]]`: `(shape (2,3))`
+A very common reason is **matrix multiplication shape alignment**. Recall the rule: for `A @ B`, the inner dimensions must match. Sometimes your data is the "wrong way around" and you need to flip it first.
 
-Reshape can be called two ways: `reshape(2, 3)` or `reshape((2, 3))`. We need to handle both styles.
-
-So, it uses `*shape` to accept variable arguments, and if the first argument is a tuple, we unpack it. This allows for flexible calling styles while keeping the implementation straightforward.
-
-
-## TODO: Reshape tensor while preserving total element count.
+For example:
+```
+A is (3, 4) and B is (3, 2)
+→ A @ B won't work! (4 ≠ 3)
+→ A @ B.transpose() works! (4 == 4... wait, is that right?)
+```
 
 APPROACH:
+- [ ] If no dims specified: swap last two dimensions (most common case)
+- [ ] For 1D tensors: return copy (no transpose needed)
+- [ ] If both dims specified: swap those specific dimensions
+- [ ] Use np.transpose with axes list to perform the swap
+- [ ] Return result wrapped in new Tensor
 
-- [ ]  Handle both `reshape(2, 3)` and `reshape((2, 3))` calling styles
-- [ ]  If -1 in shape, infer that dimension from total size
-- [ ]  Validate total elements match: `np.prod(new_shape) == self.size`
-- [ ]  Use `np.reshape` to create a new view
-- [ ]  Return result wrapped in a new Tensor
+EXAMPLE:
 
-Example
-
-```python
->>> t = Tensor([1, 2, 3, 4, 5, 6])
->>> reshaped = t.reshape(2, 3)
->>> print(reshaped.data)
-[[1. 2. 3.]
- [4. 5. 6.]]
->>> auto = t.reshape(2, -1)  # Infers -1 as 3
->>> print(auto.shape)
-(2, 3)
+```py
+>>> t = Tensor([[1, 2, 3], [4, 5, 6]])  # 2×3
+>>> transposed = t.transpose()
+>>> print(transposed.data)
+[[1. 4.]
+ [2. 5.]
+ [3. 6.]]  # 3×2
 ```
 
 > HINTS:
-    - Use `instance(shape[0], (tuple, list))` detect tuple input
-    - For -1: `unknown_dim = self.size // known_size`
-    - Raise ValueError if total elements don’t match
+    - Create axes list: [0, 1, 2, ...] then swap positions
+    - For default: axes[-2], axes[-1] = axes[-1], axes[-2]
+    - Use np.transpose(self.data, axes)

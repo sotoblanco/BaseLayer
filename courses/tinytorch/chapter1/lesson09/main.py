@@ -9,7 +9,7 @@ class Tensor:
         self.size = self.data.size
         self.dtype = self.data.dtype
         
-    def reshape(self, *shape):
+    def transpose(self, dim0=None, dim1=None):
         ### BEGIN SOLUTION
 
         ### END SOLUTION
