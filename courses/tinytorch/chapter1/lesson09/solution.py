@@ -15,12 +15,18 @@ class Tensor:
         if dim0 is None and dim1 is None:
             if len(self.shape) < 2:
                 # 1D case - what goes here?
-                return Tensor(self.data)
+                return Tensor(self.data.copy())
             else:
                 # build axes list, swap last two, call np.transpose
                 axes = list(range(len(self.shape)))
                 axes[-1], axes[-2] = axes[-2], axes[-1]
                 return Tensor(np.transpose(self.data, axes))
+        else:
+            # Error Handling: Check if they forgot one dimension
+            if dim0 is None or dim1 is None:
+                raise ValueError("Transpose requires both dim0 and dim1, or neither.")
+            axes = list(range(len(self.shape)))
+            axes[dim0], axes[dim1] = axes[dim1], axes[dim0]
+            return Tensor(np.transpose(self.data, axes))
 
-            ### END SOLUTION
-            pass
+        ### END SOLUTION

@@ -20,6 +20,13 @@ __pycache__/
 backend/database.db
 
 # OS / IDE
+# Research & Notebooks
+marimo/
+.marimo/
+research/notebooks/__pycache__/
+*.ipynb
+.ipynb_checkpoints/
+
 .DS_Store
 .vscode/
 .idea/
