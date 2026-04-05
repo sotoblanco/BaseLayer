@@ -113,8 +113,6 @@ BaseLayer supports three types of exercises, each suited to a different learning
 
 ### Coding Exercise
 
-![Coding exercise screenshot](images/exercise-coding.png)
-
 The default exercise type. Students write code in a Monaco editor, run tests, and submit.
 
 #### File Structure
@@ -134,7 +132,6 @@ No `metadata.json` needed — the default exercise type is `code`.
 
 ### Spreadsheet Exercise
 
-![Spreadsheet exercise screenshot](images/exercise-spreadsheet.png)
 
 Students work directly inside a Google Sheet embedded in the right panel. Great for building intuition for matrix operations and tensor math.
 
@@ -160,8 +157,6 @@ courses/my-course/my-lesson/
 ---
 
 ### Hand Drawing Exercise
-
-![Drawing exercise screenshot](images/exercise-drawing.png)
 
 Students draw on top of a diagram image using their mouse. Useful for exercises that require showing connections, arrows, or data flow — like matrix multiplication paths.
 

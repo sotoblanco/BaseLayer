@@ -97,7 +97,8 @@ def is_lesson_directory(dir_path: Path) -> bool:
     """Check if a directory is a lesson (contains README.md, main.py/main.rs, etc)"""
     readme_exists = (dir_path / "README.md").exists()
     has_main = (dir_path / "main.py").exists() or (dir_path / "main.rs").exists()
-    return readme_exists and has_main
+    has_metadata = (dir_path / "metadata.json").exists()
+    return readme_exists and (has_main or has_metadata)
 
 
 def parse_lesson(course_path: Path, lesson_dir_name: str, order: int, chapter_slug: Optional[str] = None) -> Optional[FileLesson]:
