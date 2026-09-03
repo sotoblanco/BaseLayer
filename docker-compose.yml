@@ -1,25 +1,36 @@
+# =============================================================================
+# Docker Compose for BaseLayer Development
+#
+# Security notes:
+#   - Backend and frontend run as non-root users inside their containers.
+#   - Secrets are loaded from .env.docker (not hardcoded).
+#   - Containers communicate on an internal network; only ports 5173/8000
+#     are exposed to the host.
+#   - The Docker socket is NOT mounted (removed for security).
+#     Code execution uses the remote Modal sandbox in production.
+# =============================================================================
+
 services:
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
+      # Mount source code for hot-reload during development
       - ./backend:/app
-      # Mount docker socket to allow spawning sibling containers for sandbox
-      - /var/run/docker.sock:/var/run/docker.sock
-      # Mount the courses folder so new courses added locally show up automatically
-      - ./courses:/courses
+      # Mount courses directory so file-based courses are available
+      - ./courses:/courses:ro
+    env_file:
+      - .env.docker
     environment:
       - DATABASE_URL=sqlite:///database.db
-      # Tell the backend where to find file-based courses
       - COURSES_DIR=/courses
-    # We need to make sure the image used by the backend exists.
-    # Ideally, we build it separately or use a multi-stage build, but for now
-    # the backend assumes 'sandbox-runner' exists on the host/context.
-    # Since we mount the docker socket, the backend container sees the host's images.
-    
+    networks:
+      - baselayer-net
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -27,17 +38,19 @@ services:
     ports:
       - "5173:5173"
     volumes:
+      # Mount source code for hot-reload during development
       - ./frontend:/app
+      # Prevent host node_modules from overriding the container's
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://backend:8000
+      - VITE_GOOGLE_CLIENT_ID=816844223678-1dh0td3bc0mv3aj4dhanlnm1ubldc6ah.apps.googleusercontent.com
     depends_on:
       - backend
+    networks:
+      - baselayer-net
+    restart: unless-stopped
 
-# We can also define a service to strictly build the sandbox image ensuring it exists
-  sandbox-builder:
-    build:
-      context: ./sandbox
-    image: sandbox-runner
-    # This container executes immediately and exits
-    command: ["echo", "Sandbox image built"]
+networks:
+  baselayer-net:
+    driver: bridge

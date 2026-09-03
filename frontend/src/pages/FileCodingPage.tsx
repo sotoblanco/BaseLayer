@@ -4,12 +4,13 @@ import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
 import DrawingCanvas from '../components/DrawingCanvas';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
+import { AuthModal } from '../components/auth/AuthModal';
 interface Lesson {
     slug: string;
     title: string;
@@ -40,7 +41,7 @@ interface FileCourse {
     lessons: Lesson[];
 }
 
-export default function FileCodingPage() {
+export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
     const { slug } = useParams();
     const navigate = useNavigate();
     const [course, setCourse] = useState<FileCourse | null>(null);
@@ -57,7 +58,9 @@ export default function FileCodingPage() {
     const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
     const [showDrawingSolution, setShowDrawingSolution] = useState(false);
     const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const { token, isAuthenticated } = useAuth();
+    const { token, isAuthenticated, logout } = useAuth();
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [courseError, setCourseError] = useState<string | null>(null);
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
     const instructionScrollRef = useRef<HTMLDivElement>(null);
 
@@ -93,8 +96,21 @@ export default function FileCodingPage() {
     // Fetch Course Data
     useEffect(() => {
         const fetchCourse = async () => {
+            if (!isAuthenticated || !token) {
+                setIsAuthModalOpen(true);
+                return;
+            }
+            setCourseError(null);
             try {
-                const res = await fetch(`${API_BASE_URL}/file-courses/${slug}`);
+                const res = await fetch(`${API_BASE_URL}/file-courses/${slug}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.status === 401) {
+                    logout();
+                    setIsAuthModalOpen(true);
+                    setCourseError('Your session has expired. Please sign in again.');
+                    return;
+                }
                 if (res.ok) {
                     const data = await res.json();
                     setCourse(data);
@@ -106,14 +122,15 @@ export default function FileCodingPage() {
                         setCode(extractedChapters[0].lessons[0].initial_code);
                     }
                 } else {
-                    console.error("Course not found");
+                    setCourseError(res.status === 404 ? 'Course not found.' : 'Unable to load this course.');
                 }
             } catch (err) {
                 console.error(err);
+                setCourseError('Unable to connect to the course service.');
             }
         }
         fetchCourse();
-    }, [slug]);
+    }, [slug, token, isAuthenticated, logout]);
 
     // Handle Lesson Change
     const currentChapter = chapters[currentChapterIndex];
@@ -210,7 +227,7 @@ export default function FileCodingPage() {
                 const outputMsg = data.stdout ? `\nOutput:\n${data.stdout}` : "";
                 setOutput(`${errorMsg}${outputMsg}`.trim() || `Process exited with code ${data.exit_code}`);
             }
-        } catch (e) {
+            } catch {
             setOutput("Failed to connect to execution server.");
         } finally {
             setIsRunning(false);
@@ -227,10 +244,19 @@ export default function FileCodingPage() {
                 `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/submit-drawing`,
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
                     body: JSON.stringify({ image_data: imageData }),
                 }
             );
+            if (response.status === 401) {
+                logout();
+                setIsAuthModalOpen(true);
+                setDrawingOutput('Your session has expired. Please sign in again.');
+                return;
+            }
             const data = await response.json();
             setDrawingOutput(data.message);
             if (data.passed) {
@@ -247,9 +273,26 @@ export default function FileCodingPage() {
         return (
             <div className="flex h-screen w-full bg-slate-950 items-center justify-center text-slate-400">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-                    <p>Loading course...</p>
+                    {courseError ? (
+                        <>
+                            <p className="mb-4 text-rose-400">{courseError}</p>
+                            {!isAuthenticated && (
+                                <button
+                                    onClick={() => setIsAuthModalOpen(true)}
+                                    className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+                                >
+                                    Sign in
+                                </button>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+                            <p>Loading course...</p>
+                        </>
+                    )}
                 </div>
+                <AuthModal isOpen={isAuthModalOpen} onClose={() => navigate('/')} />
             </div>
         );
     }
@@ -392,6 +435,16 @@ export default function FileCodingPage() {
                             <ChevronRight size={20} />
                         </button>
                         <div className="w-px h-6 bg-slate-800 mx-2" />
+                        {onSwitchUi && (
+                            <button
+                                onClick={onSwitchUi}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 transition-colors"
+                                title="Switch to the UX Light interface"
+                            >
+                                <Sparkles size={15} className="text-emerald-400" />
+                                <span className="hidden md:inline">UX Light</span>
+                            </button>
+                        )}
                         {isAuthenticated ? (
                             <UserMenu />
                         ) : (

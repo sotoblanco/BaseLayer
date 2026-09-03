@@ -1,7 +1,8 @@
-import modal
 import os
 import subprocess
 import tempfile
+
+import modal
 
 app_name = os.environ.get("MODAL_APP_NAME", "code-app")
 app = modal.App(app_name)
@@ -10,7 +11,7 @@ app = modal.App(app_name)
 sandbox_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("rustc")
-    .pip_install("numpy", "torch") # torch is pytorch
+    .pip_install("numpy", "torch")  # torch is pytorch
 )
 
 # Define the app image (matches backend/Dockerfile)
@@ -22,7 +23,7 @@ pyproject_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
 app_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install_from_pyproject(pyproject_path)
-    .pip_install("uv") # Modal needs uv if we want to use it inside the container
+    .pip_install("uv")  # Modal needs uv if we want to use it inside the container
     .env({"EXECUTION_ENV": "modal", "COURSES_DIR": "/courses"})
     .add_local_dir(web_dist_path, remote_path="/assets")
     .add_local_dir(backend_path, remote_path="/root")
@@ -35,18 +36,18 @@ app_image = (
     restrict_modal_access=True,
     single_use_containers=True,
     block_network=True,
-    timeout=30
+    timeout=30,
 )
 def run_in_sandbox(code: str, language: str):
     """
     Executes code in a secure, restricted Modal sandbox.
     """
     print(f"Running {language} code in restricted sandbox...")
-    
+
     with tempfile.TemporaryDirectory() as temp_dir:
         filename = "main.py"
         cmd = ["python", "main.py"]
-        
+
         if language == "rust":
             filename = "main.rs"
             cmd = ["sh", "-c", "rustc main.rs && ./main"]
@@ -54,54 +55,44 @@ def run_in_sandbox(code: str, language: str):
         code_path = os.path.join(temp_dir, filename)
         with open(code_path, "w") as f:
             f.write(code)
-            
+
         try:
             # Run command with timeout
-            result = subprocess.run(
-                cmd,
-                cwd=temp_dir,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
+            result = subprocess.run(cmd, cwd=temp_dir, capture_output=True, text=True, timeout=5)
+
             return {
                 "stdout": result.stdout,
                 "stderr": result.stderr,
-                "exit_code": result.returncode
+                "exit_code": result.returncode,
             }
         except subprocess.TimeoutExpired:
-            return {
-                "stdout": "",
-                "stderr": "Execution timed out",
-                "exit_code": 124
-            }
+            return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
         except Exception as e:
-            return {
-                "stdout": "",
-                "stderr": str(e),
-                "exit_code": 1
-            }
+            return {"stdout": "", "stderr": str(e), "exit_code": 1}
+
 
 # Define the volume for database persistence
 volume_name = os.environ.get("MODAL_VOLUME_NAME", "code-app-volume")
 volume = modal.Volume.from_name(volume_name, create_if_missing=True)
 
+
 @app.function(
-    image=app_image, 
+    image=app_image,
     secrets=[modal.Secret.from_name(os.environ.get("MODAL_SECRET_NAME", "code-app-secrets"))],
     volumes={"/data": volume},
     # Set DATABASE_URL to verify we use the persistent volume
-    timeout=600
+    timeout=600,
 )
 @modal.asgi_app()
 def fastapi_app():
     # Ensure DATABASE_URL is set to use the volume if not already in secrets
     if not os.environ.get("DATABASE_URL"):
         os.environ["DATABASE_URL"] = "sqlite:////data/database.db"
-        
+
     from main import app as web_app
+
     return web_app
+
 
 @app.function(
     image=app_image,
@@ -109,5 +100,5 @@ def fastapi_app():
 )
 def migrate_db():
     from scripts.migrate_db import migrate
-    migrate()
 
+    migrate()

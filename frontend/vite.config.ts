@@ -5,15 +5,19 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Allow access from Docker host
+    host: true,
     proxy: {
-      // Forward all backend API routes to FastAPI on port 8000
-      '/courses': 'http://localhost:8000',
-      '/file-courses': 'http://localhost:8000',
-      '/run': 'http://localhost:8000',
-      '/ai': 'http://localhost:8000',
-      '/auth': 'http://localhost:8000',
-      '/token': 'http://localhost:8000',
-      '/register': 'http://localhost:8000',
+      // In Docker, the backend is at http://backend:8000
+      // Outside Docker (local dev), it's at http://localhost:8000
+      // The VITE_API_URL env var controls this.
+      '/courses': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/file-courses': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/run': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/ai': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/auth': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/token': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/register': process.env.VITE_API_URL || 'http://localhost:8000',
     }
   }
 })
