@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400..700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,6 +12,35 @@
   --border: #334155;
   --success: #22c55e;
   --error: #ef4444;
+
+  /* UX Light Design Tokens */
+  --ux-navy: #05192d;
+  --ux-navy-light: #0b2338;
+  --ux-green: #03ef62;
+  --ux-green-dark: #02c852;
+  --ux-amber: #ffb800;
+  --ux-text: #1a2733;
+  --ux-muted: #5b6b7b;
+  --ux-faint: #93a3b4;
+
+  /* Surfaces */
+  --bg-app: #f4f6f8;           /* Outer application background */
+  --bg-header: #ffffff;        /* Top navigation header */
+  --bg-instructions: #ffffff;  /* Instructions pane */
+  --bg-editor: #05192d;        /* Code editor dark theme */
+  --bg-console: #05192d;       /* Console & REPL dark theme */
+
+  /* Borders */
+  --border-light: #e2e8ee;     /* Dividers on white surfaces */
+  --border-dark: #1d3952;      /* Dividers on dark editor/console surfaces */
+
+  /* Syntax Highlighting Tokens */
+  --code-bg: #05192d;
+  --code-fg: #e6edf3;
+  --code-comment: #6b8096;
+  --code-keyword: #03ef62;
+  --code-string: #f1fa8c;
+  --code-number: #bd93f9;
 }
 
 body {

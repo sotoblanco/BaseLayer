@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { jwtDecode } from "jwt-decode";
+import { API_BASE_URL } from '../config';
 
 interface User {
     username: string;
@@ -10,6 +11,7 @@ interface AuthContextType {
     user: User | null;
     token: string | null;
     login: (token: string) => void;
+    googleLogin: (credential: string) => Promise<void>;
     logout: () => void;
     isAuthenticated: boolean;
 }
@@ -40,13 +42,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setToken(newToken);
     };
 
+    const googleLogin = async (credential: string) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/google`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ credential }),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                login(data.access_token);
+            } else {
+                const error = await response.json();
+                throw new Error(error.detail || 'Google Login failed');
+            }
+        } catch (err) {
+            console.error("Google Login Error:", err);
+            throw err;
+        }
+    };
+
     const logout = () => {
         setToken(null);
         localStorage.removeItem('token');
+        setUser(null);
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!user }}>
+        <AuthContext.Provider value={{ user, token, login, googleLogin, logout, isAuthenticated: !!user }}>
             {children}
         </AuthContext.Provider>
     );

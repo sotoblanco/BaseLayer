@@ -1,6 +1,7 @@
 notebooks/
 # Environment
 .env
+.env.docker
 *.local
 
 # Node.js
@@ -14,6 +15,8 @@ __pycache__/
 *$py.class
 .venv/
 .pytest_cache/
+.coverage
+.coverage.*
 .uv/
 
 # Database
