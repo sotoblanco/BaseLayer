@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Terminal, ChevronRight, FolderCode } from 'lucide-react';
+import { Terminal, ChevronRight, FolderCode, Compass } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { UserMenu } from '../components/UserMenu';
@@ -18,6 +18,7 @@ export default function CoursesPage() {
   const [fileCourses, setFileCourses] = useState<FileCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -54,9 +55,17 @@ export default function CoursesPage() {
           <div className="p-2 bg-blue-600 rounded-lg">
             <Terminal size={20} className="text-white" />
           </div>
-          <h1 className="font-bold text-xl tracking-tight">🪜 BaseLayer App</h1>
+          <h1 className="font-bold text-xl tracking-tight">BaseLayer App</h1>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsLearningGuideOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
+            title="Learning Guide & AI Setup"
+          >
+            <Compass size={14} className="text-emerald-400" />
+            <span>Learning Guide</span>
+          </button>
           {isAuthenticated ? (
             <UserMenu />
           ) : (
@@ -143,7 +152,14 @@ export default function CoursesPage() {
         )}
       </main>
 
-      <WelcomeGate isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <WelcomeGate
+        isOpen={isAuthModalOpen || isLearningGuideOpen}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          setIsLearningGuideOpen(false);
+        }}
+        initialTab={isLearningGuideOpen ? 'modalities' : undefined}
+      />
     </div>
   );
 }

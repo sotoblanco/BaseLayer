@@ -38,6 +38,37 @@ if [ -f .env ]; then
 fi
 ensure_secret_key
 
+# Check for GEMINI_API_KEY
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo ""
+    echo -e "${BLUE}[AI CONFIG] GEMINI_API_KEY is not set in environment or .env file.${NC}"
+    echo -e "An AI key enables SocratiQ tutoring, multimodal drawing evaluation, and dynamic exercise generation."
+    echo -e "You can set it now, or add GEMINI_API_KEY=your_key to your .env file."
+    echo ""
+    read -r -p "Enter your Gemini API key (or press Enter to skip): " input_gemini_key
+    if [ -n "$input_gemini_key" ]; then
+        export GEMINI_API_KEY="$input_gemini_key"
+        python3 -c "
+import sys, re, os
+key = sys.argv[1]
+env_path = '.env'
+content = ''
+if os.path.exists(env_path):
+    with open(env_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+if re.search(r'^\s*GEMINI_API_KEY=.*', content, flags=re.MULTILINE):
+    content = re.sub(r'^\s*GEMINI_API_KEY=.*', f'GEMINI_API_KEY={key}', content, flags=re.MULTILINE)
+else:
+    content = (content.rstrip() + f'\nGEMINI_API_KEY={key}\n') if content.strip() else f'GEMINI_API_KEY={key}\n'
+with open(env_path, 'w', encoding='utf-8') as f:
+    f.write(content)
+" "$input_gemini_key"
+        log "Saved GEMINI_API_KEY to .env"
+    else
+        log "Continuing without API key. You can also configure it in the web studio."
+    fi
+fi
+
 # Local name-only welcome (never set this in production)
 export ALLOW_LOCAL_WELCOME="${ALLOW_LOCAL_WELCOME:-true}"
 

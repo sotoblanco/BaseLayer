@@ -6,9 +6,10 @@ import { LocalWelcome } from './LocalWelcome';
 interface WelcomeGateProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: 'profile' | 'ai' | 'modalities' | 'customization';
 }
 
-export function WelcomeGate({ isOpen, onClose }: WelcomeGateProps) {
+export function WelcomeGate({ isOpen, onClose, initialTab }: WelcomeGateProps) {
   const [useFullAuth, setUseFullAuth] = useState(!isLocalHost());
 
   if (useFullAuth) {
@@ -19,6 +20,7 @@ export function WelcomeGate({ isOpen, onClose }: WelcomeGateProps) {
     <LocalWelcome
       isOpen={isOpen}
       onClose={onClose}
+      initialTab={initialTab}
       onForbidden={() => setUseFullAuth(true)}
     />
   );

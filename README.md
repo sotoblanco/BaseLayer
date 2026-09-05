@@ -84,7 +84,7 @@ The backend dynamically scans the `courses/` directory. Any folder that follows 
 
 ### 2. Quick Start
 
-Clone the repository and run the development script. It will automatically set up your Python environment and start all services:
+Clone the repository and run the development script. It will automatically set up your Python environment, check for `GEMINI_API_KEY`, and start all services:
 
 ```bash
 ./dev.sh
@@ -92,6 +92,9 @@ Clone the repository and run the development script. It will automatically set u
 
 -   **Backend**: http://localhost:8000
 -   **Frontend**: http://localhost:5173
+
+When opening the web studio locally for the first time, BaseLayer prompts you to configure your Gemini API key (or put it in `.env`) to activate SocratiQ tutoring, sketch grading, and dynamic lesson generation. It also presents an interactive tutorial of the available learning options (code execution, spreadsheets, and hand drawing) and shows how to customize your own curriculum. You can reopen this guide anytime using the **Learning Guide** button in the header. For full architectural details, see `docs/local_ai_and_learning_options.md`.
+
 
 ### Troubleshooting
 

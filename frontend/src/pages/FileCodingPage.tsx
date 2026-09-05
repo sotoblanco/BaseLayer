@@ -4,7 +4,7 @@ import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
 import DrawingCanvas from '../components/DrawingCanvas';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send, Sparkles } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send, Sparkles, Compass } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
@@ -66,6 +66,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const { token, isAuthenticated, logout } = useAuth();
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
     const [courseError, setCourseError] = useState<string | null>(null);
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
     const instructionScrollRef = useRef<HTMLDivElement>(null);
@@ -443,6 +444,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                             <ChevronRight size={20} />
                         </button>
                         <div className="w-px h-6 bg-slate-800 mx-2" />
+                        <button
+                            onClick={() => setIsLearningGuideOpen(true)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 transition-colors"
+                            title="Learning Guide & AI Setup"
+                        >
+                            <Compass size={14} className="text-emerald-400" />
+                            <span className="hidden md:inline">Learning Guide</span>
+                        </button>
                         {onSwitchUi && (
                             <button
                                 onClick={onSwitchUi}
@@ -794,6 +803,11 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     </Group>
                 </div>
             </div>
+            <WelcomeGate
+                isOpen={isLearningGuideOpen}
+                onClose={() => setIsLearningGuideOpen(false)}
+                initialTab="modalities"
+            />
         </div>
     );
 }
