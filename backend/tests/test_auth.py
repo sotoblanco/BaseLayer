@@ -60,6 +60,25 @@ class TestSignup:
         response = client.post("/auth/signup", json={"username": "x"})
         assert response.status_code == 422  # Pydantic validation error
 
+    def test_signup_ignores_admin_role(self, client: TestClient):
+        """Public signup cannot self-assign admin."""
+        payload = {**VALID_USER, "username": "hacker", "email": "hacker@example.com", "role": "admin"}
+        response = client.post("/auth/signup", json=payload)
+        assert response.status_code == 200
+        assert response.json()["role"] == "student"
+
+        login = client.post(
+            "/auth/login",
+            data={"username": payload["username"], "password": payload["password"]},
+        )
+        token = login.json()["access_token"]
+        forbidden = client.post(
+            "/courses/",
+            json={"title": "Hack", "description": "desc", "slug": "hack", "is_published": False},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert forbidden.status_code == 403
+
 
 # ==============================================================
 #  LOGIN (Email / Password)

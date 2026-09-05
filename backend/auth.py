@@ -128,7 +128,7 @@ def signup(user: UserCreate, session: Session = Depends(get_session)):
         username=user.username,
         email=user.email,
         hashed_password=hashed_password,
-        role=user.role,  # Default is student, but allow override if passed (maybe restrict later)
+        role="student",
     )
     session.add(db_user)
     session.commit()

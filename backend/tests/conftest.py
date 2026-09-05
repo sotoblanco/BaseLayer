@@ -17,8 +17,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
+from auth import get_password_hash
 from database import get_session
 from main import app
+from models import User
 
 # Single shared in-memory engine
 # StaticPool ensures every connection sees the same in-memory database.
@@ -96,8 +98,17 @@ def auth_headers_fixture(auth_token: str):
 
 @pytest.fixture(name="admin_headers")
 def admin_headers_fixture(client: TestClient):
-    """Register and log in ADMIN_USER, return headers."""
-    client.post("/auth/signup", json=ADMIN_USER)
+    """Insert ADMIN_USER directly (signup cannot grant admin) and return headers."""
+    with Session(test_engine) as session:
+        session.add(
+            User(
+                username=ADMIN_USER["username"],
+                email=ADMIN_USER["email"],
+                hashed_password=get_password_hash(ADMIN_USER["password"]),
+                role="admin",
+            )
+        )
+        session.commit()
     response = client.post(
         "/auth/login",
         data={"username": ADMIN_USER["username"], "password": ADMIN_USER["password"]},
