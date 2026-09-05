@@ -25,12 +25,13 @@ export const generateExercise = async (prompt: string, language: string = 'pytho
 
 export const discussImplementation = async (message: string, context?: string, understandingLevel: string = "Intermediate") => {
     const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Please sign in to use the tutor.');
+    }
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
     };
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
 
     const response = await fetch(`${API_BASE_URL}/ai/discuss`, {
         method: 'POST',
