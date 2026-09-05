@@ -1,9 +1,9 @@
 import numpy as np
 
+
 class Tensor:
     def __init__(self, data):
-        """Create a new tensor from data.        
-        """
+        """Create a new tensor from data."""
         self.data = np.array(data, dtype=np.float32)
         self.shape = self.data.shape
         self.size = self.data.size
@@ -32,13 +32,13 @@ class Tensor:
                     f"  💡 For A @ B, A's last dim must equal B's second-to-last dim\n"
                     f"  🔧 Try: other.transpose() to get shape {other.shape[::-1]}, or reshape self"
                 )
+
     def matmul(self, other):
         """Perform matrix multiplication between self and other."""
         ### BEGIN SOLUTION
 
         ### END SOLUTION
-        pass
 
     def __matmul__(self, other):
-            """Enable @ operator for matrix multiplication."""
-            return self.matmul(other)
+        """Enable @ operator for matrix multiplication."""
+        return self.matmul(other)

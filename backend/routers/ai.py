@@ -1,12 +1,15 @@
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ai_service import ai_service
 from auth import User, get_current_admin, get_current_user
+from learning_paths import LearningResource
+from routers.file_courses import COURSES_DIR
 from run_limits import MAX_AI_CONTEXT_CHARS, MAX_AI_MESSAGE_CHARS, enforce_ai_limits
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -72,6 +75,30 @@ class AIStatusResponse(BaseModel):
     model: str
 
 
+class BuildCourseRequest(BaseModel):
+    topic: str = Field(..., min_length=3, max_length=500)
+    resources: list[LearningResource] = Field(default_factory=list, max_length=5)
+
+
+class ToolTraceRead(BaseModel):
+    tool_name: str
+    status: str = "completed"
+    input_summary: str
+    output_summary: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class BuildCourseResponse(BaseModel):
+    slug: str
+    title: str
+    description: str = ""
+    narrative_arc: str = ""
+    lesson_count: int
+    grounded_in: list[str] = Field(default_factory=list)
+    tool_traces: list[ToolTraceRead] = Field(default_factory=list)
+    solveit_compliance: dict[str, bool] = Field(default_factory=dict)
+
+
 @router.get("/status", response_model=AIStatusResponse)
 def get_ai_status():
     return AIStatusResponse(
@@ -124,8 +151,84 @@ def generate_exercise(request: GenerateExerciseRequest, admin: User = Depends(ge
     return result
 
 
+@router.post("/learning-path/build", response_model=BuildCourseResponse)
+def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_current_user)):
+    """Build a playable, grounded course from a learner's question using agentic tool calls."""
+    topic = request.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="A learning topic is required")
+
+    materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
+
+    try:
+        result = ai_service.run_agentic_course_builder(
+            topic=topic,
+            materials=materials,
+            username=user.username,
+            courses_dir=COURSES_DIR,
+        )
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Agentic course creation failed: {exc}"
+        ) from exc
+
+    # Record course authorship into LEARNING.md
+    try:
+        from learner_profile import record_learner_event
+
+        record_learner_event(
+            username=user.username,
+            event_type="course_authored",
+            payload={
+                "course_slug": result.slug,
+                "title": result.title,
+                "lesson_count": result.lesson_count,
+            },
+        )
+    except Exception:
+        pass
+
+    return BuildCourseResponse(
+        slug=result.slug,
+        title=result.title,
+        description=result.description,
+        narrative_arc=result.narrative_arc,
+        lesson_count=result.lesson_count,
+        grounded_in=result.grounded_in,
+        tool_traces=[
+            ToolTraceRead(
+                tool_name=t.tool_name,
+                status=t.status,
+                input_summary=t.input_summary,
+                output_summary=t.output_summary,
+                details=t.details,
+            )
+            for t in result.tool_traces
+        ],
+        solveit_compliance=result.solveit_compliance,
+    )
+
+
 @router.post("/discuss")
 def discuss_implementation(request: ChatRequest, user: User = Depends(get_current_user)):
     enforce_ai_limits(user.username, request.message, request.context or "")
-    response = ai_service.chat(request.message, request.context, request.understanding_level)
+
+    level = request.understanding_level
+    # Personalize tutor style from LEARNING.md if default Intermediate was provided
+    try:
+        from learner_profile import get_or_create_profile
+
+        _, parsed = get_or_create_profile(user.username)
+        fm = parsed.get("frontmatter", {})
+        if request.understanding_level == "Intermediate":
+            if fm.get("tutor_style") == "solveit":
+                level = "Solveit"
+            elif fm.get("understanding_level"):
+                level = fm["understanding_level"].title()
+    except Exception:
+        pass
+
+    response = ai_service.chat(request.message, request.context, level)
     return {"response": response}

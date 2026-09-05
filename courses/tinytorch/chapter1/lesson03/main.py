@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Tensor:
     def __init__(self, data):
         self.data = np.array(data, dtype=np.float32)
@@ -10,12 +11,12 @@ class Tensor:
     def __add__(self, other):
         ### BEGIN SOLUTION
         pass
-        
+
         ### END SOLUTION
 
     def __sub__(self, other):
         ### BEGIN SOLUTION
-        pass    
+        pass
         ### END SOLUTION
 
     def __mul__(self, other):

@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, User, ChevronDown, Info } from 'lucide-react';
+import { LogOut, User, ChevronDown, Info, BookOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../config';
+import { LearningProfileModal } from './LearningProfileModal';
 
 interface UserMenuProps {
     variant?: 'dark' | 'light';
@@ -10,6 +11,7 @@ interface UserMenuProps {
 export function UserMenu({ variant = 'dark' }: UserMenuProps) {
     const { logout, user } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const isLight = variant === 'light';
 
@@ -54,7 +56,22 @@ export function UserMenu({ variant = 'dark' }: UserMenuProps) {
                         </p>
                     </div>
 
-                    <div className="p-1">
+                    <div className="p-1 space-y-0.5">
+                        <button
+                            onClick={() => {
+                                setIsProfileOpen(true);
+                                setIsOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
+                                isLight
+                                    ? 'text-[#05192d] hover:bg-[#f4f6f8]'
+                                    : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                            }`}
+                        >
+                            <BookOpen size={16} className="text-emerald-400" />
+                            <span>Learning Profile</span>
+                        </button>
+
                         <button
                             onClick={logout}
                             className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
@@ -78,6 +95,11 @@ export function UserMenu({ variant = 'dark' }: UserMenuProps) {
                     </div>
                 </div>
             )}
+
+            <LearningProfileModal
+                isOpen={isProfileOpen}
+                onClose={() => setIsProfileOpen(false)}
+            />
         </div>
     );
 }

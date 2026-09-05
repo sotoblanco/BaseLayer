@@ -1,6 +1,5 @@
-from main import Tensor
 import numpy as np
-
+from main import Tensor
 
 
 def test_2d_ex1():
@@ -10,17 +9,20 @@ def test_2d_ex1():
 
     print("Test 1: 2D Matrix Passed")
 
+
 def test_2d_ex2():
     t = Tensor([[1, 2, 3], [4, 5, 6]])
     new_t = t.transpose()
     assert np.array_equal(new_t.data, np.array([[1, 4], [2, 5], [3, 6]]))
     print("Test 2: 2D Matrix Passed")
 
+
 def test_3d_ex1():
     t = Tensor([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
     new_t = t.transpose()
     assert np.array_equal(new_t.data, np.array([[[1, 3], [2, 4]], [[5, 7], [6, 8]]]))
     print("Test 3: 3D Matrix Passed")
+
 
 def test_3d_ex2():
     t = Tensor([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
@@ -35,11 +37,10 @@ def test_nodim():
     assert np.array_equal(new_t.data, np.array([1, 2, 3]))
     print("Test 5: 1D Matrix Passed")
 
+
 def test_raise_error():
     t = Tensor([1, 2, 3])
     try:
         t.transpose(0)
-    except ValueError as e:
-        print("Test 6: Raise Error Passed") 
-
-    
+    except ValueError:
+        print("Test 6: Raise Error Passed")

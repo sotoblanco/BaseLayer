@@ -14,6 +14,7 @@ import { FlagReportModal } from './components/FlagReportModal';
 import { DrawingPane } from './components/DrawingPane';
 import { SpreadsheetPane } from './components/SpreadsheetPane';
 import { groupLessonsIntoChapters, flattenLessons } from './courseLoader';
+import { emitLearnerEvent } from '../services/profileService';
 import type {
   FileCourse,
   FileLesson,
@@ -142,6 +143,13 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     setMobileTab('instructions');
     const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
     setUserSheetUrl(savedUrl || '');
+
+    // Record lesson opened in learner profile
+    emitLearnerEvent('lesson_opened', {
+      course_slug: slug,
+      lesson_slug: lesson.slug,
+      ui: 'light',
+    });
   }, [lesson?.slug, slug]);
 
   useEffect(() => {
@@ -178,6 +186,10 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     if (!lesson) return;
     setCode(lesson.initial_code || '');
     if (slug) localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, lesson.initial_code || '');
+    emitLearnerEvent('reset', {
+      course_slug: slug,
+      lesson_slug: lesson.slug,
+    });
   };
 
   const pushOutput = (msg: Omit<OutputMessage, 'id' | 'timestamp'>) => {

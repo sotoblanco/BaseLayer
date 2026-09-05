@@ -10,7 +10,7 @@ Shape manipulation operations change how data is interpreted without changing th
 ```python
 x = Tensor([1, 2, 3, 4])
 y = x.reshape(2, 2)  # y is a VIEW of x
-y.data[0, 0] = 99    # This also changes x!
+y.data[0, 0] = 99  # This also changes x!
 ```
 
 ## Exercise: Implement `reshape` from Scratch
@@ -23,7 +23,7 @@ In neural networks, data constantly changes shape. For example, an image batch `
 ### Part 1: Handling two calling styles
 Users might call reshape two ways:
 ```python
-t.reshape(2, 3)    # integers → shape = (2, 3)
+t.reshape(2, 3)  # integers → shape = (2, 3)
 t.reshape((2, 3))  # tuple   → shape = ((2, 3),) ← needs unwrapping!
 ```
 **Why**: Convenience — both styles are common in ML code.
@@ -34,7 +34,7 @@ t.reshape((2, 3))  # tuple   → shape = ((2, 3),) ← needs unwrapping!
 
 ### Part 2: The `-1` wildcard
 ```python
-t.reshape(2, -1)   # "I know one dim is 2, figure out the rest"
+t.reshape(2, -1)  # "I know one dim is 2, figure out the rest"
 ```
 **Why**: Very common when flattening — you know the batch size but not the feature count.
 

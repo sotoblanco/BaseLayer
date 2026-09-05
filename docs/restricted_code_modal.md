@@ -58,7 +58,7 @@ Note: Prior to v1.3.0, single-use containers were configured by setting `max_inp
 @app.function(
     restrict_modal_access=True,
     timeout=30,  # 30 second timeout
-    single_use_containers=True
+    single_use_containers=True,
 )
 def time_limited_function(input_data):
     return process(input_data)
@@ -68,9 +68,7 @@ def time_limited_function(input_data):
 
 ```python
 @app.function(
-    restrict_modal_access=True,
-    block_network=True,
-    single_use_containers=True
+    restrict_modal_access=True, block_network=True, single_use_containers=True
 )
 def network_isolated_function(input_data):
     return process(input_data)
@@ -90,15 +88,13 @@ includes the minimum necessary files to run:
 ```python
 restricted_app = modal.App("restricted-app", include_source=False)
 
-image = (
-    modal.Image.debian_slim()
-    .add_local_file("restricted_executor.py", "/root/restricted_executor.py")
+image = modal.Image.debian_slim().add_local_file(
+    "restricted_executor.py", "/root/restricted_executor.py"
 )
 
+
 @restricted_app.function(
-    restrict_modal_access=True,
-    block_network=True,
-    single_use_containers=True
+    restrict_modal_access=True, block_network=True, single_use_containers=True
 )
 def isolated_function(input_data):
     return process(input_data)
@@ -114,7 +110,12 @@ import modal
 app = modal.App("restricted-access-example")
 
 
-@app.function(restrict_modal_access=True, single_use_containers=True, timeout=30, block_network=True)
+@app.function(
+    restrict_modal_access=True,
+    single_use_containers=True,
+    timeout=30,
+    block_network=True,
+)
 def run_llm_code(generated_code: str):
     try:
         # Create a restricted environment
@@ -143,7 +144,6 @@ result = calculate_fibonacci(10)
 
     result = run_llm_code.remote(code)
     print(f"Result: {result}")
-
 ```
 
 This example locks down the container to ensure that the code is safe to execute by:

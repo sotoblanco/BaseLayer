@@ -1,5 +1,5 @@
-
 import numpy as np
+
 
 class Tensor:
     """Educational tensor - the foundation of machine learning computation.
@@ -14,8 +14,7 @@ class Tensor:
     """
 
     def __init__(self, data):
-        """Create a new tensor from data.        
-        """
+        """Create a new tensor from data."""
         ### BEGIN SOLUTION
         self.data = np.array(data, dtype=np.float32)
         self.shape = self.data.shape

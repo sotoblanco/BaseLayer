@@ -1,10 +1,9 @@
 import numpy as np
 
-class Tensor:
 
+class Tensor:
     def __init__(self, data):
-        """Create a new tensor from data.        
-        """
+        """Create a new tensor from data."""
         ### BEGIN SOLUTION
         self.data = np.array(data, dtype=np.float32)
         self.shape = self.data.shape
@@ -41,12 +40,12 @@ class Tensor:
         self._validate_matmul_shapes(other)
         a = self.data
         b = other.data
-        
+
         if len(self.shape) == 2 and len(other.shape) == 2:
             M, K = a.shape
             K2, N = b.shape
             result_data = np.zeros((M, N), dtype=a.dtype)
-                
+
             for i in range(M):
                 for j in range(N):
                     result_data[i, j] = np.dot(a[i, :], b[:, j])
@@ -59,4 +58,3 @@ class Tensor:
     def __matmul__(self, other):
         """Enable @ operator for matrix multiplication."""
         return self.matmul(other)
-    

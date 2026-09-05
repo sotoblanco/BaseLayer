@@ -2,7 +2,7 @@
 class Tensor:
     def __init__(self, data):
         self.data = data
-    
+
     @property
     def shape(self):
         if not self.data:
@@ -15,7 +15,6 @@ class Tensor:
 def create_tensor():
     """
     Create and return a 2D tensor with values [[1, 2, 3], [4, 5, 6]]
-    
+
     TODO: Implement this function
     """
-    pass

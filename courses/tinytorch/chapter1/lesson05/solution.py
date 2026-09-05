@@ -1,10 +1,9 @@
 import numpy as np
 
-class Tensor:
 
+class Tensor:
     def __init__(self, data):
-        """Create a new tensor from data.        
-        """
+        """Create a new tensor from data."""
         self.data = np.array(data, dtype=np.float32)
         self.shape = self.data.shape
         self.size = self.data.size
@@ -35,4 +34,3 @@ class Tensor:
                     f"  🔧 Try: other.transpose() to get shape {other.shape[::-1]}, or reshape self"
                 )
         ### END SOLUTION
-        

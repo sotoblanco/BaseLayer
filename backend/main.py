@@ -24,6 +24,7 @@ from models import (
 )
 from routers.ai import router as ai_router
 from routers.file_courses import router as file_courses_router
+from routers.me import router as me_router
 from run_exec import write_submission
 from run_limits import enforce_run_limits
 
@@ -38,6 +39,7 @@ app = FastAPI(title="BaseLayer App API", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(file_courses_router)
+app.include_router(me_router)
 
 
 # CORS Setup
@@ -233,6 +235,24 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
                     text=True,
                     timeout=5,  # 5 second timeout
                 )
+
+                # Record run result into LEARNING.md
+                try:
+                    from learner_profile import record_learner_event
+
+                    record_learner_event(
+                        username=user.username,
+                        event_type="run_result",
+                        payload={
+                            "success": result.returncode == 0,
+                            "is_submit": bool(
+                                submission.test_code and submission.test_code.strip()
+                            ),
+                            "language": submission.language,
+                        },
+                    )
+                except Exception:
+                    pass
 
                 return {
                     "stdout": result.stdout,
