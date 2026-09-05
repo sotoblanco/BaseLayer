@@ -15,10 +15,10 @@ def reset_hits() -> None:
     _hits.clear()
 
 
-def enforce_run_limits(username: str, code: str, language: str) -> None:
+def enforce_run_limits(username: str, code: str, language: str, test_code: str = "") -> None:
     if language not in ALLOWED_LANGUAGES:
         raise HTTPException(status_code=400, detail="Unsupported language")
-    if len(code) > MAX_CODE_CHARS:
+    if len(code) + len(test_code) > MAX_CODE_CHARS:
         raise HTTPException(status_code=413, detail="Code submission too large")
 
     now = time.monotonic()

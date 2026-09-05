@@ -10,6 +10,7 @@ import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
 import { messageForRunStatus } from '../runErrors';
 import { buildTutorContext } from '../tutorContext';
+import { testsToRun } from '../testsToRun';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 import { AuthModal } from '../components/auth/AuthModal';
@@ -191,24 +192,12 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         }
 
         try {
-            let testCalls = "";
-            if (lesson.language === "python" || !lesson.language) {
-                const testFuncRegex = /^def\s+(test_[a-zA-Z0-9_]+)\s*\(/gm;
-                const matches = [...lesson.test_code.matchAll(testFuncRegex)];
-                const testFuncs = matches.map(match => match[1]);
-
-                if (testFuncs.length > 0) {
-                    const numToRun = isSubmit ? testFuncs.length : Math.max(1, Math.ceil(testFuncs.length * 0.2));
-                    const funcsToRun = testFuncs.slice(0, numToRun);
-                    testCalls = "\n\n" + funcsToRun.map(fn => `${fn}()`).join("\n");
-                }
-            }
-
             const response = await fetch(`${API_BASE_URL}/run`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    code: code + "\n\n" + lesson.test_code + testCalls,
+                    code,
+                    test_code: testsToRun(lesson.test_code, lesson.language || 'python', isSubmit),
                     language: lesson.language || "python"
                 })
             });

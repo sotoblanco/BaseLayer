@@ -26,6 +26,7 @@ import type {
 } from './types';
 import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
+import { testsToRun } from '../testsToRun';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from '../components/auth/AuthModal';
 
@@ -199,24 +200,19 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      let payload = customCommand || codeToRun;
-      if (!customCommand) {
-        let testCalls = '';
-        if ((lesson.language === 'python' || !lesson.language) && lesson.test_code) {
-          const matches = [...lesson.test_code.matchAll(/^def\s+(test_[a-zA-Z0-9_]+)\s*\(/gm)];
-          const testFuncs = matches.map((m) => m[1]);
-          if (testFuncs.length > 0) {
-            const numToRun = isSubmit ? testFuncs.length : Math.max(1, Math.ceil(testFuncs.length * 0.2));
-            testCalls = '\n\n' + testFuncs.slice(0, numToRun).map((fn) => `${fn}()`).join('\n');
-          }
-        }
-        payload = code + '\n\n' + (lesson.test_code || '') + testCalls;
-      }
+      const language = lesson.language || 'python';
+      const body = customCommand
+        ? { code: customCommand, language }
+        : {
+            code,
+            test_code: testsToRun(lesson.test_code || '', language, isSubmit),
+            language,
+          };
 
       const res = await fetch(`${API_BASE_URL}/run`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ code: payload, language: lesson.language || 'python' }),
+        body: JSON.stringify(body),
       });
       const runError = messageForRunStatus(res.status);
       if (runError) {

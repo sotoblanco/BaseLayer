@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
+from run_exec import write_submission
 from run_limits import (
     MAX_CODE_CHARS,
     enforce_run_limits,
@@ -50,6 +53,32 @@ class TestEnforceRunLimits:
         enforce_run_limits("bob", "print(1)", "python")
 
 
+class TestWriteSubmission:
+    def test_python_without_tests_runs_main(self, tmp_path: Path):
+        cmd = write_submission(str(tmp_path), "class Tensor: pass\n", "python")
+        assert cmd == ["python", "-B", "main.py"]
+        assert (tmp_path / "main.py").read_text() == "class Tensor: pass\n"
+        assert not (tmp_path / "test.py").exists()
+
+    def test_python_with_tests_runs_test_file(self, tmp_path: Path):
+        cmd = write_submission(
+            str(tmp_path),
+            "class Tensor: pass\n",
+            "python",
+            "from main import Tensor\n\ndef test_ok():\n    assert Tensor\ntest_ok()\n",
+        )
+        assert cmd == ["python", "-B", "test.py"]
+        assert "class Tensor" in (tmp_path / "main.py").read_text()
+        assert "from main import Tensor" in (tmp_path / "test.py").read_text()
+
+    def test_rust_concatenates_tests_into_main(self, tmp_path: Path):
+        cmd = write_submission(str(tmp_path), "fn main() {}", "rust", "fn extra() {}")
+        assert cmd[0] == "sh"
+        source = (tmp_path / "main.rs").read_text()
+        assert "fn main()" in source
+        assert "fn extra()" in source
+
+
 class TestRunEndpoint:
     def test_run_requires_auth(self, client: TestClient):
         response = client.post("/run", json={"code": "print(1)", "language": "python"})
@@ -92,3 +121,15 @@ class TestRunEndpoint:
         assert "stdout" in body
         assert "stderr" in body
         assert "exit_code" in body
+
+    def test_run_accepts_separate_test_code(self, client: TestClient, auth_headers):
+        response = client.post(
+            "/run",
+            json={
+                "code": "class Tensor:\n    pass\n",
+                "test_code": "from main import Tensor\n",
+                "language": "python",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
