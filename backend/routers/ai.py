@@ -174,6 +174,22 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
             status_code=500, detail=f"Agentic course creation failed: {exc}"
         ) from exc
 
+    # Record course authorship into LEARNING.md
+    try:
+        from learner_profile import record_learner_event
+
+        record_learner_event(
+            username=user.username,
+            event_type="course_authored",
+            payload={
+                "course_slug": result.slug,
+                "title": result.title,
+                "lesson_count": result.lesson_count,
+            },
+        )
+    except Exception:
+        pass
+
     return BuildCourseResponse(
         slug=result.slug,
         title=result.title,
@@ -198,5 +214,21 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
 @router.post("/discuss")
 def discuss_implementation(request: ChatRequest, user: User = Depends(get_current_user)):
     enforce_ai_limits(user.username, request.message, request.context or "")
-    response = ai_service.chat(request.message, request.context, request.understanding_level)
+
+    level = request.understanding_level
+    # Personalize tutor style from LEARNING.md if default Intermediate was provided
+    try:
+        from learner_profile import get_or_create_profile
+
+        _, parsed = get_or_create_profile(user.username)
+        fm = parsed.get("frontmatter", {})
+        if request.understanding_level == "Intermediate":
+            if fm.get("tutor_style") == "solveit":
+                level = "Solveit"
+            elif fm.get("understanding_level"):
+                level = fm["understanding_level"].title()
+    except Exception:
+        pass
+
+    response = ai_service.chat(request.message, request.context, level)
     return {"response": response}

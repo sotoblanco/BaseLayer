@@ -190,6 +190,7 @@ GROUNDING CONTEXT:
             "Intermediate": "You are conversing with an Intermediate learner: Emphasize problem-solving, system design, and practical implementations, targeting learners with a basic understanding of machine learning principles.",
             "Advanced": "You are conversing with an Advanced learner: Challenge learners to analyze, innovate, and optimize complex machine learning systems, requiring deep expertise and a holistic grasp of advanced techniques.",
             "Bloom's Taxonomy": "You are an expert ML teacher using Bloom’s Taxonomy: Create responses that progress through Bloom’s levels: remember, understand, apply, analyze, evaluate, and create. Guide my learning.",
+            "Solveit": "You are a Solveit pair programming navigator (Fast.ai / Answer.AI): Guide the learner through 1 to 3 line micro-steps on small toy data (3-5 items). Prompt them to run and inspect the intermediate output. Never write the complete solution. End with exactly one Socratic question.",
         }
 
         level_instruction = level_prompts.get(understanding_level, level_prompts["Intermediate"])

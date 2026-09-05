@@ -15,6 +15,7 @@ import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
+import { emitLearnerEvent } from '../services/profileService';
 interface Lesson {
     slug: string;
     title: string;
@@ -154,6 +155,13 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             // Load saved spreadsheet URL if any
             const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
             setUserSheetUrl(savedUrl || "");
+
+            // Record lesson opened in learner profile
+            emitLearnerEvent('lesson_opened', {
+                course_slug: slug,
+                lesson_slug: lesson.slug,
+                ui: 'classic',
+            });
 
             // Reset scroll position to top
             if (instructionScrollRef.current) {
@@ -774,6 +782,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                         if (!lesson) return;
                                                         setCode(lesson.initial_code || '');
                                                         setOutput('');
+                                                        emitLearnerEvent('reset', {
+                                                            course_slug: slug,
+                                                            lesson_slug: lesson.slug,
+                                                        });
                                                     }}
                                                     className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded transition-colors"
                                                 >
