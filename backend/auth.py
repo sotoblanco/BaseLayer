@@ -161,27 +161,17 @@ RESERVED_LOCAL_USERNAMES = {
 }
 
 
-@auth_router.post("/local-welcome", response_model=Token)
-def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_session)):
-    if not local_welcome_enabled():
-        raise HTTPException(status_code=403, detail="Local welcome is disabled")
-
-    username = _slugify_local_name(payload.name)
+def _validate_local_username(username: str) -> None:
     if username in RESERVED_LOCAL_USERNAMES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Username '{username}' is reserved and cannot be used for local sessions",
         )
 
+
+def _get_or_create_local_user(username: str, session: Session) -> User:
     user = session.exec(select(User).where(User.username == username)).first()
-    if user:
-        expected_local_email = f"{username}@local.baselayer"
-        if user.email != expected_local_email or user.role != "student":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="This username belongs to a registered account and cannot be accessed via local welcome",
-            )
-    else:
+    if not user:
         user = User(
             username=username,
             email=f"{username}@local.baselayer",
@@ -191,6 +181,24 @@ def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_s
         session.add(user)
         session.commit()
         session.refresh(user)
+        return user
+
+    if user.email != f"{username}@local.baselayer" or user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This username belongs to a registered account and cannot be accessed via local welcome",
+        )
+    return user
+
+
+@auth_router.post("/local-welcome", response_model=Token)
+def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_session)):
+    if not local_welcome_enabled():
+        raise HTTPException(status_code=403, detail="Local welcome is disabled")
+
+    username = _slugify_local_name(payload.name)
+    _validate_local_username(username)
+    user = _get_or_create_local_user(username, session)
 
     access_token = create_access_token(
         data={"sub": user.username, "role": "student"},
