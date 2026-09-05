@@ -181,13 +181,21 @@ def _get_or_create_local_user(username: str, session: Session) -> User:
         session.add(user)
         session.commit()
         session.refresh(user)
-        return user
 
     if user.email != f"{username}@local.baselayer" or user.role != "student":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This username belongs to a registered account and cannot be accessed via local welcome",
         )
+
+    # Initialize LEARNING.md locally for this learner
+    try:
+        from learner_profile import get_or_create_profile
+
+        get_or_create_profile(user.username)
+    except Exception:
+        pass
+
     return user
 
 
@@ -229,6 +237,15 @@ def signup(user: UserCreate, session: Session = Depends(get_session)):
     session.add(db_user)
     session.commit()
     session.refresh(db_user)
+
+    # Initialize LEARNING.md locally for this learner
+    try:
+        from learner_profile import get_or_create_profile
+
+        get_or_create_profile(db_user.username)
+    except Exception:
+        pass
+
     return db_user
 
 
@@ -257,6 +274,43 @@ def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+def _generate_unique_google_username(base_username: str, session: Session) -> str:
+    username = base_username
+    counter = 1
+    while session.exec(select(User).where(User.username == username)).first():
+        username = f"{base_username}_{counter}"
+        counter += 1
+    return username
+
+
+def _get_or_create_google_user(email: str, session: Session) -> User:
+    user = session.exec(select(User).where(User.email == email)).first()
+    if user:
+        return user
+
+    base_username = email.split("@")[0]
+    username = _generate_unique_google_username(base_username, session)
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=get_password_hash(str(uuid.uuid4())),
+        role="student",
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    # Initialize LEARNING.md locally for this learner
+    try:
+        from learner_profile import get_or_create_profile
+
+        get_or_create_profile(user.username)
+    except Exception:
+        pass
+
+    return user
+
+
 @auth_router.post("/google", response_model=Token)
 def google_login(data: GoogleTokenRequest, session: Session = Depends(get_session)):
     """Verifies Google ID Token and logs user in."""
@@ -265,43 +319,11 @@ def google_login(data: GoogleTokenRequest, session: Session = Depends(get_sessio
 
     try:
         idinfo = id_token.verify_oauth2_token(data.credential, requests.Request(), GOOGLE_CLIENT_ID)
-
-        # ID token is valid. Get the user's Google info.
-        email = idinfo["email"]
-
-        # 1. Check if user already exists
-        user = session.exec(select(User).where(User.email == email)).first()
-
-        if not user:
-            # 2. Create new user
-            # Generate a random username or use email prefix
-            base_username = email.split("@")[0]
-            username = base_username
-            # Append random suffix if username taken
-            counter = 1
-            while session.exec(select(User).where(User.username == username)).first():
-                username = f"{base_username}_{counter}"
-                counter += 1
-
-            user = User(
-                username=username,
-                email=email,
-                hashed_password=get_password_hash(
-                    str(uuid.uuid4())
-                ),  # Random password for OAuth users
-                role="student",
-            )
-            session.add(user)
-            session.commit()
-            session.refresh(user)
-
-        # 3. Issue JWT
+        user = _get_or_create_google_user(idinfo["email"], session)
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
         )
         return {"access_token": access_token, "token_type": "bearer"}
-
-    except ValueError:
-        # Invalid token
-        raise HTTPException(status_code=401, detail="Invalid Google token") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Invalid Google token") from exc
