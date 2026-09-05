@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.17](https://github.com/sotoblanco/BaseLayer/compare/v0.1.16...v0.1.17) (2026-09-05)
+
+
+### Features
+
+* auto-initialize local LEARNING.md on welcome/signup and add download button ([45f509d](https://github.com/sotoblanco/BaseLayer/commit/45f509d8b2f10fc993e66a310551fe627cbc26e7))
+
+
+### Improvements
+
+* extract helpers from google_login to lower CRAP below 6.0 ([6b3c20d](https://github.com/sotoblanco/BaseLayer/commit/6b3c20d865d84df7b2dcd05a30a58969ba0b4a18))
+
 ### [0.1.16](https://github.com/sotoblanco/BaseLayer/compare/v0.1.15...v0.1.16) (2026-09-05)
 
 
