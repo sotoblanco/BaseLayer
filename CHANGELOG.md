@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.8](https://github.com/sotoblanco/BaseLayer/compare/v0.1.7...v0.1.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* run student code and tests as separate files ([987c5b5](https://github.com/sotoblanco/BaseLayer/commit/987c5b5be3fdb163a2d3bb24c3f9ea35442807df)), closes [#7](https://github.com/sotoblanco/BaseLayer/issues/7)
+
 ### [0.1.7](https://github.com/sotoblanco/BaseLayer/compare/v0.1.6...v0.1.7) (2026-09-05)
 
 
