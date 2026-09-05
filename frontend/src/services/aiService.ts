@@ -90,3 +90,49 @@ export const configureAiKey = async (apiKey: string): Promise<ConfigureKeyResult
     return response.json();
 };
 
+export interface ToolTraceItem {
+    tool_name: string;
+    status: string;
+    input_summary: string;
+    output_summary: string;
+    details?: Record<string, unknown>;
+}
+
+export interface BuildCourseResult {
+    slug: string;
+    title: string;
+    description?: string;
+    narrative_arc?: string;
+    lesson_count: number;
+    grounded_in: string[];
+    tool_traces?: ToolTraceItem[];
+    solveit_compliance?: Record<string, boolean>;
+}
+
+export const buildLearningCourse = async (
+    topic: string,
+    referenceText?: string,
+): Promise<BuildCourseResult> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Please start a learner session before building a course.');
+    }
+
+    const resources = referenceText?.trim()
+        ? [{ kind: 'pasted-notes', name: 'Learner-provided notes', text: referenceText.trim() }]
+        : [];
+    const response = await fetch(`${API_BASE_URL}/ai/learning-path/build`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ topic: topic.trim(), resources }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Could not build the learning course');
+    }
+    return response.json();
+};

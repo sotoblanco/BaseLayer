@@ -5,6 +5,8 @@ from typing import Any
 
 from google import genai
 
+from learning_paths import LearningPath, parse_json_response
+
 
 class AIService:
     def __init__(self):
@@ -94,6 +96,73 @@ class AIService:
             print(f"Error parsing AI response: {e}")
             # print(f"Raw response: {response.text}") # response might not exist if generation failed
             return {"error": f"Failed to generate valid exercise data: {str(e)}"}
+
+    def run_agentic_course_builder(
+        self,
+        topic: str,
+        materials: str = "",
+        username: str = "",
+        courses_dir: Any = None,
+    ) -> Any:
+        """Executes the 4-step agentic course creation workflow using BaseLayer tool calls."""
+        from agentic_workflow import AgenticCourseWorkflow
+
+        workflow = AgenticCourseWorkflow(
+            ai_client=self.client if self.is_configured else None,
+            courses_dir=courses_dir,
+        )
+        return workflow.execute(topic=topic, materials=materials, username=username)
+
+    def plan_learning_path(self, topic: str, context: str) -> LearningPath:
+        """Create a small, runnable Solveit course from a learner request."""
+        if not self.is_configured:
+            raise RuntimeError("AI service not configured")
+
+        prompt = f"""
+You are designing a hands-on programming course for BaseLayer.
+The learner asked: {topic}
+
+Use the supplied platform and learner material as evidence. Do not invent imports
+that are unavailable in the platform capabilities. Return raw JSON only.
+
+Create 3 to 6 lessons. Each lesson must teach exactly one concept and follow
+Solveit: tiny toy data, expected result before execution, a micro-task worth 1-3
+logical lines, an inspect prompt, and a runnable Python starter/test/solution.
+Never put the solution in starter_code. Tests must assert the toy behavior and
+must pass against solution_code. Because BaseLayer runs `test.py` beside the
+learner's `main.py`, every test_code must import the learner's public function
+or class from `main` before calling it. Prefer simple examples that fit in
+working memory.
+
+JSON shape:
+{{
+  "title": "...",
+  "description": "...",
+  "lessons": [{
+    "title": "...",
+    "objective": "...",
+    "toy_data": "...",
+    "expected_result": "...",
+    "micro_task": "...",
+    "inspect_prompt": "...",
+    "starter_code": "...",
+    "test_code": "...",
+    "solution_code": "...",
+    "source_refs": ["..."]
+  }]
+}}
+
+GROUNDING CONTEXT:
+{context}
+"""
+        try:
+            interaction = self.client.interactions.create(
+                model="gemini-3-flash-preview", input=prompt
+            )
+            path = LearningPath.model_validate(parse_json_response(interaction.outputs[-1].text))
+            return path
+        except Exception as exc:
+            raise RuntimeError(f"Failed to create a valid learning path: {exc}") from exc
 
     def chat(
         self, message: str, context: str = "", understanding_level: str = "Intermediate"

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
+import CourseBuilder from '../components/CourseBuilder';
 import { isLocalHost } from '../isLocalHost';
 
 interface FileCourse {
@@ -19,6 +20,7 @@ export default function CoursesPage() {
   const [loading, setLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
+  const [isCourseBuilderOpen, setIsCourseBuilderOpen] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -92,8 +94,25 @@ export default function CoursesPage() {
 
       <main className="flex-1 max-w-5xl mx-auto w-full p-8">
         <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2">Available Courses</h2>
-          <p className="text-slate-400">Select a course to start coding.</p>
+          <div className="flex flex-col gap-5 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-slate-900 p-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-400">Learn by building</p>
+              <h2 className="mb-2 text-3xl font-bold">What do you want to learn?</h2>
+              <p className="max-w-xl text-slate-400">Ask for a topic and optionally add notes. BaseLayer will create a runnable course using tiny Solveit steps.</p>
+            </div>
+            <button
+              onClick={() => isAuthenticated ? setIsCourseBuilderOpen(true) : setIsAuthModalOpen(true)}
+              className="shrink-0 rounded-lg bg-emerald-500 px-5 py-3 text-sm font-bold text-slate-950 transition-colors hover:bg-emerald-400"
+            >
+              Build a course
+            </button>
+          </div>
+          <div className="mt-8 flex items-end justify-between">
+            <div>
+              <h3 className="text-2xl font-bold">Available Courses</h3>
+              <p className="text-slate-400">Select a course to start coding.</p>
+            </div>
+          </div>
         </div>
 
         {loading ? (
@@ -159,6 +178,14 @@ export default function CoursesPage() {
           setIsLearningGuideOpen(false);
         }}
         initialTab={isLearningGuideOpen ? 'modalities' : undefined}
+      />
+      <CourseBuilder
+        isOpen={isCourseBuilderOpen}
+        onClose={() => setIsCourseBuilderOpen(false)}
+        onBuilt={(slug) => {
+          setIsCourseBuilderOpen(false);
+          navigate(`/file-course/${slug}`);
+        }}
       />
     </div>
   );

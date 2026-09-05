@@ -19,6 +19,7 @@ BaseLayer is not a video platform and not a blank notebook. Each lesson is a fol
 | Run code safely | `Run` / `Submit` execute in Docker (local) or Modal (cloud) |
 | Get unstuck | Ask **SocratiQ** with the lesson + your current code as context |
 | Learn visually | Spreadsheet lessons (`MMULT`, `ARRAYFORMULA`) or hand-drawing on a diagram |
+| Track your style | Living `LEARNING.md` profile records struggles, modalities, and signals |
 | Teach / customize | Add folders under `courses/` — they show up on refresh |
 
 ---
@@ -49,59 +50,20 @@ Reopen this overview anytime with **Learning Guide** in the header.
 
 The runner already has **NumPy**, **PyTorch**, and **Matplotlib** (see `research/sandbox/Dockerfile` and the Modal image). Lessons should `import` only what is installed.
 
-### AI (optional)
+### AI & SocratiQ Tutoring (optional)
 
 With a Gemini key:
 
-- **SocratiQ** — chat tutor (Beginner / Intermediate / Advanced / Bloom’s)
+- **SocratiQ** — chat tutor (Solveit / Beginner / Intermediate / Advanced / Bloom’s)
+- **Agentic Course Builder** — 4-step tool-calling workflow generating micro-step courses from any topic
 - **Drawing grades** — intent, not pixel-perfect match
 - **Exercise generation** — admin `POST /ai/generate/exercise`
 
 Without a key, code execution and spreadsheets still work; tutoring and sketch grading pause.
 
-### Local studio extras
+### Living Learner Profile (`LEARNING.md`)
 
-On first local open you set a **name** (no account required) and can paste `GEMINI_API_KEY` into the UI (saved to `.env`). Details: [`docs/local_ai_and_learning_options.md`](docs/local_ai_and_learning_options.md).
-
----
-
-## How to use it (learner)
-
-1. **Start the studio** (below) and open http://localhost:5173.
-2. Enter a name when asked. Optionally save a Gemini key (or skip).
-3. Skim **Learning Guide** (modalities + how to add your own folders).
-4. Open a course card. Work the lesson:
-   - **Code:** edit `main.py` / `main.rs` → **Run** (stdout) → **Submit** (tests).
-   - **Sheet:** copy the Google Sheet if prompted, use the formulas in the README.
-   - **Draw:** pencil / eraser / undo; submit for AI grading when AI is on.
-5. Use **SocratiQ** for hints. It sees the assignment and your current code; it should not paste the hidden solution.
-6. **Solution** appears only if the lesson has `solution.py` / `solution.rs` and you click it.
-
-Progress is local to this machine unless you sign in.
-
----
-
-## How to add or customize a course
-
-Drop a folder in `courses/`. The backend scans the directory; refresh the home page.
-
-```text
-courses/
-└── my-course/
-    ├── README.md                 # Course blurb on the home card
-    └── lesson-1-introduction/    # or chapter1/lesson01/
-        ├── README.md             # Left-panel instructions
-        ├── main.py               # Starter (or main.rs)
-        ├── test.py               # Appended and run on Submit
-        └── solution.py           # Optional; unlocks the Solution button
-```
-
-Helper: [`docs/create_lesson_guide.md`](docs/create_lesson_guide.md) (`backend/scripts/create_lesson.py`).
-
-**Spreadsheet** lessons need `metadata.json` with `exercise_type: "spreadsheet"` and `google_sheet_id`.  
-**Drawing** lessons need `exercise_type: "drawing"` plus `question.png` (optional `solution.png`).
-
-Full file layouts are in [Exercise types](#exercise-types) below.
+Each learner has a personal profile file at `data/learners/{username}/LEARNING.md` tracking preferred modalities, pace, tutor style, and live learning signals (e.g. test retries, reset exercises, completions). View and edit it anytime from the user menu.
 
 ---
 
@@ -126,25 +88,23 @@ Full file layouts are in [Exercise types](#exercise-types) below.
 
 ---
 
-## Build a course by asking (in progress)
+## Build a course with the Agentic Workflow
 
-Shipped today: you take the courses above or write folders yourself.
+Click **Build a course** on the courses page and describe what you want to learn (e.g. `NumPy broadcasting and matrix multiplication`). You can optionally paste documentation excerpts, formulas, or code snippets.
 
-Next: type **what you want to learn** (example: “I want to learn numpy”). Docs, articles, or code are optional. BaseLayer should build a **playable** course from that question — Solveit-style micro-lessons (tiny toy data, 1–3 line tasks, inspect the output), using what this repo already has (sandbox NumPy/PyTorch, existing `courses/`, sheets, drawing, SocratiQ), and your learning style when a profile exists.
+The backend executes a 4-step agentic workflow defining explicit tool calls:
 
-Tracked as:
+1. **`get_learning_intent`**: Analyzes the topic, extracts core target concepts, extracts snippets from learner materials, and searches existing platform courses for conceptual anchors.
+2. **`get_context_learning`**: Retrieves the learner's profile (`data/learners/{user}/LEARNING.md`) or initializes an adaptive profile (understanding level, pace, preferred modalities).
+3. **`get_platform_content_tools`**: Inspects platform capabilities across Coding Studio (sandbox libraries: `numpy`, `torch`, `matplotlib`), Google Sheets workspaces (`MMULT`, `ARRAYFORMULA`), and Hand Drawing canvases.
+4. **`curate_solveit_course`**: Curates the curriculum under the Solveit methodology (Fast.ai / Answer.AI):
+   - **Toy Data**: 3-5 rows or small tensor stated with expected output *before* execution.
+   - **Micro-Steps**: Tasks require only 1 to 3 logical lines of code.
+   - **Live Inspection**: Prompt to inspect intermediate state immediately.
+   - **Curiosity Loop**: Reflection or simplification question at the end of each lesson.
+   - **Narrative Arc**: A cohesive storyline connecting the lessons from intuition to working implementation.
 
-| Issue | Piece |
-|---|---|
-| [#36](https://github.com/sotoblanco/BaseLayer/issues/36) | Ask (topic enough; examples optional) |
-| [#38](https://github.com/sotoblanco/BaseLayer/issues/38) | Plan grounded in platform resources |
-| [#39](https://github.com/sotoblanco/BaseLayer/issues/39) | Write real lesson files |
-| [#40](https://github.com/sotoblanco/BaseLayer/issues/40) | Verify they run in the sandbox |
-| [#41](https://github.com/sotoblanco/BaseLayer/issues/41) | Customize from Learning Guide / `LEARNING.md` |
-| [#37](https://github.com/sotoblanco/BaseLayer/issues/37) | Solveit tutor mode |
-| [#44](https://github.com/sotoblanco/BaseLayer/issues/44) | One action: question → course you can open |
-
-Until those land, add courses as folders (previous section).
+The workflow materializes the course into the `courses/` directory so it is immediately playable in the BaseLayer IDE.
 
 ---
 
@@ -220,8 +180,8 @@ Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). Gemini
 
 ## Project layout
 
-- `backend/` — FastAPI, `/run`, AI, auth, `routers/file_courses.py`
-- `frontend/` — React studio (classic + UX Light player)
+- `backend/` — FastAPI, `/run`, AI, auth, `routers/file_courses.py`, `routers/me.py`, `learner_profile.py`
+- `frontend/` — React studio (classic + UX Light player, `CourseBuilder`, `LearningProfileModal`)
 - `courses/` — all file-based curricula
 - `docs/` — AI setup, sheets, Modal, lesson script
 - `research/` — sandbox image and experiments
