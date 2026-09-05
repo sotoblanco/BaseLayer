@@ -21,12 +21,38 @@ log()   { echo -e "${GREEN}[DOCKER-DEV]${NC} $1"; }
 info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+ensure_secret_key() {
+    local placeholder="super-secret-key-change-me-in-production"
+    if [ -n "${SECRET_KEY:-}" ] && [ "$SECRET_KEY" != "$placeholder" ]; then
+        return 0
+    fi
+    SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null || openssl rand -hex 32)"
+    export SECRET_KEY
+    log "Generated SECRET_KEY (placeholder keys are no longer allowed)."
+    if [ -f .env ]; then
+        grep -vE '^(export[[:space:]]+)?SECRET_KEY=' .env > .env.tmp || true
+        if grep -q '^export ' .env 2>/dev/null; then
+            echo "export SECRET_KEY=$SECRET_KEY" >> .env.tmp
+        else
+            echo "SECRET_KEY=$SECRET_KEY" >> .env.tmp
+        fi
+        mv .env.tmp .env
+        log "Saved SECRET_KEY to .env"
+    fi
+}
+
 # ---------- Generate .env.docker from .env ----------
 generate_docker_env() {
     if [ ! -f .env ]; then
         error ".env file not found. Copy .env.example to .env and fill in your keys."
         exit 1
     fi
+
+    set -a
+    # shellcheck disable=SC1091
+    source ./.env
+    set +a
+    ensure_secret_key
 
     log "Generating .env.docker from .env (stripping 'export' prefixes)..."
     sed 's/^export //' .env > .env.docker

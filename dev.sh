@@ -11,11 +11,32 @@ log() {
     echo -e "${GREEN}[DEV]${NC} $1"
 }
 
+ensure_secret_key() {
+    local placeholder="super-secret-key-change-me-in-production"
+    if [ -n "${SECRET_KEY:-}" ] && [ "$SECRET_KEY" != "$placeholder" ]; then
+        return 0
+    fi
+    SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null || openssl rand -hex 32)"
+    export SECRET_KEY
+    log "Generated SECRET_KEY (placeholder keys are no longer allowed)."
+    if [ -f .env ]; then
+        grep -vE '^(export[[:space:]]+)?SECRET_KEY=' .env > .env.tmp || true
+        if grep -q '^export ' .env 2>/dev/null; then
+            echo "export SECRET_KEY=$SECRET_KEY" >> .env.tmp
+        else
+            echo "SECRET_KEY=$SECRET_KEY" >> .env.tmp
+        fi
+        mv .env.tmp .env
+        log "Saved SECRET_KEY to .env"
+    fi
+}
+
 # Load environment variables if .env exists
 if [ -f .env ]; then
     log "Loading .env file"
     source ./.env
 fi
+ensure_secret_key
 
 # Ensure common paths are in PATH (for uv, etc.)
 export PATH="$HOME/.cargo/bin:$PATH"
