@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.13](https://github.com/sotoblanco/BaseLayer/compare/v0.1.12...v0.1.13) (2026-09-05)
+
+
+### Features
+
+* add local AI key onboarding, status configuration endpoints, and learning modalities guide ([6b3a0a1](https://github.com/sotoblanco/BaseLayer/commit/6b3a0a1885e0581f282ddca7266a7021fbabbf30))
+
+
+### Bug Fixes
+
+* **lint:** remove unused imports and format ai router ([2d0af15](https://github.com/sotoblanco/BaseLayer/commit/2d0af15fb89de01ff72b674ccbcd7efe6d536432))
+
 ### [0.1.12](https://github.com/sotoblanco/BaseLayer/compare/v0.1.11...v0.1.12) (2026-09-05)
 
 ### [0.1.11](https://github.com/sotoblanco/BaseLayer/compare/v0.1.10...v0.1.11) (2026-09-05)
