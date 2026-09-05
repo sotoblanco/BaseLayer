@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.16](https://github.com/sotoblanco/BaseLayer/compare/v0.1.15...v0.1.16) (2026-09-05)
+
+
+### Features
+
+* add LEARNING.md learner profile, struggle telemetry, and live personalization ([#23](https://github.com/sotoblanco/BaseLayer/issues/23)) ([ba00477](https://github.com/sotoblanco/BaseLayer/commit/ba00477e05e50779616b599cd97d3e857961437c))
+
+
+### Documentation
+
+* add issue prioritization and technical roadmap ([7dbc8f9](https://github.com/sotoblanco/BaseLayer/commit/7dbc8f94a4f34302b0536260c920851d6d5c2da5))
+
 ### [0.1.15](https://github.com/sotoblanco/BaseLayer/compare/v0.1.14...v0.1.15) (2026-09-05)
 
 
