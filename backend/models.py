@@ -20,7 +20,9 @@ class User(UserBase, table=True):
     hashed_password: str
 
 
-class UserCreate(UserBase):
+class UserCreate(SQLModel):
+    username: str
+    email: EmailStr
     password: str
 
 

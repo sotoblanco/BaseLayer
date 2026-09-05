@@ -12,6 +12,7 @@ from models import (
     GoogleTokenRequest,
     Token,
     TokenData,
+    UserCreate,
 )
 
 
@@ -57,6 +58,8 @@ class TestModels:
 
         google_req = GoogleTokenRequest(credential="google_jwt_credential")
         assert google_req.credential == "google_jwt_credential"
+
+        assert "role" not in UserCreate.model_fields
 
 
 class TestDatabase:
