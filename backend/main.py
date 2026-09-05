@@ -24,6 +24,7 @@ from models import (
 )
 from routers.ai import router as ai_router
 from routers.file_courses import router as file_courses_router
+from run_exec import write_submission
 from run_limits import enforce_run_limits
 
 
@@ -64,6 +65,7 @@ app.add_middleware(
 class CodeSubmission(BaseModel):
     code: str
     language: str = "python"
+    test_code: str | None = None
 
 
 @app.get("/")
@@ -175,7 +177,9 @@ def update_exercise(
 
 @app.post("/run")
 def run_code(submission: CodeSubmission, user: User = Depends(get_current_user)):
-    enforce_run_limits(user.username, submission.code, submission.language)
+    enforce_run_limits(
+        user.username, submission.code, submission.language, submission.test_code or ""
+    )
     execution_env = os.environ.get("EXECUTION_ENV", "docker")
 
     if execution_env == "modal":
@@ -183,9 +187,9 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
             # Lazy import to avoid circular dependency
             from modal_app import run_in_sandbox
 
-            # Run remotely on Modal
-            # Since we are already in a Modal app, this triggers a sandbox creation
-            result = run_in_sandbox.remote(submission.code, submission.language)
+            result = run_in_sandbox.remote(
+                submission.code, submission.language, submission.test_code or ""
+            )
             return result
         except ImportError:
             raise HTTPException(status_code=500, detail="Modal backend not found") from None
@@ -197,18 +201,9 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
         # Create a temp directory for the execution context
         with tempfile.TemporaryDirectory() as temp_dir:
             # Determine file extension and run command based on language
-            filename = "main.py"
-            cmd = ["python", "main.py"]
-
-            if submission.language == "rust":
-                filename = "main.rs"
-                # Compile and run
-                cmd = ["sh", "-c", "rustc main.rs && ./main"]
-
-            # Write the user code
-            code_path = os.path.join(temp_dir, filename)
-            with open(code_path, "w") as f:
-                f.write(submission.code)
+            cmd = write_submission(
+                temp_dir, submission.code, submission.language, submission.test_code
+            )
 
             # Ensure temp dir is writable by container processes
             try:

@@ -81,7 +81,8 @@ export default function ExercisePreview({
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    code: editedCode + "\n\n" + editedTestCode,
+                    code: editedCode,
+                    test_code: editedTestCode,
                     language: currentLang
                 })
             });

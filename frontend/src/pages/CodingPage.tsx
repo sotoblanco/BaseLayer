@@ -102,7 +102,8 @@ export default function CodingPage() {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    code: code + "\n\n" + exercise.test_code,
+                    code,
+                    test_code: exercise.test_code,
                     language: exercise.language || "python"
                 })
             });

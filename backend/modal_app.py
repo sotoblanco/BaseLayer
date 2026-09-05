@@ -38,23 +38,28 @@ app_image = (
     block_network=True,
     timeout=30,
 )
-def run_in_sandbox(code: str, language: str):
+def run_in_sandbox(code: str, language: str, test_code: str = ""):
     """
     Executes code in a secure, restricted Modal sandbox.
     """
     print(f"Running {language} code in restricted sandbox...")
 
+    from pathlib import Path
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        filename = "main.py"
-        cmd = ["python", "main.py"]
-
+        root = Path(temp_dir)
+        tests = (test_code or "").strip()
         if language == "rust":
-            filename = "main.rs"
+            source = f"{code}\n\n{tests}" if tests else code
+            (root / "main.rs").write_text(source, encoding="utf-8")
             cmd = ["sh", "-c", "rustc main.rs && ./main"]
-
-        code_path = os.path.join(temp_dir, filename)
-        with open(code_path, "w") as f:
-            f.write(code)
+        else:
+            (root / "main.py").write_text(code, encoding="utf-8")
+            if tests:
+                (root / "test.py").write_text(test_code, encoding="utf-8")
+                cmd = ["python", "-B", "test.py"]
+            else:
+                cmd = ["python", "-B", "main.py"]
 
         try:
             # Run command with timeout
