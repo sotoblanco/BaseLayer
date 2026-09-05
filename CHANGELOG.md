@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.10](https://github.com/sotoblanco/BaseLayer/compare/v0.1.9...v0.1.10) (2026-09-05)
+
+
+### Features
+
+* local welcome asks for a name instead of login ([eb10ad4](https://github.com/sotoblanco/BaseLayer/commit/eb10ad4e4deee0bc3df20286dab3aa49a8f97870)), closes [#23](https://github.com/sotoblanco/BaseLayer/issues/23)
+
+
+### Bug Fixes
+
+* generate a real SECRET_KEY when starting local or Docker dev ([c5d5e91](https://github.com/sotoblanco/BaseLayer/commit/c5d5e910eae52f29e8abd395ee5f3317423728ee))
+
 ### [0.1.9](https://github.com/sotoblanco/BaseLayer/compare/v0.1.8...v0.1.9) (2026-09-05)
 
 
