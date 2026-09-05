@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { GoogleLogin } from '@react-oauth/google';
 import { X, Mail, Lock, User, Terminal, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../config';
+import { GoogleSignInButton, hasGoogleSignIn } from './GoogleSignInButton';
 
 interface AuthModalProps {
     isOpen: boolean;
@@ -16,7 +16,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     const [username, setUsername] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const { login, googleLogin } = useAuth();
+    const { login } = useAuth();
 
     if (!isOpen) return null;
 
@@ -103,34 +103,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                         </div>
                     )}
 
-                    {/* Google Login */}
-                    <div className="mb-6 flex justify-center">
-                        <GoogleLogin
-                            theme="filled_black"
-                            width="100%"
-                            text="continue_with"
-                            onSuccess={async (credentialResponse) => {
-                                if (credentialResponse.credential) {
-                                    try {
-                                        await googleLogin(credentialResponse.credential);
-                                        onClose();
-                                    } catch (err: any) {
-                                        setError(err.message);
-                                    }
-                                }
-                            }}
-                            onError={() => setError('Google Login Failed')}
-                        />
-                    </div>
-
-                    <div className="relative mb-6">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t border-slate-800" />
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-slate-900 px-2 text-slate-500">Or continue with email</span>
-                        </div>
-                    </div>
+                    {hasGoogleSignIn && (
+                        <>
+                            <div className="mb-6">
+                                <GoogleSignInButton
+                                    onSuccess={onClose}
+                                    onError={setError}
+                                />
+                            </div>
+                            <div className="relative mb-6">
+                                <div className="absolute inset-0 flex items-center">
+                                    <span className="w-full border-t border-slate-800" />
+                                </div>
+                                <div className="relative flex justify-center text-xs uppercase">
+                                    <span className="bg-slate-900 px-2 text-slate-500">Or continue with email</span>
+                                </div>
+                            </div>
+                        </>
+                    )}
 
                     {/* Email/Password Form */}
                     <form onSubmit={handleSubmit} className="space-y-4">
