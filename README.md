@@ -1,151 +1,175 @@
-# BaseLayer App
+# BaseLayer
 
-A modern, interactive platform designed for learning and teaching programming through hands-on, file-based exercises. Features an integrated AI assistant, Google Sheets integration for mathematical intuition, and a secure code execution environment.
+An open-source studio for **learning by doing**. You take (or write) file-based exercises in a browser IDE: run Python or Rust in a sandbox, build intuition in Google Sheets, or draw on a diagram. SocratiQ, the built-in tutor, hints without dumping the full solution.
 
 ![Integrated AI and Spreadsheet Layout](images/image.png)
 
-## Key Features
+**Studio:** [http://localhost:5173](http://localhost:5173) after `./dev.sh`  
+**API:** [http://localhost:8000](http://localhost:8000)
 
--   **Interactive Web IDE**: A full-featured code editor with syntax highlighting (Monaco Editor) for Python and Rust.
--   **File-Based Course System**: Courses are loaded directly from the filesystem, making it easy to add content by simply creating folders.
--   **Seamless No-Login Flow**: Just start! Browse and complete courses without mandatory account creation or login prompts.
--   **Secure Code Execution**: Run code safely in a sandboxed environment using Docker (locally) or Modal (cloud).
--   **Integrated AI Coding Assistant**: SocratiQ provides hints, explains concepts, and helps debug exercises with full lesson context (assignment, current code, and tests).
--   **Google Sheets Integration**: Build mechanical intuition for tensors and matrices using familiar spreadsheet formulas like `MMULT` and `ARRAYFORMULA`.
--   **Multi-language Support**: Currently supports Python and Rust execution.
+---
 
-## How It Works
+## What it does
 
-### Frontend Proxy
-The frontend (Vite) runs on port **5173** and uses a developer proxy configured in `vite.config.ts` to forward API requests (`/courses`, `/file-courses`, `/run`, etc.) to the backend on port **8000**. This allows for a seamless development experience with cross-origin issues handled automatically.
+BaseLayer is not a video platform and not a blank notebook. Each lesson is a folder on disk. Opening a course loads instructions on the left and the matching workspace on the right (editor, sheet, or canvas). You run, inspect, and submit. Tests grade code; Gemini grades drawings when a key is configured.
 
-### Code Execution Sandbox
+| You want to… | What BaseLayer does |
+|---|---|
+| Learn a shipped course | Pick it on the home page, work lesson by lesson |
+| Run code safely | `Run` / `Submit` execute in Docker (local) or Modal (cloud) |
+| Get unstuck | Ask **SocratiQ** with the lesson + your current code as context |
+| Learn visually | Spreadsheet lessons (`MMULT`, `ARRAYFORMULA`) or hand-drawing on a diagram |
+| Teach / customize | Add folders under `courses/` — they show up on refresh |
 
-When you click "Run Code", the backend takes your code and runs it inside a specialized Docker container (`sandbox-runner`). This ensures that your local machine is protected from potentially malicious code and provides a consistent environment.
+---
 
-#### How the Sandbox Works
+## What's available
 
-*The embedded code editor was recently enhanced to ensure the full code is always visible. It now allows scrolling beyond the last line and the container uses `overflow-auto` so long files don't get clipped.*
+### Courses
 
+Anything under `courses/` with at least one lesson folder appears on the home page.
 
-1. **Code Submission**: Your code is sent to the backend via the `/run` endpoint.
-2. **Temp Directory**: The backend creates a temporary directory on the host machine and writes your code to a file (`main.py` for Python or `main.rs` for Rust).
-3. **Docker Execution**: The backend runs the `sandbox-runner` Docker image, mounting the temp directory into the container at `/app`.
-4. **Code Execution**: Inside the container, Python or Rust executes your code. The environment is isolated and clean for each run.
-5. **Output Capture**: Standard output and error streams are captured and returned to the frontend.
+| Course | What you build |
+|---|---|
+| **tinytorch** | A tiny neural-net library from scratch on NumPy (code, sheets, drawings) |
+| **llms-from-scratch** | Llama-style architecture, starting with drawings of the periphery |
+| **pytorch** | First tensor exercise |
 
-#### Where Code Is Written and Executed
+### Ways to learn (modalities)
 
-- **Host Side**: Your code is written to `/tmp/tmpXXXXXX/main.py` (temporary directory created by Python's `tempfile` module).
-- **Container Side**: This directory is mounted as `-v /tmp/tmpXXXXXX:/app`, making your code available at `/app/main.py` inside the container.
-- **Execution**: The container runs `cd /app && python main.py`, executing your code in an isolated environment.
+| Type | In the player | Good for |
+|---|---|---|
+| **Code** | Monaco editor, Python or Rust, Run + tests | Implementations, APIs, numerics |
+| **Spreadsheet** | Embedded Google Sheet | Shapes, `MMULT`, broadcasting, tensor intuition |
+| **Drawing** | Canvas over `question.png` | Data flow, architecture, connections |
 
-#### Adding Libraries to the Sandbox
+Reopen this overview anytime with **Learning Guide** in the header.
 
-To add new Python or Rust libraries for use in exercises:
+### Sandbox libraries (code lessons)
 
-1. **Edit `sandbox/Dockerfile`**:
-   ```dockerfile
-   RUN pip install numpy torch matplotlib  # Add more packages here
-   ```
+The runner already has **NumPy**, **PyTorch**, and **Matplotlib** (see `research/sandbox/Dockerfile` and the Modal image). Lessons should `import` only what is installed.
 
-2. **Rebuild the Docker image**:
-   ```bash
-   ./dev.sh
-   ```
+### AI (optional)
 
-3. **Use in Exercises**: Your new libraries will be available in all future code executions. For example, in a test or course exercise:
-   ```python
-   import numpy as np
-   import torch
-   ```
+With a Gemini key:
 
-#### Why This Architecture?
+- **SocratiQ** — chat tutor (Beginner / Intermediate / Advanced / Bloom’s)
+- **Drawing grades** — intent, not pixel-perfect match
+- **Exercise generation** — admin `POST /ai/generate/exercise`
 
-- **Security**: Running code in an isolated Docker container prevents malicious student code from affecting the host system.
-- **Consistency**: Every execution runs in the same environment, ensuring reproducible results across different machines.
-- **Scalability**: When deployed to Modal (cloud), this architecture allows sandboxed execution to run serverlessly without local Docker.
-- **Clean Slate**: Each execution gets a fresh Python interpreter, preventing state pollution between runs.
-- **Environment Variables**: The backend sets `PYTHONDONTWRITEBYTECODE=1` to prevent Python from creating `__pycache__` directories in the mounted temp folder, avoiding permission issues.
+Without a key, code execution and spreadsheets still work; tutoring and sketch grading pause.
 
-### Dynamic Course Discovery
-The backend dynamically scans the `courses/` directory. Any folder that follows the required structure is automatically identified and displayed on the app's homepage upon initialization.
+### Local studio extras
 
-## Getting Started
+On first local open you set a **name** (no account required) and can paste `GEMINI_API_KEY` into the UI (saved to `.env`). Details: [`docs/local_ai_and_learning_options.md`](docs/local_ai_and_learning_options.md).
 
-### 1. Prerequisites
+---
 
--   **Docker**: Required for local code execution. [Download Docker Desktop](https://www.docker.com/products/docker-desktop/).
--   **Node.js**: For the frontend. `brew install node`.
--   **uv**: Fast Python package manager.
-    ```bash
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    ```
+## How to use it (learner)
 
-### 2. Quick Start
+1. **Start the studio** (below) and open http://localhost:5173.
+2. Enter a name when asked. Optionally save a Gemini key (or skip).
+3. Skim **Learning Guide** (modalities + how to add your own folders).
+4. Open a course card. Work the lesson:
+   - **Code:** edit `main.py` / `main.rs` → **Run** (stdout) → **Submit** (tests).
+   - **Sheet:** copy the Google Sheet if prompted, use the formulas in the README.
+   - **Draw:** pencil / eraser / undo; submit for AI grading when AI is on.
+5. Use **SocratiQ** for hints. It sees the assignment and your current code; it should not paste the hidden solution.
+6. **Solution** appears only if the lesson has `solution.py` / `solution.rs` and you click it.
 
-Clone the repository and run the development script. It will automatically set up your Python environment, check for `GEMINI_API_KEY`, and start all services:
+Progress is local to this machine unless you sign in.
+
+---
+
+## How to add or customize a course
+
+Drop a folder in `courses/`. The backend scans the directory; refresh the home page.
+
+```text
+courses/
+└── my-course/
+    ├── README.md                 # Course blurb on the home card
+    └── lesson-1-introduction/    # or chapter1/lesson01/
+        ├── README.md             # Left-panel instructions
+        ├── main.py               # Starter (or main.rs)
+        ├── test.py               # Appended and run on Submit
+        └── solution.py           # Optional; unlocks the Solution button
+```
+
+Helper: [`docs/create_lesson_guide.md`](docs/create_lesson_guide.md) (`backend/scripts/create_lesson.py`).
+
+**Spreadsheet** lessons need `metadata.json` with `exercise_type: "spreadsheet"` and `google_sheet_id`.  
+**Drawing** lessons need `exercise_type: "drawing"` plus `question.png` (optional `solution.png`).
+
+Full file layouts are in [Exercise types](#exercise-types) below.
+
+---
+
+## Getting started (run locally)
+
+**Need:** [Docker Desktop](https://www.docker.com/products/docker-desktop/), Node.js, [uv](https://docs.astral.sh/uv/).
 
 ```bash
 ./dev.sh
 ```
 
--   **Backend**: http://localhost:8000
--   **Frontend**: http://localhost:5173
+- Frontend: http://localhost:5173  
+- Backend: http://localhost:8000  
 
-When opening the web studio locally for the first time, BaseLayer prompts you to configure your Gemini API key (or put it in `.env`) to activate SocratiQ tutoring, sketch grading, and dynamic lesson generation. It also presents an interactive tutorial of the available learning options (code execution, spreadsheets, and hand drawing) and shows how to customize your own curriculum. You can reopen this guide anytime using the **Learning Guide** button in the header. For full architectural details, see `docs/local_ai_and_learning_options.md`.
+`./dev.sh` creates the venv, offers a Gemini key if missing, and starts API + UI. Copy `.env.example` → `.env` if you prefer to set `GEMINI_API_KEY` and `SECRET_KEY` yourself (`SECRET_KEY` is generated for you in local/Docker dev if empty).
 
+**Stuck**
 
-### Troubleshooting
-
-- **`uv` not found**: Ensure `~/.cargo/bin` is in your `PATH`.
-- **Docker not running**: Ensure Docker Desktop is open.
-- **Port Conflict**: Check for existing processes on 8000 (backend) or 5173 (frontend).
-
-## Exercise Types
-
-BaseLayer supports three types of exercises, each suited to a different learning style.
-
-| Type | Description |
-|------|-------------|
-| **Coding** | Write Python or Rust code in a real editor, run tests, submit for grading |
-| **Spreadsheet** | Use Google Sheets formulas (e.g. `MMULT`) to build mathematical intuition |
-| **Hand Drawing** | Draw directly on a diagram with the mouse to show data flow or connections |
+- `uv` not found → put `~/.cargo/bin` (or uv’s install dir) on `PATH`
+- Code won’t run → Docker Desktop is running
+- Ports busy → free **8000** (API) and **5173** (Vite)
 
 ---
 
-### Coding Exercise
+## Build a course by asking (in progress)
 
-The default exercise type. Students write code in a Monaco editor, run tests, and submit.
+Shipped today: you take the courses above or write folders yourself.
 
-#### File Structure
-```text
-courses/my-course/my-lesson/
-├── README.md       # Lesson instructions (Markdown, shown on the left panel)
-├── main.py         # Starter code loaded into the editor
-├── test.py         # Tests automatically run on submission
-└── solution.py     # (Optional) Reference solution, shown via the "Solution" button
-```
+Next: type **what you want to learn** (example: “I want to learn numpy”). Docs, articles, or code are optional. BaseLayer should build a **playable** course from that question — Solveit-style micro-lessons (tiny toy data, 1–3 line tasks, inspect the output), using what this repo already has (sandbox NumPy/PyTorch, existing `courses/`, sheets, drawing, SocratiQ), and your learning style when a profile exists.
 
-> For **Rust** lessons, use `main.rs`, `test.rs`, and `solution.rs` instead. The platform auto-detects the language.
+Tracked as:
 
-No `metadata.json` needed — the default exercise type is `code`.
+| Issue | Piece |
+|---|---|
+| [#36](https://github.com/sotoblanco/BaseLayer/issues/36) | Ask (topic enough; examples optional) |
+| [#38](https://github.com/sotoblanco/BaseLayer/issues/38) | Plan grounded in platform resources |
+| [#39](https://github.com/sotoblanco/BaseLayer/issues/39) | Write real lesson files |
+| [#40](https://github.com/sotoblanco/BaseLayer/issues/40) | Verify they run in the sandbox |
+| [#41](https://github.com/sotoblanco/BaseLayer/issues/41) | Customize from Learning Guide / `LEARNING.md` |
+| [#37](https://github.com/sotoblanco/BaseLayer/issues/37) | Solveit tutor mode |
+| [#44](https://github.com/sotoblanco/BaseLayer/issues/44) | One action: question → course you can open |
+
+Until those land, add courses as folders (previous section).
 
 ---
 
-### Spreadsheet Exercise
+## Exercise types
 
+### Coding (default)
 
-Students work directly inside a Google Sheet embedded in the right panel. Great for building intuition for matrix operations and tensor math.
-
-#### File Structure
 ```text
 courses/my-course/my-lesson/
-├── README.md         # Lesson instructions
-└── metadata.json     # Declares the exercise type and links the Sheet
+├── README.md
+├── main.py      # starter
+├── test.py      # run on Submit
+└── solution.py  # optional
 ```
 
-#### `metadata.json`
+Rust: `main.rs`, `test.rs`, `solution.rs`. Language is detected from the extension. No `metadata.json` required.
+
+### Spreadsheet
+
+```text
+courses/my-course/my-lesson/
+├── README.md
+└── metadata.json
+```
+
 ```json
 {
   "exercise_type": "spreadsheet",
@@ -154,38 +178,18 @@ courses/my-course/my-lesson/
 }
 ```
 
-- **`google_sheet_id`**: The ID from the spreadsheet URL: `https://docs.google.com/spreadsheets/d/SHEET_ID/edit`
-- **`copy_on_open`**: When `true`, students are prompted to make a private copy before editing.
+Sheet ID is the path segment in `https://docs.google.com/spreadsheets/d/SHEET_ID/edit`. See [`docs/google_sheets_guide.md`](docs/google_sheets_guide.md).
 
----
+### Hand drawing
 
-### Hand Drawing Exercise
-
-Students draw on top of a diagram image using their mouse. Useful for exercises that require showing connections, arrows, or data flow — like matrix multiplication paths.
-
-#### File Structure
 ```text
 courses/my-course/chapter1/my-lesson/
-├── README.md         # Instructions telling the student what to draw
-├── metadata.json     # Declares the drawing exercise type
-├── question.png      # The background diagram students will draw on top of
-└── solution.png      # (Optional) Reference answer image
+├── README.md
+├── metadata.json
+├── question.png
+└── solution.png   # optional, improves grading
 ```
 
-#### AI-Powered Grading
-The platform uses **Gemini 3 Flash** to grade drawing submissions. The AI analyzes:
-1.  The **Instructions** (`README.md`).
-2.  The **Background Diagram** (`question.png`).
-3.  The **Reference Solution** (`solution.png` - if provided).
-4.  The **Student's Drawing**.
-
-This allows for intelligent grading that understands visual intent. Providing a `solution.png` (the original diagram with the correct answer drawn on it) significantly improves accuracy.
-
-#### Metadata and Routing
-For lessons nested inside chapters, the system automatically generates a unique slug:
-`{chapter_folder}--{lesson_folder}` (e.g., `chapter1--lesson1`).
-
-#### `metadata.json`
 ```json
 {
   "exercise_type": "drawing",
@@ -194,95 +198,42 @@ For lessons nested inside chapters, the system automatically generates a unique 
 }
 ```
 
-- **`stroke_color`**: Default pencil color (any CSS hex color). Default: red `#e11d48`.
-- **`stroke_width`**: Default brush size in pixels. Default: `4`.
-- **`question.png`**: The background diagram. Students see this image and draw on the canvas layer above it.
-
-The drawing toolbar includes: Pencil, Eraser, Color picker, Stroke size slider, Undo, and Clear.
+Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). Gemini grades using instructions, `question.png`, optional `solution.png`, and the sketch. Toolbar: pencil, eraser, color, width, undo, clear.
 
 ---
 
-## Adding New Courses
+## How it works (architecture)
 
-You can add new courses by simply creating a folder structure in the `courses/` directory.
+**Proxy.** Vite (`5173`) forwards `/file-courses`, `/run`, `/ai`, … to FastAPI (`8000`).
 
-### Directory Structure
-Each course must have at least one lesson folder to be visible in the app.
+**Discovery.** The API scans `courses/` on request. New folders appear after refresh.
 
-```text
-courses/
-└── my-new-course/
-    ├── README.md              # (Optional) Course overview description
-    └── lesson-1-introduction/
-        ├── README.md          # Lesson instructions (Markdown)
-        ├── main.py            # Starter code for the student
-        ├── test.py            # Automated tests to verify the solution
-        └── solution.py        # (Optional) Reference solution code
+**Run.** Submit sends code to `/run`. The backend writes `main.py` or `main.rs` in a temp dir, runs `sandbox-runner` (or a Modal sandbox in the cloud), returns stdout/stderr. Each run is a clean interpreter (`PYTHONDONTWRITEBYTECODE=1`).
+
+**Add a library to the sandbox**
+
+1. Install it in the sandbox image (local Dockerfile under `research/sandbox/` and/or `sandbox_image` in `backend/modal_app.py`).
+2. Rebuild (`./dev.sh` locally).
+3. Use it in `main.py` / tests.
+
+---
+
+## Project layout
+
+- `backend/` — FastAPI, `/run`, AI, auth, `routers/file_courses.py`
+- `frontend/` — React studio (classic + UX Light player)
+- `courses/` — all file-based curricula
+- `docs/` — AI setup, sheets, Modal, lesson script
+- `research/` — sandbox image and experiments
+- `dev.sh` / `docker-dev.sh` — local start
+
+---
+
+## Deploy (Modal)
+
+```bash
+cd frontend && npm install && npm run build
+cd ../backend && modal deploy modal_app.py
 ```
 
--   **README.md**: Used to display the lesson instructions on the left panel.
--   **main.py**: The code that will be loaded into the editor for the student.
--   **test.py**: Code that is appended to the student's code and executed to verify the results.
--   **solution.py**: Reference code that students can reveal by clicking the "Solution" button. If this file is missing, the button will not be displayed.
-
-### Multi-language Support
-For Rust courses, name your files `main.rs`, `test.rs`, and `solution.rs`. The platform automatically detects the language based on these file extensions.
-
-
-## Project Structure
-
--   `backend/`: FastAPI application, database models, and AI services.
-    - `main.py`: Core API endpoints including `/run` (code execution handler).
-    - `models.py`: SQLModel definitions for courses, exercises, and users.
-    - `database.py`: Database initialization and session management.
-    - `auth.py`: Authentication and user management routes.
-    - `routers/`: Modular API route handlers.
-    - `scripts/`: Utility scripts (e.g., `migrate_db.py`, `create_lesson.py`).
--   `frontend/`: React components, pages, and state management.
-    - `pages/CodingPage.tsx`, `FileCodingPage.tsx`: Main exercise execution interfaces.
-    - `components/CodeEditor.tsx`: Monaco editor integration.
--   `courses/`: Local directory where all file-based courses reside.
--   `docs/`: Technical guides and project documentation (e.g., `modal_deployment_guide.md`).
--   `research/`: Experimental notebooks and code sandboxes.
--   `dev.sh`: Main orchestration script for local development.
-
-## Deployment to Modal
-
-The application is optimized for serverless deployment on [Modal](https://modal.com). This allows the backend and code execution sandboxes to scale automatically.
-
-### Prerequisites
-
-1.  **Modal Account**: Create an account at [modal.com](https://modal.com).
-2.  **Modal CLI**: Install the `modal` package:
-    ```bash
-    pip install modal
-    ```
-3.  **Authentication**: Authenticate your local machine:
-    ```bash
-    modal setup
-    ```
-
-### Deployment Steps
-
-Before deploying, ensure you have a fresh build of the frontend:
-
-1.  **Build Frontend**:
-    ```bash
-    cd frontend
-    npm install
-    npm run build
-    ```
-
-2.  **Deploy to Modal**:
-    From the `backend` directory, run:
-    ```bash
-    cd ../backend
-    modal deploy modal_app.py
-    ```
-
-### Architecture on Modal
-
--   **Web Endpoint**: The FastAPI app is deployed as an ASGI app. It serves the static frontend files from the `/assets` directory.
--   **Persistent Storage**: A Modal Volume (`code-app-volume`) is used to persist the SQLite database.
--   **Serverless Sandboxes**: When code is executed, the backend spawns a new Modal Sandbox using the `sandbox_image` defined in `modal_app.py`, providing isolation and security without requiring local Docker.
--   **Environment Variables**: The `COURSES_DIR` is set to `/courses` inside the Modal container, where the course files are mounted.
+Needs a [Modal](https://modal.com) account (`pip install modal` then `modal setup`). The app serves the built UI, keeps SQLite on volume `code-app-volume`, and runs code in serverless sandboxes. `COURSES_DIR=/courses` inside the container. Guide: [`docs/modal_deployment_guide.md`](docs/modal_deployment_guide.md).
