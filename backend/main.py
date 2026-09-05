@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from auth import auth_router, get_current_admin, get_optional_user
+from auth import auth_router, get_current_admin, get_current_user
 from database import create_db_and_tables, get_session
 from models import (
     Course,
@@ -24,6 +24,7 @@ from models import (
 )
 from routers.ai import router as ai_router
 from routers.file_courses import router as file_courses_router
+from run_limits import enforce_run_limits
 
 
 @asynccontextmanager
@@ -173,8 +174,8 @@ def update_exercise(
 
 
 @app.post("/run")
-def run_code(submission: CodeSubmission, user: User = Depends(get_optional_user)):
-    # Logic: If running in Modal/Cloud, use Modal Sandbox. Else use Docker.
+def run_code(submission: CodeSubmission, user: User = Depends(get_current_user)):
+    enforce_run_limits(user.username, submission.code, submission.language)
     execution_env = os.environ.get("EXECUTION_ENV", "docker")
 
     if execution_env == "modal":

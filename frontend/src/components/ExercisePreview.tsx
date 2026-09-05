@@ -4,6 +4,7 @@ import { Panel, Group, Separator } from 'react-resizable-panels';
 import { CodeEditor } from './CodeEditor';
 import MarkdownViewer from './MarkdownViewer';
 import { API_BASE_URL } from '../config';
+import { messageForRunStatus } from '../runErrors';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 
@@ -84,6 +85,12 @@ export default function ExercisePreview({
                     language: currentLang
                 })
             });
+
+            const runError = messageForRunStatus(response.status);
+            if (runError) {
+                setOutput(runError);
+                return;
+            }
 
             const data = await response.json();
 

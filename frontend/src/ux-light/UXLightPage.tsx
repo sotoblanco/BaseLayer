@@ -25,6 +25,7 @@ import type {
   GradingResult,
 } from './types';
 import { API_BASE_URL } from '../config';
+import { messageForRunStatus } from '../runErrors';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from '../components/auth/AuthModal';
 
@@ -217,6 +218,16 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         headers,
         body: JSON.stringify({ code: payload, language: lesson.language || 'python' }),
       });
+      const runError = messageForRunStatus(res.status);
+      if (runError) {
+        if (res.status === 401) {
+          logout();
+          setIsAuthModalOpen(true);
+        }
+        pushOutput({ type: 'error', text: runError });
+        if (isSubmit) triggerFailure(runError);
+        return;
+      }
       const data = await res.json();
 
       if (data.stdout) pushOutput({ type: 'stdout', text: data.stdout });

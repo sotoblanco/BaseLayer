@@ -7,6 +7,7 @@ import { Play, RotateCw, ChevronLeft, ChevronRight, BookOpen } from 'lucide-reac
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
+import { messageForRunStatus } from '../runErrors';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 
@@ -105,6 +106,12 @@ export default function CodingPage() {
                     language: exercise.language || "python"
                 })
             });
+
+            const runError = messageForRunStatus(response.status);
+            if (runError) {
+                setOutput(runError);
+                return;
+            }
 
             const data = await response.json();
 

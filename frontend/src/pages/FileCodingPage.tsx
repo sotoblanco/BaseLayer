@@ -8,6 +8,7 @@ import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link,
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
+import { messageForRunStatus } from '../runErrors';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 import { AuthModal } from '../components/auth/AuthModal';
@@ -210,6 +211,16 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     language: lesson.language || "python"
                 })
             });
+
+            const runError = messageForRunStatus(response.status);
+            if (runError) {
+                if (response.status === 401) {
+                    logout();
+                    setIsAuthModalOpen(true);
+                }
+                setOutput(runError);
+                return;
+            }
 
             const data = await response.json();
 
