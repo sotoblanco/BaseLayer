@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.11](https://github.com/sotoblanco/BaseLayer/compare/v0.1.10...v0.1.11) (2026-09-05)
+
+
+### Bug Fixes
+
+* require auth and rate-limit POST /ai/discuss ([e89032b](https://github.com/sotoblanco/BaseLayer/commit/e89032b0a91a241abd202f281153870859b7c5b1)), closes [#27](https://github.com/sotoblanco/BaseLayer/issues/27)
+
 ### [0.1.10](https://github.com/sotoblanco/BaseLayer/compare/v0.1.9...v0.1.10) (2026-09-05)
 
 
