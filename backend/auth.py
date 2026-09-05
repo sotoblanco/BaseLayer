@@ -181,13 +181,21 @@ def _get_or_create_local_user(username: str, session: Session) -> User:
         session.add(user)
         session.commit()
         session.refresh(user)
-        return user
 
     if user.email != f"{username}@local.baselayer" or user.role != "student":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This username belongs to a registered account and cannot be accessed via local welcome",
         )
+
+    # Initialize LEARNING.md locally for this learner
+    try:
+        from learner_profile import get_or_create_profile
+
+        get_or_create_profile(user.username)
+    except Exception:
+        pass
+
     return user
 
 
@@ -229,6 +237,15 @@ def signup(user: UserCreate, session: Session = Depends(get_session)):
     session.add(db_user)
     session.commit()
     session.refresh(db_user)
+
+    # Initialize LEARNING.md locally for this learner
+    try:
+        from learner_profile import get_or_create_profile
+
+        get_or_create_profile(db_user.username)
+    except Exception:
+        pass
+
     return db_user
 
 
@@ -294,6 +311,14 @@ def google_login(data: GoogleTokenRequest, session: Session = Depends(get_sessio
             session.add(user)
             session.commit()
             session.refresh(user)
+
+        # Initialize LEARNING.md locally for this learner
+        try:
+            from learner_profile import get_or_create_profile
+
+            get_or_create_profile(user.username)
+        except Exception:
+            pass
 
         # 3. Issue JWT
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)

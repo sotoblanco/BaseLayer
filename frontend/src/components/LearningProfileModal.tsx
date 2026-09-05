@@ -9,6 +9,7 @@ import {
   Loader,
   AlertCircle,
   Activity,
+  Download,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -71,6 +72,18 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'LEARNING.md';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (!isOpen) return null;
@@ -239,6 +252,15 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownload}
+              className="px-3 py-1.5 rounded-lg border border-slate-800 text-xs text-slate-400 hover:text-white flex items-center gap-1.5"
+              title="Download local LEARNING.md file"
+            >
+              <Download size={13} />
+              <span>Download .md</span>
+            </button>
+
             {viewMode === 'edit' && (
               <button
                 onClick={() => setMarkdown(initialMarkdown)}
