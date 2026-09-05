@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.7](https://github.com/sotoblanco/BaseLayer/compare/v0.1.6...v0.1.7) (2026-09-05)
+
+
+### Bug Fixes
+
+* stop sending reference solutions to the AI tutor ([20a96e9](https://github.com/sotoblanco/BaseLayer/commit/20a96e9df1dc5fd90be47f00d97dfa2fa148992f)), closes [#13](https://github.com/sotoblanco/BaseLayer/issues/13)
+* wire classic Reset and reset lesson index on prev chapter ([76c77d0](https://github.com/sotoblanco/BaseLayer/commit/76c77d084a535d0416cf8d2643b7e3c41bb1c4b6)), closes [#8](https://github.com/sotoblanco/BaseLayer/issues/8) [#9](https://github.com/sotoblanco/BaseLayer/issues/9)
+
 ### [0.1.6](https://github.com/sotoblanco/BaseLayer/compare/v0.1.5...v0.1.6) (2026-09-05)
 
 
