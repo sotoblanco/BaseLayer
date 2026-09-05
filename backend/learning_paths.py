@@ -83,7 +83,9 @@ def build_context(topic: str, resources: list[LearningResource], courses_dir: Pa
         )
         parts.append("LEARNER-PROVIDED MATERIAL:\n" + resource_text)
     else:
-        parts.append("LEARNER-PROVIDED MATERIAL: none; infer a beginner-friendly progression from the topic and platform sources.")
+        parts.append(
+            "LEARNER-PROVIDED MATERIAL: none; infer a beginner-friendly progression from the topic and platform sources."
+        )
     return "\n\n".join(parts)[:MAX_CONTEXT_CHARS]
 
 
@@ -138,7 +140,11 @@ def write_learning_path(path: LearningPath, courses_dir: Path, topic: str) -> st
 def validate_learning_path(path: LearningPath) -> None:
     """Reject malformed generated Python before it becomes a visible course."""
     for index, lesson in enumerate(path.lessons, start=1):
-        if not lesson.starter_code.strip() or not lesson.test_code.strip() or not lesson.solution_code.strip():
+        if (
+            not lesson.starter_code.strip()
+            or not lesson.test_code.strip()
+            or not lesson.solution_code.strip()
+        ):
             raise ValueError(f"Lesson {index} is missing executable code")
         try:
             ast.parse(lesson.starter_code)

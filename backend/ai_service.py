@@ -139,7 +139,7 @@ JSON shape:
   "title": "...",
   "description": "...",
   "lessons": [{
-    "title": "...",
+            "title": "...",
     "objective": "...",
     "toy_data": "...",
     "expected_result": "...",

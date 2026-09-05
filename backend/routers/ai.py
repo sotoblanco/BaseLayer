@@ -170,7 +170,9 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Agentic course creation failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Agentic course creation failed: {exc}"
+        ) from exc
 
     return BuildCourseResponse(
         slug=result.slug,

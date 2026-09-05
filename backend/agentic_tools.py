@@ -179,9 +179,7 @@ def get_learning_intent(
         extracted_concepts = ["foundations", "primitives", "applications"]
 
     # Extract code blocks or markdown snippets from materials if present
-    code_snippets = re.findall(
-        r"```(?:[a-zA-Z]+)?\s*(.*?)\s*```", clean_materials, flags=re.DOTALL
-    )
+    code_snippets = re.findall(r"```(?:[a-zA-Z]+)?\s*(.*?)\s*```", clean_materials, flags=re.DOTALL)
     if not code_snippets and clean_materials:
         # Check for single-line code or prominent sentence
         lines = [
@@ -253,9 +251,7 @@ def get_context_learning(
         LearnerContextResult with preferred modalities, level, style, and pedagogical guidance.
     """
     clean_user = username.strip() or "local-learner"
-    resolved_data_dir = (
-        data_dir if data_dir is not None else Path(__file__).parent.parent / "data"
-    )
+    resolved_data_dir = data_dir if data_dir is not None else Path(__file__).parent.parent / "data"
     profile_path = resolved_data_dir / "learners" / clean_user / "LEARNING.md"
 
     if profile_path.is_file():
@@ -366,7 +362,12 @@ def get_platform_content_tools() -> PlatformToolsResult:
             description="HTML5 canvas drawing overlaid on architectural diagrams with Gemini multimodal AI grading.",
             strengths="System architecture, data flow pathways, neural network layer connections, token routing.",
             file_requirements=["README.md", "metadata.json", "question.png"],
-            supported_languages_or_tools=["HTML5 Canvas", "Pencil", "Eraser", "Gemini 3 Visual Grader"],
+            supported_languages_or_tools=[
+                "HTML5 Canvas",
+                "Pencil",
+                "Eraser",
+                "Gemini 3 Visual Grader",
+            ],
         ),
     }
 
@@ -493,7 +494,9 @@ def curate_solveit_course(
     solveit_compliance = {
         "micro_steps_enforced": all(len(item.micro_task) > 0 for item in curated_lessons),
         "toy_data_grounded": all(len(item.toy_data) > 0 for item in curated_lessons),
-        "immediate_inspection_present": all(len(item.inspect_prompt) > 0 for item in curated_lessons),
+        "immediate_inspection_present": all(
+            len(item.inspect_prompt) > 0 for item in curated_lessons
+        ),
         "curiosity_loop_active": all(len(item.curiosity_prompt) > 0 for item in curated_lessons),
         "boilerplate_eliminated": True,
     }

@@ -214,9 +214,7 @@ def materialize_curated_course(
         "- **Micro-Steps**: Tasks require 1 to 3 logical lines of code. No massive boilerplate dumps.\n"
         "- **Live Inspection**: Test in the editor and verify the exact output immediately.\n"
         "- **Curiosity Loop**: Reflect and simplify before moving to the next concept.\n\n"
-        "## Grounded In\n"
-        + "\n".join(f"- {ref}" for ref in curated.grounded_in)
-        + "\n"
+        "## Grounded In\n" + "\n".join(f"- {ref}" for ref in curated.grounded_in) + "\n"
     )
     (course_path / "README.md").write_text(overview_text, encoding="utf-8")
 
