@@ -6,7 +6,8 @@ export interface FileLesson {
   description: string;
   initial_code: string;
   test_code: string;
-  solution_code: string;
+  solution_code?: string;
+  has_solution?: boolean;
   order: number;
   language: string;
   chapter?: string;

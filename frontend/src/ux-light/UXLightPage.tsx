@@ -29,6 +29,7 @@ import { messageForRunStatus } from '../runErrors';
 import { testsToRun } from '../testsToRun';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from '../components/auth/AuthModal';
+import { fetchSolutionCode } from '../solutionApi';
 
 export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
   const { slug } = useParams<{ slug: string }>();
@@ -46,6 +47,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   const [lessonOverrideMd, setLessonOverrideMd] = useState<Record<string, string>>({});
   const [activeEditorTab, setActiveEditorTab] = useState<EditorTab>('script');
   const [isShowingSolution, setIsShowingSolution] = useState(false);
+  const [loadedSolution, setLoadedSolution] = useState('');
   const [editorTheme, setEditorTheme] = useState<'dark' | 'light'>('dark');
 
   const [activeConsoleTab, setActiveConsoleTab] = useState<ConsoleTab>('shell');
@@ -130,6 +132,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     setCode(saved !== null ? saved : lesson.initial_code || '');
     setActiveEditorTab('script');
     setIsShowingSolution(false);
+    setLoadedSolution('');
     setShowDrawingSolution(false);
     setXpPenalty(0);
     setGradingResult(null);
@@ -346,8 +349,15 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       lessonNumber={currentLessonIndex + 1}
       totalInChapter={currentChapter.lessons.length}
       isShowingSolution={isShowingSolution}
-      onToggleSolution={() => {
+      onToggleSolution={async () => {
         const next = !isShowingSolution;
+        if (next && exerciseType !== 'drawing' && !loadedSolution && slug && token) {
+          try {
+            setLoadedSolution(await fetchSolutionCode(slug, lesson.slug, token));
+          } catch {
+            setLoadedSolution('Unable to load solution.');
+          }
+        }
         setIsShowingSolution(next);
         if (next) {
           if (exerciseType === 'drawing') setShowDrawingSolution(true);
@@ -384,7 +394,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         code={code}
         onChange={handleCodeChange}
         testCode={lesson.test_code || ''}
-        solutionCode={lesson.solution_code || ''}
+        solutionCode={loadedSolution}
         activeTab={activeEditorTab}
         onSelectTab={setActiveEditorTab}
         isShowingSolution={isShowingSolution}
@@ -494,7 +504,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         />
       )}
       {isEmbedOpen && (
-        <EmbedModal lesson={lesson} currentCode={code} onClose={() => setIsEmbedOpen(false)} />
+        <EmbedModal lesson={lesson} currentCode={code} solutionCode={loadedSolution} onClose={() => setIsEmbedOpen(false)} />
       )}
       {isFlagOpen && <FlagReportModal lesson={lesson} onClose={() => setIsFlagOpen(false)} />}
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />

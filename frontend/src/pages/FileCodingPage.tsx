@@ -14,13 +14,15 @@ import { testsToRun } from '../testsToRun';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 import { AuthModal } from '../components/auth/AuthModal';
+import { fetchSolutionCode } from '../solutionApi';
 interface Lesson {
     slug: string;
     title: string;
     description: string;
     initial_code: string;
     test_code: string;
-    solution_code: string;
+    solution_code?: string;
+    has_solution?: boolean;
     order: number;
     language: string;
     chapter?: string;
@@ -53,6 +55,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
     const [editorTab, setEditorTab] = useState<'main' | 'tests' | 'solution'>('main');
     const [showSolution, setShowSolution] = useState(false);
+    const [loadedSolution, setLoadedSolution] = useState('');
 
     const [code, setCode] = useState<string>("");
     const [output, setOutput] = useState<string>("");
@@ -144,8 +147,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             setCode(lesson.initial_code);
             setOutput("");
             setEditorTab('main');
-            setShowSolution(false); // hide code solution on lesson change
-            setShowDrawingSolution(false); // hide drawing solution on lesson change
+            setShowSolution(false);
+            setLoadedSolution('');
+            setShowDrawingSolution(false);
             // Load saved spreadsheet URL if any
             const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
             setUserSheetUrl(savedUrl || "");
@@ -680,9 +684,17 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 >
                                                     🧪 {testsFilename}
                                                 </button>
-                                                {lesson?.solution_code && (
+                                                {lesson?.has_solution && (
                                                     <button
-                                                        onClick={() => {
+                                                        onClick={async () => {
+                                                            if (!loadedSolution && slug && lesson && token) {
+                                                                try {
+                                                                    const text = await fetchSolutionCode(slug, lesson.slug, token);
+                                                                    setLoadedSolution(text);
+                                                                } catch {
+                                                                    setLoadedSolution('Unable to load solution.');
+                                                                }
+                                                            }
                                                             setShowSolution(true);
                                                             setEditorTab('solution');
                                                         }}
@@ -722,7 +734,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 <div className="absolute inset-0" style={{ display: editorTab === 'solution' ? 'block' : 'none' }}>
                                                     <CodeEditor
                                                         key="editor-solution"
-                                                        code={lesson?.solution_code || ""}
+                                                        code={loadedSolution}
                                                         onChange={() => { }}
                                                         readOnly={true}
                                                         language={currentLang}

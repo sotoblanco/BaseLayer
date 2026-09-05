@@ -89,7 +89,8 @@ class TestParseLesson:
         assert lesson.description == "# Lesson 1 Instructions"
         assert lesson.initial_code == "def solve(): pass"
         assert lesson.test_code == "def test_solve(): pass"
-        assert lesson.solution_code == "def solve(): return 42"
+        assert lesson.solution_code == ""
+        assert lesson.has_solution is True
         assert lesson.language == "python"
         assert lesson.chapter == "chapter1"
         assert lesson.exercise_type == "code"
@@ -151,7 +152,8 @@ class TestParseLesson:
         assert lesson.language == "rust"
         assert lesson.initial_code == "fn main() {}"
         assert lesson.test_code == "#[test] fn t() {}"
-        assert lesson.solution_code == "fn main() { println!(); }"
+        assert lesson.solution_code == ""
+        assert lesson.has_solution is True
 
 
 class TestParseCourse:
@@ -314,6 +316,51 @@ class TestFileCoursesEndpoints:
         # Nonexistent lesson
         res3 = client.get("/file-courses/c_sol/ghost/solution")
         assert res3.status_code == 404
+
+    def test_course_payload_omits_solution_text(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        course_dir = courses_dir / "c_secret"
+        lesson_dir = course_dir / "l1"
+        lesson_dir.mkdir(parents=True)
+        (lesson_dir / "README.md").write_text("# L")
+        (lesson_dir / "main.py").write_text("pass")
+        (lesson_dir / "solution.py").write_text("SECRET_ANSWER = 42\n")
+
+        res = client.get("/file-courses/c_secret", headers=auth_headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert "SECRET_ANSWER" not in res.text
+        assert body["lessons"][0]["solution_code"] == ""
+        assert body["lessons"][0]["has_solution"] is True
+
+    def test_solution_code_requires_auth_and_returns_text(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        course_dir = courses_dir / "c_secret"
+        lesson_dir = course_dir / "l1"
+        lesson_dir.mkdir(parents=True)
+        (lesson_dir / "README.md").write_text("# L")
+        (lesson_dir / "main.py").write_text("pass")
+        (lesson_dir / "solution.py").write_text("SECRET_ANSWER = 42\n")
+
+        denied = client.get("/file-courses/c_secret/l1/solution-code")
+        assert denied.status_code == 401
+
+        ok = client.get("/file-courses/c_secret/l1/solution-code", headers=auth_headers)
+        assert ok.status_code == 200
+        assert ok.json()["solution_code"] == "SECRET_ANSWER = 42\n"
+
+        missing = client.get("/file-courses/c_secret/ghost/solution-code", headers=auth_headers)
+        assert missing.status_code == 404
 
     def test_get_lesson_path_fallback(self, tmp_path: Path, monkeypatch):
         courses_dir = tmp_path / "courses"

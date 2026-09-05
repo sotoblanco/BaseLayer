@@ -165,13 +165,17 @@ export function InstructionsPane({
       </div>
 
       <div className="h-[44px] min-h-[44px] px-4 sm:px-6 bg-[#f8fafc] border-t border-[#e2e8ee] flex items-center justify-between text-xs text-[#5b6b7b]">
-        <button
-          onClick={onToggleSolution}
-          className="flex items-center gap-1.5 font-bold hover:text-[#05192d] transition-colors"
-        >
-          {isShowingSolution ? <EyeOff size={14} /> : <Eye size={14} />}
-          <span>{isShowingSolution ? 'Hide Solution' : 'Show Solution'}</span>
-        </button>
+        {(lesson.has_solution || lesson.exercise_type === 'drawing') ? (
+          <button
+            onClick={onToggleSolution}
+            className="flex items-center gap-1.5 font-bold hover:text-[#05192d] transition-colors"
+          >
+            {isShowingSolution ? <EyeOff size={14} /> : <Eye size={14} />}
+            <span>{isShowingSolution ? 'Hide Solution' : 'Show Solution'}</span>
+          </button>
+        ) : (
+          <span />
+        )}
         <div className="hidden sm:flex items-center gap-1 text-[11px] font-mono text-[#93a3b4]">
           <kbd className="px-1.5 py-0.5 bg-white rounded border border-[#d0dbe5] text-[#5b6b7b]">Ctrl + Enter</kbd>
           <span>to run</span>

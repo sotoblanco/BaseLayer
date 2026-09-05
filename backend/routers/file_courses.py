@@ -59,7 +59,8 @@ class FileLesson(BaseModel):
     description: str  # README content
     initial_code: str  # main.py content
     test_code: str  # test.py content
-    solution_code: str  # solution.py content (hidden from user until requested)
+    solution_code: str = ""  # never included in course payloads; fetch via /solution-code
+    has_solution: bool = False
     order: int
     language: str = "python"
     chapter: str | None = None  # Chapter slug (e.g., "chapter1")
@@ -174,7 +175,8 @@ def parse_lesson(
         description=read_file_content(readme_path),
         initial_code=read_file_content(main_path),
         test_code=read_file_content(test_path),
-        solution_code=read_file_content(solution_path),
+        solution_code="",
+        has_solution=solution_path.exists(),
         order=order,
         language=language,
         chapter=chapter_slug,
@@ -352,6 +354,25 @@ def get_lesson_image(course_slug: str, lesson_slug: str):
         raise HTTPException(status_code=404, detail="Image not found for this lesson")
 
     return FileResponse(str(image_path), media_type="image/png")
+
+
+class SolutionCodeRead(BaseModel):
+    solution_code: str
+
+
+@router.get("/{course_slug}/{lesson_slug}/solution-code", response_model=SolutionCodeRead)
+def get_lesson_solution_code(
+    course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)
+):
+    lesson_dir = get_lesson_path(course_slug, lesson_slug)
+    if not lesson_dir:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    _language, _main, _test, solution_path = _detect_language_and_files(lesson_dir)
+    content = read_file_content(solution_path)
+    if not content:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    return SolutionCodeRead(solution_code=content)
 
 
 @router.get("/{course_slug}/{lesson_slug}/solution")
