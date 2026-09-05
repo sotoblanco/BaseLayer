@@ -15,7 +15,7 @@ from models import GoogleTokenRequest, Token, User, UserCreate, UserRead
 
 # --- Configuration ---
 # Fail fast: a missing or well-known SECRET_KEY makes JWTs forgeable.
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = (os.getenv("SECRET_KEY") or "").strip()
 if not SECRET_KEY or SECRET_KEY == "super-secret-key-change-me-in-production":
     raise RuntimeError(
         "SECRET_KEY is not set or is still the default placeholder value. "
