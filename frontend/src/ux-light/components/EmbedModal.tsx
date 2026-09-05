@@ -5,10 +5,11 @@ import type { FileLesson } from '../types';
 interface EmbedModalProps {
   lesson: FileLesson;
   currentCode: string;
+  solutionCode?: string;
   onClose: () => void;
 }
 
-export function EmbedModal({ lesson, currentCode, onClose }: EmbedModalProps) {
+export function EmbedModal({ lesson, currentCode, solutionCode = '', onClose }: EmbedModalProps) {
   const [copied, setCopied] = useState(false);
   const [embedType, setEmbedType] = useState<'standard' | 'mini'>('standard');
 
@@ -18,7 +19,7 @@ export function EmbedModal({ lesson, currentCode, onClose }: EmbedModalProps) {
 ${currentCode || lesson.initial_code}
   </code>
   <code data-type="solution">
-${lesson.solution_code}
+${solutionCode}
   </code>
   <code data-type="sct">
 ${lesson.test_code || ''}
