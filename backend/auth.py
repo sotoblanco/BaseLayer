@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 from datetime import datetime, timedelta
 
@@ -8,6 +9,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from jose import JWTError, jwt
+from pydantic import BaseModel, Field
 from sqlmodel import Session, or_, select
 
 from database import get_session
@@ -106,6 +108,19 @@ async def get_optional_user(
     return session.exec(select(User).where(User.username == username)).first()
 
 
+class LocalWelcomeRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=40)
+
+
+def local_welcome_enabled() -> bool:
+    return os.getenv("ALLOW_LOCAL_WELCOME", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _slugify_local_name(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")[:32]
+    return slug or "learner"
+
+
 async def get_current_admin(user: User = Depends(get_current_user)):
     if user.role != "admin":
         raise HTTPException(
@@ -116,6 +131,31 @@ async def get_current_admin(user: User = Depends(get_current_user)):
 
 
 # --- Routes ---
+
+
+@auth_router.post("/local-welcome", response_model=Token)
+def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_session)):
+    if not local_welcome_enabled():
+        raise HTTPException(status_code=403, detail="Local welcome is disabled")
+
+    username = _slugify_local_name(payload.name)
+    user = session.exec(select(User).where(User.username == username)).first()
+    if not user:
+        user = User(
+            username=username,
+            email=f"{username}@local.baselayer",
+            hashed_password=get_password_hash(str(uuid.uuid4())),
+            role="student",
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @auth_router.post("/signup", response_model=UserRead)

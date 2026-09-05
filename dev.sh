@@ -38,6 +38,9 @@ if [ -f .env ]; then
 fi
 ensure_secret_key
 
+# Local name-only welcome (never set this in production)
+export ALLOW_LOCAL_WELCOME="${ALLOW_LOCAL_WELCOME:-true}"
+
 # Ensure common paths are in PATH (for uv, etc.)
 export PATH="$HOME/.cargo/bin:$PATH"
 

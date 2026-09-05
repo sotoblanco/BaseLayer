@@ -13,7 +13,7 @@ import { buildTutorContext } from '../tutorContext';
 import { testsToRun } from '../testsToRun';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
-import { AuthModal } from '../components/auth/AuthModal';
+import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 interface Lesson {
     slug: string;
@@ -297,7 +297,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                         </>
                     )}
                 </div>
-                <AuthModal isOpen={isAuthModalOpen} onClose={() => navigate('/')} />
+                <WelcomeGate isOpen={isAuthModalOpen} onClose={() => navigate('/')} />
             </div>
         );
     }

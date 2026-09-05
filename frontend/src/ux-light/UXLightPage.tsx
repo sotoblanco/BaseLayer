@@ -28,7 +28,7 @@ import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
 import { testsToRun } from '../testsToRun';
 import { useAuth } from '../context/AuthContext';
-import { AuthModal } from '../components/auth/AuthModal';
+import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 
 export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
@@ -330,7 +330,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
             </>
           )}
         </div>
-        <AuthModal isOpen={isAuthModalOpen} onClose={() => navigate('/')} />
+        <WelcomeGate isOpen={isAuthModalOpen} onClose={() => navigate('/')} />
       </div>
     );
   }
@@ -507,7 +507,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         <EmbedModal lesson={lesson} currentCode={code} solutionCode={loadedSolution} onClose={() => setIsEmbedOpen(false)} />
       )}
       {isFlagOpen && <FlagReportModal lesson={lesson} onClose={() => setIsFlagOpen(false)} />}
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <WelcomeGate isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }
