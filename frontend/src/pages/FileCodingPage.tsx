@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
 import { messageForRunStatus } from '../runErrors';
+import { buildTutorContext } from '../tutorContext';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 import { AuthModal } from '../components/auth/AuthModal';
@@ -503,23 +504,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                     <AIChatPanel
                                         variant="integrated"
                                         lessonId={lesson?.slug ?? ''}
-                                        context={[
-                                            `## Lesson: ${lesson?.title}`,
-                                            `### Assignment`,
-                                            lesson?.description ?? '',
-                                            `### Student's Current Code`,
-                                            '```' + (lesson?.language ?? 'python'),
-                                            code,
-                                            '```',
-                                            `### Test Suite`,
-                                            '```' + (lesson?.language ?? 'python'),
-                                            lesson?.test_code ?? '',
-                                            '```',
-                                            `### Reference Solution`,
-                                            '```' + (lesson?.language ?? 'python'),
-                                            lesson?.solution_code ?? '',
-                                            '```',
-                                        ].join('\n')}
+                                        context={buildTutorContext(lesson, code)}
                                     />
                                 </div>
                             </div>

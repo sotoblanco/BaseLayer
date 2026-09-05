@@ -6,6 +6,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github.css';
 import type { FileLesson } from '../types';
 import AIChatPanel from '../../components/AIChatPanel';
+import { buildTutorContext } from '../../tutorContext';
 
 interface InstructionsPaneProps {
   lesson: FileLesson;
@@ -158,23 +159,7 @@ export function InstructionsPane({
           <AIChatPanel
             variant="integrated"
             lessonId={lesson.slug}
-            context={[
-              `## Lesson: ${lesson.title}`,
-              `### Assignment`,
-              lesson.description,
-              `### Student's Current Code`,
-              '```' + (lesson.language || 'python'),
-              code,
-              '```',
-              `### Test Suite`,
-              '```' + (lesson.language || 'python'),
-              lesson.test_code || '',
-              '```',
-              `### Reference Solution`,
-              '```' + (lesson.language || 'python'),
-              lesson.solution_code || '',
-              '```',
-            ].join('\n')}
+            context={buildTutorContext(lesson, code)}
           />
         </div>
       </div>
