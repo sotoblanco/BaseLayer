@@ -27,6 +27,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///database.db
       - COURSES_DIR=/courses
+      - ALLOW_LOCAL_WELCOME=true
     networks:
       - baselayer-net
     restart: unless-stopped

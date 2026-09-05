@@ -86,6 +86,32 @@ class TestSignup:
         assert response.status_code == 422  # Pydantic validation error
 
 
+class TestLocalWelcome:
+    def test_disabled_by_default(self, client: TestClient):
+        response = client.post("/auth/local-welcome", json={"name": "Ada"})
+        assert response.status_code == 403
+
+    def test_creates_student_and_returns_token(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
+        response = client.post("/auth/local-welcome", json={"name": "Ada Lovelace"})
+        assert response.status_code == 200
+        token = response.json()["access_token"]
+        from jose import jwt
+
+        from auth import ALGORITHM, SECRET_KEY
+
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        assert payload["sub"] == "ada-lovelace"
+        assert payload["role"] == "student"
+
+    def test_same_name_reuses_account(self, client: TestClient, monkeypatch):
+        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
+        first = client.post("/auth/local-welcome", json={"name": "Ada"})
+        second = client.post("/auth/local-welcome", json={"name": "Ada"})
+        assert first.status_code == 200
+        assert second.status_code == 200
+
+
 # ==============================================================
 #  LOGIN (Email / Password)
 # ==============================================================

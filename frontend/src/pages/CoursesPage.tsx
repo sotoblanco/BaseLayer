@@ -4,7 +4,8 @@ import { Terminal, ChevronRight, FolderCode } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { UserMenu } from '../components/UserMenu';
-import { AuthModal } from '../components/auth/AuthModal';
+import { WelcomeGate } from '../components/auth/WelcomeGate';
+import { isLocalHost } from '../isLocalHost';
 
 interface FileCourse {
   slug: string;
@@ -19,6 +20,12 @@ export default function CoursesPage() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated && isLocalHost()) {
+      setIsAuthModalOpen(true);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const fetchCourses = async () => {
@@ -136,7 +143,7 @@ export default function CoursesPage() {
         )}
       </main>
 
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <WelcomeGate isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );
 }
