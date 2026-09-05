@@ -9,6 +9,9 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from routers.file_courses import (
+    _is_safe_subpath,
+    _validate_lesson_slug,
+    _validate_slug,
     get_course_title,
     get_lesson_path,
     get_lesson_title,
@@ -60,6 +63,57 @@ class TestFileCoursesHelpers:
         (meta_dir / "README.md").write_text("# Meta")
         (meta_dir / "metadata.json").write_text('{"exercise_type": "spreadsheet"}')
         assert is_lesson_directory(meta_dir)
+
+    def test_validate_slug(self):
+        assert _validate_slug("python-basics") is True
+        assert _validate_slug("tinytorch_101") is True
+        assert _validate_slug("lesson01") is True
+
+        assert _validate_slug("") is False
+        assert _validate_slug("..") is False
+        assert _validate_slug("../etc") is False
+        assert _validate_slug(".hidden") is False
+        assert _validate_slug("a/b") is False
+        assert _validate_slug("a\\b") is False
+        assert _validate_slug("hello world") is False
+        assert _validate_slug("slug;drop table") is False
+
+    def test_validate_lesson_slug(self):
+        assert _validate_lesson_slug("lesson01") is True
+        assert _validate_lesson_slug("chapter1--lesson01") is True
+        assert _validate_lesson_slug("part-a--intro_1") is True
+
+        assert _validate_lesson_slug("") is False
+        assert _validate_lesson_slug("--") is False
+        assert _validate_lesson_slug("chapter1--") is False
+        assert _validate_lesson_slug("--lesson1") is False
+        assert _validate_lesson_slug("chapter1--lesson1--extra") is False
+        assert _validate_lesson_slug("ch1/../../etc") is False
+        assert _validate_lesson_slug("ch1--../bad") is False
+
+    def test_is_safe_subpath(self, tmp_path: Path):
+        base = tmp_path / "base"
+        base.mkdir()
+        child = base / "child"
+        child.mkdir()
+        nested = child / "deep"
+        nested.mkdir()
+
+        assert _is_safe_subpath(child, base) is True
+        assert _is_safe_subpath(nested, base) is True
+
+        # Base itself is not a safe subpath of base
+        assert _is_safe_subpath(base, base) is False
+
+        # Parent directory is not a safe subpath
+        assert _is_safe_subpath(tmp_path, base) is False
+
+        # Outside directory / traversal is not safe
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        assert _is_safe_subpath(outside, base) is False
+        traversal = base / ".." / "outside"
+        assert _is_safe_subpath(traversal, base) is False
 
 
 class TestParseLesson:
@@ -258,7 +312,7 @@ class TestFileCoursesEndpoints:
             assert "not found" in res.json()["detail"].lower()
 
     def test_get_lesson_image_found_and_not_found(
-        self, client: TestClient, tmp_path: Path, monkeypatch
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
     ):
         courses_dir = tmp_path / "courses"
         courses_dir.mkdir()
@@ -271,24 +325,35 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "README.md").write_text("# Img")
         (lesson_dir / "question.png").write_bytes(b"fake_image_bytes")
 
-        # Found
-        res = client.get("/file-courses/c_img/l_img/image")
+        # Unauthenticated request is rejected (Issue #28)
+        unauth = client.get("/file-courses/c_img/l_img/image")
+        assert unauth.status_code == 401
+
+        # Found with auth headers
+        res = client.get("/file-courses/c_img/l_img/image", headers=auth_headers)
         assert res.status_code == 200
         assert res.content == b"fake_image_bytes"
+        assert "private" in res.headers.get("cache-control", "").lower()
+
+        # Found with token query param
+        token = auth_headers["Authorization"].split(" ")[1]
+        res_token = client.get(f"/file-courses/c_img/l_img/image?token={token}")
+        assert res_token.status_code == 200
+        assert res_token.content == b"fake_image_bytes"
 
         # Missing image in existing lesson
         no_img_dir = course_dir / "l_no_img"
         no_img_dir.mkdir()
         (no_img_dir / "README.md").write_text("# No Img")
-        res2 = client.get("/file-courses/c_img/l_no_img/image")
+        res2 = client.get("/file-courses/c_img/l_no_img/image", headers=auth_headers)
         assert res2.status_code == 404
 
         # Nonexistent lesson
-        res3 = client.get("/file-courses/c_img/ghost/image")
+        res3 = client.get("/file-courses/c_img/ghost/image", headers=auth_headers)
         assert res3.status_code == 404
 
     def test_get_lesson_solution_found_and_not_found(
-        self, client: TestClient, tmp_path: Path, monkeypatch
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
     ):
         courses_dir = tmp_path / "courses"
         courses_dir.mkdir()
@@ -301,21 +366,69 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "README.md").write_text("# Sol")
         (lesson_dir / "solution.png").write_bytes(b"fake_sol_bytes")
 
-        # Found
-        res = client.get("/file-courses/c_sol/l_sol/solution")
+        # Unauthenticated request is rejected (Issue #28)
+        unauth = client.get("/file-courses/c_sol/l_sol/solution")
+        assert unauth.status_code == 401
+
+        # Found with auth headers
+        res = client.get("/file-courses/c_sol/l_sol/solution", headers=auth_headers)
         assert res.status_code == 200
         assert res.content == b"fake_sol_bytes"
+        # Must not cache solution images publicly (Issue #28)
+        assert "no-store" in res.headers.get("cache-control", "").lower()
+
+        # Found with token query param
+        token = auth_headers["Authorization"].split(" ")[1]
+        res_token = client.get(f"/file-courses/c_sol/l_sol/solution?token={token}")
+        assert res_token.status_code == 200
+        assert res_token.content == b"fake_sol_bytes"
 
         # Missing solution image
         no_sol_dir = course_dir / "l_no_sol"
         no_sol_dir.mkdir()
         (no_sol_dir / "README.md").write_text("# No Sol")
-        res2 = client.get("/file-courses/c_sol/l_no_sol/solution")
+        res2 = client.get("/file-courses/c_sol/l_no_sol/solution", headers=auth_headers)
         assert res2.status_code == 404
 
         # Nonexistent lesson
-        res3 = client.get("/file-courses/c_sol/ghost/solution")
+        res3 = client.get("/file-courses/c_sol/ghost/solution", headers=auth_headers)
         assert res3.status_code == 404
+
+    def test_path_traversal_attempts_rejected(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        """Path traversal attacks on course_slug and lesson_slug must be rejected (Issue #43)."""
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        # Course slug traversal
+        res1 = client.get("/file-courses/..%2F..%2Fetc", headers=auth_headers)
+        assert res1.status_code in (400, 404)
+
+        res2 = client.get("/file-courses/%2E%2E", headers=auth_headers)
+        assert res2.status_code in (400, 404)
+
+        # Lesson slug traversal
+        res3 = client.get("/file-courses/valid_course/..%2F..%2Fetc", headers=auth_headers)
+        assert res3.status_code in (400, 404)
+
+        res4 = client.get(
+            "/file-courses/valid_course/..%2F..%2Fetc/solution-code", headers=auth_headers
+        )
+        assert res4.status_code in (400, 404)
+
+        res5 = client.get("/file-courses/valid_course/..%2F..%2Fetc/image", headers=auth_headers)
+        assert res5.status_code in (400, 404)
+
+        res6 = client.get("/file-courses/valid_course/..%2F..%2Fetc/solution", headers=auth_headers)
+        assert res6.status_code in (400, 404)
+
+        # Direct function calls with traversal return None
+        assert parse_course("../../etc") is None
+        assert parse_course("..") is None
+        assert get_lesson_path("valid_course", "../../etc") is None
+        assert get_lesson_path("valid_course", "ch1--../bad") is None
 
     def test_course_payload_omits_solution_text(
         self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch

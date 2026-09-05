@@ -28,13 +28,15 @@ export function DrawingPane({
     feedback.toLowerCase().includes('pass') ||
     feedback.toLowerCase().includes('great job') ||
     feedback.toLowerCase().includes('correct');
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const imageAuthQuery = token ? `?token=${encodeURIComponent(token)}` : '';
 
   return (
     <div className="flex flex-col h-full bg-[#05192d]">
       <div className="flex-1 flex overflow-hidden min-h-0">
         <div className={`${showSolution ? 'w-1/2' : 'w-full'} border-r border-[#1d3952] min-h-0`}>
           <DrawingCanvas
-            imageUrl={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/image`}
+            imageUrl={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/image${imageAuthQuery}`}
             strokeColor={lesson.stroke_color}
             strokeWidth={lesson.stroke_width}
             onCanvasRef={onCanvasRef}
@@ -50,7 +52,7 @@ export function DrawingPane({
             </div>
             <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
               <img
-                src={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/solution`}
+                src={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/solution${imageAuthQuery}`}
                 alt="Solution"
                 className="max-w-full max-h-full object-contain rounded-lg border border-[#ffb800]/30"
               />

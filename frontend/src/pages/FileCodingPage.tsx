@@ -524,34 +524,41 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                 <div className="flex flex-col h-full">
                                     {/* Canvas + Solution area -- takes all remaining space */}
                                     <div className="flex-1 flex overflow-hidden min-h-0">
-                                        <div className={`${showDrawingSolution ? 'w-1/2' : 'w-full'} border-r border-[#333] transition-all duration-300 min-h-0`}>
-                                            <DrawingCanvas
-                                                imageUrl={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/image`}
-                                                strokeColor={lesson.stroke_color}
-                                                strokeWidth={lesson.stroke_width}
-                                                onCanvasRef={(ref) => { drawingCanvasRef.current = ref; }}
-                                            />
-                                        </div>
-                                        {showDrawingSolution && (
-                                            <div className="w-1/2 bg-slate-900/30 overflow-hidden flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
-                                                <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-slate-700/40">
-                                                    <h3 className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
-                                                        <Lightbulb size={14} className="fill-yellow-500/20" />
-                                                        Reference Solution
-                                                    </h3>
-                                                    <span className="text-[10px] text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/30">
-                                                        Compare with your drawing
-                                                    </span>
-                                                </div>
-                                                <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
-                                                    <img
-                                                        src={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/solution`}
-                                                        alt="Solution"
-                                                        className="max-w-full max-h-full object-contain rounded-lg border border-yellow-700/30 shadow-2xl shadow-black/40"
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
+                                        {(() => {
+                                            const imageAuthQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+                                            return (
+                                                <>
+                                                    <div className={`${showDrawingSolution ? 'w-1/2' : 'w-full'} border-r border-[#333] transition-all duration-300 min-h-0`}>
+                                                        <DrawingCanvas
+                                                            imageUrl={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/image${imageAuthQuery}`}
+                                                            strokeColor={lesson.stroke_color}
+                                                            strokeWidth={lesson.stroke_width}
+                                                            onCanvasRef={(ref) => { drawingCanvasRef.current = ref; }}
+                                                        />
+                                                    </div>
+                                                    {showDrawingSolution && (
+                                                        <div className="w-1/2 bg-slate-900/30 overflow-hidden flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
+                                                            <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-slate-700/40">
+                                                                <h3 className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
+                                                                    <Lightbulb size={14} className="fill-yellow-500/20" />
+                                                                    Reference Solution
+                                                                </h3>
+                                                                <span className="text-[10px] text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/30">
+                                                                    Compare with your drawing
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
+                                                                <img
+                                                                    src={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/solution${imageAuthQuery}`}
+                                                                    alt="Solution"
+                                                                    className="max-w-full max-h-full object-contain rounded-lg border border-yellow-700/30 shadow-2xl shadow-black/40"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                     {/* Bottom section: Terminal-style feedback + Action buttons */}
                                     <div className="shrink-0 flex flex-col bg-[#1e1e1e] border-t border-[#333]">

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import bcrypt  # Changed: Use bcrypt directly
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -31,6 +31,7 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 # --- Security Setup ---
 # Removed: pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -62,9 +63,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 
 # --- Dependencies ---
-async def get_current_user(
-    token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
-):
+def _decode_and_lookup_user(token: str, session: Session) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -84,7 +83,25 @@ async def get_current_user(
     return user
 
 
-oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+async def get_current_user(
+    token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
+) -> User:
+    return _decode_and_lookup_user(token, session)
+
+
+async def get_current_user_for_media(
+    token_header: str | None = Depends(oauth2_scheme_optional),
+    token_query: str | None = Query(None, alias="token"),
+    session: Session = Depends(get_session),
+) -> User:
+    token = token_header or token_query
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _decode_and_lookup_user(token, session)
 
 
 async def get_optional_user(
@@ -133,12 +150,26 @@ async def get_current_admin(user: User = Depends(get_current_user)):
 # --- Routes ---
 
 
-@auth_router.post("/local-welcome", response_model=Token)
-def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_session)):
-    if not local_welcome_enabled():
-        raise HTTPException(status_code=403, detail="Local welcome is disabled")
+RESERVED_LOCAL_USERNAMES = {
+    "admin",
+    "administrator",
+    "root",
+    "superuser",
+    "system",
+    "mod",
+    "moderator",
+}
 
-    username = _slugify_local_name(payload.name)
+
+def _validate_local_username(username: str) -> None:
+    if username in RESERVED_LOCAL_USERNAMES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Username '{username}' is reserved and cannot be used for local sessions",
+        )
+
+
+def _get_or_create_local_user(username: str, session: Session) -> User:
     user = session.exec(select(User).where(User.username == username)).first()
     if not user:
         user = User(
@@ -150,9 +181,27 @@ def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_s
         session.add(user)
         session.commit()
         session.refresh(user)
+        return user
+
+    if user.email != f"{username}@local.baselayer" or user.role != "student":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This username belongs to a registered account and cannot be accessed via local welcome",
+        )
+    return user
+
+
+@auth_router.post("/local-welcome", response_model=Token)
+def local_welcome(payload: LocalWelcomeRequest, session: Session = Depends(get_session)):
+    if not local_welcome_enabled():
+        raise HTTPException(status_code=403, detail="Local welcome is disabled")
+
+    username = _slugify_local_name(payload.name)
+    _validate_local_username(username)
+    user = _get_or_create_local_user(username, session)
 
     access_token = create_access_token(
-        data={"sub": user.username, "role": user.role},
+        data={"sub": user.username, "role": "student"},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     return {"access_token": access_token, "token_type": "bearer"}
