@@ -8,18 +8,30 @@ from google import genai
 
 class AIService:
     def __init__(self):
+        self.client = None
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             print("Warning: GEMINI_API_KEY not found in environment variables.")
         else:
+            self.configure_key(api_key)
+
+    def configure_key(self, api_key: str):
+        if api_key:
             self.client = genai.Client(api_key=api_key)
+            os.environ["GEMINI_API_KEY"] = api_key
+        else:
+            self.client = None
+
+    @property
+    def is_configured(self) -> bool:
+        return self.client is not None
 
     def generate_exercise(self, prompt: str, language: str = "python") -> dict[str, Any]:
         """
         Generates a coding exercise based on a prompt.
         Returns a dictionary with title, lesson, assignment, starting_code, and test_cases.
         """
-        if not hasattr(self, "client"):
+        if not self.is_configured:
             return {"error": "AI service not configured"}
 
         full_prompt = f"""
@@ -89,7 +101,7 @@ class AIService:
         """
         Chat with the AI about implementation details.
         """
-        if not hasattr(self, "client"):
+        if not self.is_configured:
             return "AI service not configured."
 
         system_prompt = """
@@ -133,7 +145,7 @@ class AIService:
         """
         Evaluates a drawing submission using Gemini 3.
         """
-        if not hasattr(self, "client"):
+        if not self.is_configured:
             return {"error": "AI service not configured"}
 
         solution_ref_text = ""

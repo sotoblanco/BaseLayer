@@ -46,3 +46,47 @@ export const discussImplementation = async (message: string, context?: string, u
 
     return response.json();
 };
+
+export interface AIStatus {
+    configured: boolean;
+    has_key: boolean;
+    model: string;
+}
+
+export interface ConfigureKeyResult {
+    success: boolean;
+    message: string;
+    saved_to_file: boolean;
+}
+
+export const getAiStatus = async (): Promise<AIStatus> => {
+    const response = await fetch(`${API_BASE_URL}/ai/status`);
+    if (!response.ok) {
+        throw new Error('Failed to fetch AI status');
+    }
+    return response.json();
+};
+
+export const configureAiKey = async (apiKey: string): Promise<ConfigureKeyResult> => {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+    };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/ai/configure-key`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ api_key: apiKey }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to configure AI key');
+    }
+
+    return response.json();
+};
+
