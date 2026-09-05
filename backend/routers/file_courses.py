@@ -13,6 +13,7 @@ courses/
 import base64
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ai_service import ai_service
-from auth import get_current_user
+from auth import get_current_user, get_current_user_for_media
 from models import User
 
 router = APIRouter(prefix="/file-courses", tags=["file-courses"])
@@ -41,6 +42,40 @@ def _find_courses_dir() -> Path:
 
 
 COURSES_DIR = _find_courses_dir()
+
+_SLUG_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_slug(slug: str) -> bool:
+    """Validate that a slug segment contains only alphanumeric, dash, and underscore."""
+    if not slug or not _SLUG_REGEX.fullmatch(slug):
+        return False
+    if ".." in slug or slug.startswith("."):
+        return False
+    return True
+
+
+def _validate_lesson_slug(lesson_slug: str) -> bool:
+    """Validate lesson slug, which may be 'lesson' or 'chapter--lesson'."""
+    if not lesson_slug:
+        return False
+    if "--" in lesson_slug:
+        parts = lesson_slug.split("--")
+        if len(parts) != 2:
+            return False
+        return _validate_slug(parts[0]) and _validate_slug(parts[1])
+    return _validate_slug(lesson_slug)
+
+
+def _is_safe_subpath(target: Path, parent: Path) -> bool:
+    """Ensure target path strictly resides within parent directory (prevents path traversal)."""
+    try:
+        target_resolved = target.resolve()
+        parent_resolved = parent.resolve()
+        rel = target_resolved.relative_to(parent_resolved)
+        return str(rel) != "." and not str(rel).startswith("..")
+    except (ValueError, RuntimeError):
+        return False
 
 
 class FileLessonSummary(BaseModel):
@@ -259,8 +294,10 @@ def _get_course_description(course_path: Path, course_slug: str) -> str:
 
 def parse_course(course_slug: str) -> FileCourse | None:
     """Parse a course directory into a FileCourse object"""
+    if not _validate_slug(course_slug):
+        return None
     course_path = COURSES_DIR / course_slug
-    if not course_path.is_dir():
+    if not _is_safe_subpath(course_path, COURSES_DIR) or not course_path.is_dir():
         return None
 
     subdirs = _get_valid_subdirs(course_path)
@@ -302,6 +339,8 @@ def list_file_courses():
 @router.get("/{course_slug}", response_model=FileCourse)
 def get_file_course(course_slug: str, user: User = Depends(get_current_user)):
     """Get a specific file-based course with all its lessons"""
+    if not _validate_slug(course_slug):
+        raise HTTPException(status_code=400, detail="Invalid course slug format")
     course = parse_course(course_slug)
     if not course:
         raise HTTPException(status_code=404, detail=f"Course '{course_slug}' not found")
@@ -311,6 +350,8 @@ def get_file_course(course_slug: str, user: User = Depends(get_current_user)):
 @router.get("/{course_slug}/{lesson_slug}", response_model=FileLesson)
 def get_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)):
     """Get a specific lesson from a file-based course"""
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
     course = parse_course(course_slug)
     if not course:
         raise HTTPException(status_code=404, detail=f"Course '{course_slug}' not found")
@@ -325,35 +366,51 @@ def get_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(get
 
 
 def get_lesson_path(course_slug: str, lesson_slug: str) -> Path | None:
-    """Resolve the slug to its physical directory path."""
+    """Resolve the slug to its physical directory path safely."""
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        return None
+
     course_path = COURSES_DIR / course_slug
+    if not _is_safe_subpath(course_path, COURSES_DIR) or not course_path.is_dir():
+        return None
+
     if "--" in lesson_slug:
         chapter_dir, lesson_dir = lesson_slug.split("--", 1)
         path = course_path / chapter_dir / lesson_dir
     else:
         path = course_path / lesson_slug
 
-    if path.is_dir():
+    if _is_safe_subpath(path, course_path) and path.is_dir():
         return path
 
     for entry in course_path.rglob(f"{lesson_slug}"):
-        if entry.is_dir():
+        if entry.is_dir() and _is_safe_subpath(entry, course_path):
             return entry
     return None
 
 
 @router.get("/{course_slug}/{lesson_slug}/image")
-def get_lesson_image(course_slug: str, lesson_slug: str):
+def get_lesson_image(
+    course_slug: str,
+    lesson_slug: str,
+    user: User = Depends(get_current_user_for_media),
+):
     """Serve the question.png image for a drawing exercise."""
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
     lesson_dir = get_lesson_path(course_slug, lesson_slug)
     if not lesson_dir:
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     image_path = lesson_dir / "question.png"
-    if not image_path.exists():
+    if not _is_safe_subpath(image_path, COURSES_DIR) or not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found for this lesson")
 
-    return FileResponse(str(image_path), media_type="image/png")
+    return FileResponse(
+        str(image_path),
+        media_type="image/png",
+        headers={"Cache-Control": "private, no-cache"},
+    )
 
 
 class SolutionCodeRead(BaseModel):
@@ -364,11 +421,15 @@ class SolutionCodeRead(BaseModel):
 def get_lesson_solution_code(
     course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)
 ):
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
     lesson_dir = get_lesson_path(course_slug, lesson_slug)
     if not lesson_dir:
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     _language, _main, _test, solution_path = _detect_language_and_files(lesson_dir)
+    if not _is_safe_subpath(solution_path, COURSES_DIR):
+        raise HTTPException(status_code=403, detail="Access denied")
     content = read_file_content(solution_path)
     if not content:
         raise HTTPException(status_code=404, detail="Solution not found")
@@ -376,17 +437,27 @@ def get_lesson_solution_code(
 
 
 @router.get("/{course_slug}/{lesson_slug}/solution")
-def get_lesson_solution(course_slug: str, lesson_slug: str):
+def get_lesson_solution(
+    course_slug: str,
+    lesson_slug: str,
+    user: User = Depends(get_current_user_for_media),
+):
     """Serve the solution.png image for a drawing exercise."""
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
     lesson_dir = get_lesson_path(course_slug, lesson_slug)
     if not lesson_dir:
         raise HTTPException(status_code=404, detail="Lesson not found")
 
     image_path = lesson_dir / "solution.png"
-    if not image_path.exists():
+    if not _is_safe_subpath(image_path, COURSES_DIR) or not image_path.exists():
         raise HTTPException(status_code=404, detail="Solution image not found for this lesson")
 
-    return FileResponse(str(image_path), media_type="image/png")
+    return FileResponse(
+        str(image_path),
+        media_type="image/png",
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 class DrawingSubmission(BaseModel):
@@ -428,6 +499,8 @@ def submit_drawing(
     user: User = Depends(get_current_user),
 ):
     """Evaluate a drawing submission using AI."""
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
     lesson_dir = get_lesson_path(course_slug, lesson_slug)
     if not lesson_dir:
         raise HTTPException(status_code=404, detail="Lesson not found")
@@ -453,6 +526,8 @@ def _validate_spreadsheet_lesson(lesson: FileLesson) -> FileLesson:
 
 def _find_lesson_for_copy(course_slug: str, lesson_slug: str) -> FileLesson:
     """Find and validate lesson for spreadsheet copy."""
+    if not _validate_slug(course_slug) or not _validate_lesson_slug(lesson_slug):
+        raise HTTPException(status_code=400, detail="Invalid slug format")
     course = parse_course(course_slug)
     if not course:
         raise HTTPException(status_code=404, detail=f"Course '{course_slug}' not found")
