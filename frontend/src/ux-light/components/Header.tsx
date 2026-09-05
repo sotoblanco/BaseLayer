@@ -14,6 +14,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import type { FileCourse, FileLesson, UXLightChapter } from '../types';
+import { UserMenu } from '../../components/UserMenu';
 
 interface HeaderProps {
   course: FileCourse;
@@ -253,6 +254,7 @@ export function Header({
         >
           <ArrowLeft size={16} />
         </button>
+        <UserMenu variant="light" />
       </div>
     </header>
   );
