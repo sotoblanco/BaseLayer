@@ -245,7 +245,9 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
                         event_type="run_result",
                         payload={
                             "success": result.returncode == 0,
-                            "is_submit": bool(submission.test_code and submission.test_code.strip()),
+                            "is_submit": bool(
+                                submission.test_code and submission.test_code.strip()
+                            ),
                             "language": submission.language,
                         },
                     )

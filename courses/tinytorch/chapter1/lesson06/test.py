@@ -9,8 +9,9 @@ def test_matmul():
     expected = np.array([[19, 22], [43, 50]])
     assert np.array_equal(result.data, expected)
 
+
 def test_rectagunlar_matrices():
-    a = Tensor(np.array([[1, 4, 7], [2,  4, 7]]))
+    a = Tensor(np.array([[1, 4, 7], [2, 4, 7]]))
     b = Tensor(np.array([[2, 3], [3, 4], [4, 5]]))
     result = a.matmul(b)
     expected = np.array([[42, 54], [44, 57]])
@@ -28,6 +29,7 @@ def test_matmul_shape_mismatch():
         # solution message contains "shape mismatch" and dimensions
         assert "shape mismatch" in str(e).lower()
 
+
 def test_matmul_scalar_error():
     a = Tensor([[1, 2], [3, 4]])
     b = 5  # Not a Tensor
@@ -36,6 +38,3 @@ def test_matmul_scalar_error():
         assert False, "Expected TypeError for non-Tensor input"
     except TypeError as e:
         assert "requires Tensor" in str(e)
-
-
-

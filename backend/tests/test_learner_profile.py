@@ -95,12 +95,18 @@ I prefer visual and drawing warm-ups before jumping to code.
         parsed = record_learner_event(
             username="student1",
             event_type="lesson_opened",
-            payload={"course_slug": "tinytorch", "lesson_slug": "chapter1--lesson02", "ui": "light"},
+            payload={
+                "course_slug": "tinytorch",
+                "lesson_slug": "chapter1--lesson02",
+                "ui": "light",
+            },
             base_dir=tmp_path,
         )
 
         assert parsed["frontmatter"]["preferred_ui"] == "light"
-        assert any("tinytorch" in line and "chapter1--lesson02" in line for line in parsed["courses_taken"])
+        assert any(
+            "tinytorch" in line and "chapter1--lesson02" in line for line in parsed["courses_taken"]
+        )
 
     def test_record_run_and_retry_signals(self, tmp_path: Path):
         get_or_create_profile("coder1", base_dir=tmp_path)
@@ -154,7 +160,10 @@ I prefer visual and drawing warm-ups before jumping to code.
         )
 
         _, parsed = get_or_create_profile("author1", base_dir=tmp_path)
-        assert any("generated-numpy-intro" in b and "4 Solveit lessons" in b for b in parsed["courses_built"])
+        assert any(
+            "generated-numpy-intro" in b and "4 Solveit lessons" in b
+            for b in parsed["courses_built"]
+        )
 
 
 class TestLearnerProfileAPI:

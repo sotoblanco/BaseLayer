@@ -23,7 +23,7 @@ When the tests run, your function should return an object that:
 
 ```python
 result = create_tensor()
-print(result.data)   # [[1, 2, 3], [4, 5, 6]]
+print(result.data)  # [[1, 2, 3], [4, 5, 6]]
 print(result.shape)  # (2, 3)
 ```
 

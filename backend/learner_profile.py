@@ -28,9 +28,7 @@ def get_learners_data_dir() -> Path:
 
 class LearnerFrontMatter(BaseModel):
     username: str
-    updated_at: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     version: int = 1
     preferred_ui: Literal["classic", "light"] = "light"
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"] = "solveit"
@@ -196,9 +194,7 @@ def get_or_create_profile(
             if line.strip().startswith("- ")
         ],
         "signals": [
-            line.strip()
-            for line in sections.get("Signals", [])
-            if line.strip().startswith("- ")
+            line.strip() for line in sections.get("Signals", []) if line.strip().startswith("- ")
         ],
         "customize_next": [
             line.strip()
@@ -292,7 +288,9 @@ def record_learner_event(
             if signal_text not in signals:
                 signals.append(signal_text)
         elif success and is_submit:
-            signal_text = f"- Completed {course_slug} ({lesson_slug}) with passing {language} tests."
+            signal_text = (
+                f"- Completed {course_slug} ({lesson_slug}) with passing {language} tests."
+            )
             if signal_text not in signals:
                 signals.append(signal_text)
 
@@ -300,7 +298,9 @@ def record_learner_event(
 
     elif event_type == "reset":
         signals = sections.get("Signals", [])
-        signal_text = f"- Reset exercise on {course_slug} ({lesson_slug}) to re-attempt from scratch."
+        signal_text = (
+            f"- Reset exercise on {course_slug} ({lesson_slug}) to re-attempt from scratch."
+        )
         signals.append(signal_text)
         sections["Signals"] = signals[-10:]
 

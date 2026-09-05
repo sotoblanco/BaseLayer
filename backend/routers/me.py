@@ -51,9 +51,7 @@ def get_my_learning_profile(user: User = Depends(get_current_user)):
 
 
 @router.put("/learning-profile", response_model=LearningProfileResponse)
-def update_my_learning_profile(
-    body: UpdateProfileRequest, user: User = Depends(get_current_user)
-):
+def update_my_learning_profile(body: UpdateProfileRequest, user: User = Depends(get_current_user)):
     """Update the authenticated user's LEARNING.md profile with validation."""
     try:
         markdown, parsed = update_profile_markdown(user.username, body.markdown)
@@ -65,9 +63,7 @@ def update_my_learning_profile(
 
 
 @router.post("/learning-profile/events", response_model=ProfileEventResponse)
-def emit_learning_event(
-    event: ProfileEventRequest, user: User = Depends(get_current_user)
-):
+def emit_learning_event(event: ProfileEventRequest, user: User = Depends(get_current_user)):
     """Emit a typed learner activity event to patch LEARNING.md."""
     try:
         updated_parsed = record_learner_event(
@@ -77,6 +73,4 @@ def emit_learning_event(
         )
         return ProfileEventResponse(success=True, profile=updated_parsed)
     except Exception as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Failed to record event: {str(exc)}"
-        ) from exc
+        raise HTTPException(status_code=400, detail=f"Failed to record event: {str(exc)}") from exc

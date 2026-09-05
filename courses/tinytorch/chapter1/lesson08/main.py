@@ -1,14 +1,14 @@
 import numpy as np
 
+
 class Tensor:
     def __init__(self, data):
-        """Create a new tensor from data.        
-        """
+        """Create a new tensor from data."""
         self.data = np.array(data, dtype=np.float32)
         self.shape = self.data.shape
         self.size = self.data.size
         self.dtype = self.data.dtype
-        
+
     def reshape(self, *shape):
         ### BEGIN SOLUTION
 

@@ -2,7 +2,7 @@
 class Tensor:
     def __init__(self, data):
         self.data = data
-    
+
     @property
     def shape(self):
         if not self.data:

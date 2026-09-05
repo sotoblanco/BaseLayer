@@ -1,0 +1,2 @@
+def classify(value):
+    pass
