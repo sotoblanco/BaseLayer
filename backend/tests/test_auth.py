@@ -466,3 +466,52 @@ class TestAuthHelpersDirect:
         # Case 5: Valid JWT, user not found in DB
         ghost_jwt = create_access_token(data={"sub": "ghost_opt_user", "role": "student"})
         assert await get_optional_user(token=ghost_jwt, session=session) is None
+
+
+# ==============================================================
+#  SECRET_KEY CONFIG
+# ==============================================================
+
+
+class TestSecretKeyConfig:
+    """auth.py must fail fast when SECRET_KEY is missing or is the default placeholder."""
+
+    IMPORT_CMD = (
+        "import os; "
+        "os.environ.pop('SECRET_KEY', None); "
+        "os.environ['GOOGLE_CLIENT_ID']='test'; "
+        "os.environ['DATABASE_URL']='sqlite://'; "
+        "import auth"
+    )
+
+    def test_missing_secret_key_fails_fast(self):
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        result = subprocess.run(
+            [sys.executable, "-c", self.IMPORT_CMD],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[1],
+        )
+        assert result.returncode != 0
+        assert "SECRET_KEY" in result.stderr
+
+    def test_placeholder_secret_key_fails_fast(self):
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        code = self.IMPORT_CMD.replace(
+            "os.environ.pop('SECRET_KEY', None);",
+            "os.environ['SECRET_KEY']='super-secret-key-change-me-in-production';",
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[1],
+        )
+        assert result.returncode != 0
+        assert "SECRET_KEY" in result.stderr

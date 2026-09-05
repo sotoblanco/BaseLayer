@@ -14,7 +14,14 @@ from database import get_session
 from models import GoogleTokenRequest, Token, User, UserCreate, UserRead
 
 # --- Configuration ---
-SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-change-me-in-production")
+# Fail fast: a missing or well-known SECRET_KEY makes JWTs forgeable.
+SECRET_KEY = (os.getenv("SECRET_KEY") or "").strip()
+if not SECRET_KEY or SECRET_KEY == "super-secret-key-change-me-in-production":
+    raise RuntimeError(
+        "SECRET_KEY is not set or is still the default placeholder value. "
+        "Set SECRET_KEY to a long, random value before starting the server "
+        '(e.g. `python -c "import secrets; print(secrets.token_hex(32))"`).'
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week for development ease
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
