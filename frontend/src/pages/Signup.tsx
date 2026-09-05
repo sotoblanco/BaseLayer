@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, Mail, KeyRound } from 'lucide-react';
 import { API_BASE_URL, APP_VERSION } from "../config";
+import { GoogleSignInButton, hasGoogleSignIn } from '../components/auth/GoogleSignInButton';
 
 export default function Signup() {
     const [username, setUsername] = useState('');
@@ -52,6 +53,25 @@ export default function Signup() {
                     <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm">
                         {error}
                     </div>
+                )}
+
+                {hasGoogleSignIn && (
+                    <>
+                        <div className="mb-6">
+                            <GoogleSignInButton
+                                onSuccess={() => navigate('/')}
+                                onError={setError}
+                            />
+                        </div>
+                        <div className="relative mb-6">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t border-slate-800" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-slate-900 px-2 text-slate-500">Or continue with email</span>
+                            </div>
+                        </div>
+                    </>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
