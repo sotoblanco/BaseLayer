@@ -341,7 +341,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     {/* Previous Chapter Button */}
                     {chapters.length > 1 && (
                         <button
-                            onClick={() => setCurrentChapterIndex(Math.max(0, currentChapterIndex - 1))}
+                            onClick={() => {
+                                setCurrentChapterIndex(Math.max(0, currentChapterIndex - 1));
+                                setCurrentLessonIndex(0);
+                            }}
                             disabled={currentChapterIndex === 0}
                             className="p-2 rounded text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             title="Previous Chapter"
@@ -749,7 +752,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Console Output</span>
 
                                             <div className="flex gap-2">
-                                                <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded transition-colors">
+                                                <button
+                                                    onClick={() => {
+                                                        if (!lesson) return;
+                                                        setCode(lesson.initial_code || '');
+                                                        setOutput('');
+                                                    }}
+                                                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded transition-colors"
+                                                >
                                                     <RotateCw size={14} /> Reset
                                                 </button>
                                                 <button
