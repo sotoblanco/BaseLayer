@@ -55,6 +55,31 @@ class TestSignup:
         assert response.status_code == 400
         assert "Email already registered" in response.json()["detail"]
 
+    def test_signup_ignores_role(self, client: TestClient):
+        """A user cannot self-assign admin at signup; role is always student."""
+        from tests.conftest import ADMIN_USER
+
+        response = client.post("/auth/signup", json=ADMIN_USER)
+        assert response.status_code == 200
+        assert response.json()["role"] == "student"
+
+        login = client.post(
+            "/auth/login",
+            data={"username": ADMIN_USER["username"], "password": ADMIN_USER["password"]},
+        )
+        assert login.status_code == 200
+        admin_attempt = client.post(
+            "/courses/",
+            json={
+                "title": "Hack",
+                "description": "desc",
+                "slug": "hack",
+                "is_published": False,
+            },
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        )
+        assert admin_attempt.status_code == 403
+
     def test_signup_missing_fields(self, client: TestClient):
         """Partial data is rejected by validation."""
         response = client.post("/auth/signup", json={"username": "x"})

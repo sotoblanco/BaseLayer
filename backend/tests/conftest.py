@@ -96,8 +96,21 @@ def auth_headers_fixture(auth_token: str):
 
 @pytest.fixture(name="admin_headers")
 def admin_headers_fixture(client: TestClient):
-    """Register and log in ADMIN_USER, return headers."""
-    client.post("/auth/signup", json=ADMIN_USER)
+    """Insert ADMIN_USER directly (public signup cannot grant admin),
+    then log in and return headers."""
+    with Session(test_engine) as session:
+        from auth import get_password_hash
+        from models import User
+
+        user = User(
+            username=ADMIN_USER["username"],
+            email=ADMIN_USER["email"],
+            hashed_password=get_password_hash(ADMIN_USER["password"]),
+            role="admin",
+        )
+        session.add(user)
+        session.commit()
+
     response = client.post(
         "/auth/login",
         data={"username": ADMIN_USER["username"], "password": ADMIN_USER["password"]},
