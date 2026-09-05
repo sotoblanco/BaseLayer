@@ -20,7 +20,9 @@ def _find_root_env() -> Path:
     for _ in range(6):
         if (cur / ".env").is_file():
             return cur / ".env"
-        if ((cur / ".git").is_dir() or (cur / "pyproject.toml").is_file()) and cur.name != "backend":
+        if (
+            (cur / ".git").is_dir() or (cur / "pyproject.toml").is_file()
+        ) and cur.name != "backend":
             return cur / ".env"
         cur = cur.parent
     return Path(__file__).resolve().parent.parent.parent / ".env"
@@ -127,4 +129,3 @@ def discuss_implementation(request: ChatRequest, user: User = Depends(get_curren
     enforce_ai_limits(user.username, request.message, request.context or "")
     response = ai_service.chat(request.message, request.context, request.understanding_level)
     return {"response": response}
-

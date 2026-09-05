@@ -1,6 +1,3 @@
-import os
-from pathlib import Path
-
 from ai_service import ai_service
 
 
