@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.15](https://github.com/sotoblanco/BaseLayer/compare/v0.1.14...v0.1.15) (2026-09-05)
+
+
+### Bug Fixes
+
+* **security:** prevent local_welcome account takeover and path traversal in file courses ([#45](https://github.com/sotoblanco/BaseLayer/issues/45), [#43](https://github.com/sotoblanco/BaseLayer/issues/43), [#28](https://github.com/sotoblanco/BaseLayer/issues/28)) ([0c643b6](https://github.com/sotoblanco/BaseLayer/commit/0c643b6c8d2b15f62b09e65a96401d896f27483d))
+
+
+### Improvements
+
+* **crap:** reduce cyclomatic complexity in file_courses and auth to pass CRAP threshold ([b2ba932](https://github.com/sotoblanco/BaseLayer/commit/b2ba9320e4b2b815b38c81affba2062e4799e4d3))
+
 ### [0.1.14](https://github.com/sotoblanco/BaseLayer/compare/v0.1.13...v0.1.14) (2026-09-05)
 
 
