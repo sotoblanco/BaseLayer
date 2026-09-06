@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.22](https://github.com/sotoblanco/BaseLayer/compare/v0.1.21...v0.1.22) (2026-09-06)
+
+
+### Bug Fixes
+
+* **tutor:** summarize verification objectives instead of leaking test code ([#30](https://github.com/sotoblanco/BaseLayer/issues/30)) ([#62](https://github.com/sotoblanco/BaseLayer/issues/62)) ([fe4e14d](https://github.com/sotoblanco/BaseLayer/commit/fe4e14d69fb5ef816dcf5d77fbf3c8b6135b67cf))
+
 ### [0.1.21](https://github.com/sotoblanco/BaseLayer/compare/v0.1.20...v0.1.21) (2026-09-06)
 
 
