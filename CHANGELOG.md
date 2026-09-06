@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.29](https://github.com/sotoblanco/BaseLayer/compare/v0.1.28...v0.1.29) (2026-09-06)
+
+
+### Features
+
+* update default models to latest generation lowest-cost options ([#79](https://github.com/sotoblanco/BaseLayer/issues/79)) ([ddfe311](https://github.com/sotoblanco/BaseLayer/commit/ddfe3113fcc6d61dbe928dca30dadace75db0e8e))
+
 ### [0.1.28](https://github.com/sotoblanco/BaseLayer/compare/v0.1.27...v0.1.28) (2026-09-06)
 
 
