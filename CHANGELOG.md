@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.34](https://github.com/sotoblanco/BaseLayer/compare/v0.1.33...v0.1.34) (2026-09-06)
+
+
+### Bug Fixes
+
+* **compose:** make /run execution work and externalize google client id ([#68](https://github.com/sotoblanco/BaseLayer/issues/68)) ([#89](https://github.com/sotoblanco/BaseLayer/issues/89)) ([476788b](https://github.com/sotoblanco/BaseLayer/commit/476788bcc86244380ec592a1f2cb8e6dea6c4f1b))
+
 ### [0.1.33](https://github.com/sotoblanco/BaseLayer/compare/v0.1.32...v0.1.33) (2026-09-06)
 
 
