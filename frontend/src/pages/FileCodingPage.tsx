@@ -127,7 +127,11 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
 
                     // Initialize code if lessons exist
                     if (extractedChapters.length > 0 && extractedChapters[0].lessons.length > 0) {
-                        setCode(extractedChapters[0].lessons[0].initial_code);
+                        const firstLesson = extractedChapters[0].lessons[0];
+                        const draftKey = `code_draft_${slug}_${firstLesson.slug}`;
+                        const uxKey = `uxlight_code_${slug}_${firstLesson.slug}`;
+                        const saved = localStorage.getItem(draftKey) ?? localStorage.getItem(uxKey);
+                        setCode(saved !== null ? saved : (firstLesson.initial_code || ""));
                     }
                 } else {
                     setCourseError(res.status === 404 ? 'Course not found.' : 'Unable to load this course.');
@@ -145,8 +149,11 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const lesson = currentChapter?.lessons[currentLessonIndex];
 
     useEffect(() => {
-        if (lesson) {
-            setCode(lesson.initial_code);
+        if (lesson && slug) {
+            const draftKey = `code_draft_${slug}_${lesson.slug}`;
+            const uxKey = `uxlight_code_${slug}_${lesson.slug}`;
+            const saved = localStorage.getItem(draftKey) ?? localStorage.getItem(uxKey);
+            setCode(saved !== null ? saved : (lesson.initial_code || ""));
             setOutput("");
             setEditorTab('main');
             setShowSolution(false);
@@ -169,6 +176,29 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             }
         }
     }, [lesson, slug]);
+
+    const handleCodeChange = (newCode?: string) => {
+        const val = newCode || "";
+        setCode(val);
+        if (slug && lesson) {
+            localStorage.setItem(`code_draft_${slug}_${lesson.slug}`, val);
+            localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, val);
+        }
+    };
+
+    const handleResetCode = () => {
+        if (!lesson || !slug) return;
+        if (window.confirm("Are you sure you want to reset your code to the starter code? Current edits will be lost.")) {
+            localStorage.removeItem(`code_draft_${slug}_${lesson.slug}`);
+            localStorage.removeItem(`uxlight_code_${slug}_${lesson.slug}`);
+            setCode(lesson.initial_code || '');
+            setOutput('');
+            emitLearnerEvent('reset', {
+                course_slug: slug,
+                lesson_slug: lesson.slug,
+            });
+        }
+    };
 
     // Save spreadsheet URL when it changes
     useEffect(() => {
@@ -517,7 +547,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                     <AIChatPanel
                                         variant="integrated"
                                         lessonId={lesson?.slug ?? ''}
-                                        context={buildTutorContext(lesson, code)}
+                                        context={buildTutorContext(lesson, code, output)}
                                     />
                                 </div>
                             </div>
@@ -739,7 +769,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 <CodeEditor
                                                     key="editor-main"
                                                     code={code}
-                                                    onChange={(val) => setCode(val || "")}
+                                                    onChange={handleCodeChange}
                                                     language={currentLang}
                                                     filename={mainFilename}
                                                 />
@@ -778,15 +808,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
 
                                             <div className="flex gap-2">
                                                 <button
-                                                    onClick={() => {
-                                                        if (!lesson) return;
-                                                        setCode(lesson.initial_code || '');
-                                                        setOutput('');
-                                                        emitLearnerEvent('reset', {
-                                                            course_slug: slug,
-                                                            lesson_slug: lesson.slug,
-                                                        });
-                                                    }}
+                                                    onClick={handleResetCode}
                                                     className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded transition-colors"
                                                 >
                                                     <RotateCw size={14} /> Reset

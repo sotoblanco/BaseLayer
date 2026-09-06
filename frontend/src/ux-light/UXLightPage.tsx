@@ -129,7 +129,8 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   useEffect(() => {
     if (!lesson || !slug) return;
     const storageKey = `uxlight_code_${slug}_${lesson.slug}`;
-    const saved = localStorage.getItem(storageKey);
+    const legacyKey = `code_draft_${slug}_${lesson.slug}`;
+    const saved = localStorage.getItem(storageKey) ?? localStorage.getItem(legacyKey);
     setCode(saved !== null ? saved : lesson.initial_code || '');
     setActiveEditorTab('script');
     setIsShowingSolution(false);
@@ -160,7 +161,10 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
 
   const handleCodeChange = (newCode: string) => {
     setCode(newCode);
-    if (lesson && slug) localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, newCode);
+    if (lesson && slug) {
+      localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, newCode);
+      localStorage.setItem(`code_draft_${slug}_${lesson.slug}`, newCode);
+    }
   };
 
   const handleSelectLesson = (chapterIndex: number, lessonIndex: number) => {
@@ -184,12 +188,17 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
 
   const handleResetCode = () => {
     if (!lesson) return;
-    setCode(lesson.initial_code || '');
-    if (slug) localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, lesson.initial_code || '');
-    emitLearnerEvent('reset', {
-      course_slug: slug,
-      lesson_slug: lesson.slug,
-    });
+    if (window.confirm("Are you sure you want to reset your code to the starter code? Current edits will be lost.")) {
+      setCode(lesson.initial_code || '');
+      if (slug) {
+        localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, lesson.initial_code || '');
+        localStorage.setItem(`code_draft_${slug}_${lesson.slug}`, lesson.initial_code || '');
+      }
+      emitLearnerEvent('reset', {
+        course_slug: slug,
+        lesson_slug: lesson.slug,
+      });
+    }
   };
 
   const pushOutput = (msg: Omit<OutputMessage, 'id' | 'timestamp'>) => {
