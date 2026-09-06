@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,63 @@ class TestRunEndpoint:
             headers=auth_headers,
         )
         assert response.status_code == 200
+
+    def test_run_docker_security_and_resource_limits(
+        self, client: TestClient, auth_headers, monkeypatch
+    ):
+        captured_cmd = []
+
+        def fake_run(cmd, *args, **kwargs):
+            nonlocal captured_cmd
+            captured_cmd = cmd
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        response = client.post(
+            "/run",
+            json={"code": "print('secure')", "language": "python"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["exit_code"] == 0
+        assert response.json()["stdout"] == "ok"
+
+        # Check required isolation and resource flags
+        assert "--network" in captured_cmd
+        assert "none" in captured_cmd
+        assert "--memory" in captured_cmd
+        assert "512m" in captured_cmd
+        assert "--cpus" in captured_cmd
+        assert "1.0" in captured_cmd
+        assert "--pids-limit" in captured_cmd
+        assert "64" in captured_cmd
+        assert "--security-opt" in captured_cmd
+        assert "no-new-privileges" in captured_cmd
+        assert "--stop-timeout" in captured_cmd
+        assert "1" in captured_cmd
+        assert "--name" in captured_cmd
+        name_idx = captured_cmd.index("--name")
+        container_name = captured_cmd[name_idx + 1]
+        assert container_name.startswith("baselayer-run-")
+
+    def test_run_timeout_kills_container(self, client: TestClient, auth_headers, monkeypatch):
+        killed_containers = []
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[0] == "docker" and cmd[1] == "kill":
+                killed_containers.append(cmd[2])
+                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=5)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        response = client.post(
+            "/run",
+            json={"code": "while True: pass", "language": "python"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["exit_code"] == 124
+        assert body["stderr"] == "Execution timed out"
+        assert len(killed_containers) == 1
+        assert killed_containers[0].startswith("baselayer-run-")

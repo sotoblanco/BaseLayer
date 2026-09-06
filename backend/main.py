@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -213,11 +214,26 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
             except Exception:
                 pass
 
-            # Construct docker command. Set PYTHONDONTWRITEBYTECODE to avoid __pycache__ creation
+            # Construct docker command with resource caps and isolation
+            container_name = f"baselayer-run-{uuid.uuid4().hex[:12]}"
             docker_cmd = [
                 "docker",
                 "run",
                 "--rm",
+                "--name",
+                container_name,
+                "--stop-timeout",
+                "1",
+                "--network",
+                "none",
+                "--memory",
+                "512m",
+                "--cpus",
+                "1.0",
+                "--pids-limit",
+                "64",
+                "--security-opt",
+                "no-new-privileges",
                 "-e",
                 "PYTHONDONTWRITEBYTECODE=1",
                 "-v",
@@ -259,6 +275,16 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
                     "stderr": result.stderr,
                     "exit_code": result.returncode,
                 }
+            except subprocess.TimeoutExpired:
+                try:
+                    subprocess.run(
+                        ["docker", "kill", container_name],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                except Exception:
+                    pass
+                return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
             except FileNotFoundError as e:
                 # Docker (or another required executable) not found on the host
                 return {"stdout": "", "stderr": f"Executable not found: {e}", "exit_code": -1}
@@ -266,7 +292,6 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
                 # Return structured JSON instead of raising HTTPException so the frontend
                 # can display a helpful message instead of 'undefined'
                 return {"stdout": "", "stderr": str(e), "exit_code": -1}
-
     except subprocess.TimeoutExpired:
         return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
     except Exception as e:
