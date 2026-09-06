@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.23](https://github.com/sotoblanco/BaseLayer/compare/v0.1.22...v0.1.23) (2026-09-06)
+
+
+### Bug Fixes
+
+* **docker:** remove --reload from Dockerfile and configure in compose ([#29](https://github.com/sotoblanco/BaseLayer/issues/29)) ([#60](https://github.com/sotoblanco/BaseLayer/issues/60)) ([64cc3bc](https://github.com/sotoblanco/BaseLayer/commit/64cc3bc4fe37c1b8cb52ecdb85d8c9610e318c8d))
+* **sandbox:** add resource limits, network isolation, and kill timed-out containers ([#42](https://github.com/sotoblanco/BaseLayer/issues/42), [#46](https://github.com/sotoblanco/BaseLayer/issues/46)) ([#59](https://github.com/sotoblanco/BaseLayer/issues/59)) ([f72d2c0](https://github.com/sotoblanco/BaseLayer/commit/f72d2c0cecb94adb33a1104877a20b6f39bd1842))
+
 ### [0.1.22](https://github.com/sotoblanco/BaseLayer/compare/v0.1.21...v0.1.22) (2026-09-06)
 
 
