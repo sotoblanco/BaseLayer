@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Terminal, ChevronRight, FolderCode, Compass } from 'lucide-react';
+import { Terminal, ChevronRight, FolderCode, Compass, Sliders } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
 import CourseBuilder from '../components/CourseBuilder';
+import { LearningProfileModal } from '../components/LearningProfileModal';
+import { getLearningProfile } from '../services/profileService';
 import { isLocalHost } from '../isLocalHost';
 
 interface FileCourse {
@@ -21,12 +23,39 @@ export default function CoursesPage() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
   const [isCourseBuilderOpen, setIsCourseBuilderOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileInitialMode, setProfileInitialMode] = useState<'preview' | 'edit' | 'customize'>('customize');
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     if (!isAuthenticated && isLocalHost()) {
       setIsAuthModalOpen(true);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      const hasCompleted = localStorage.getItem('baselayer_diagnostic_completed');
+      if (hasCompleted !== 'true') {
+        getLearningProfile()
+          .then((data) => {
+            const isDefault =
+              data.parsed.signals.length <= 1 &&
+              !data.markdown.includes('intake_preference') &&
+              !data.markdown.includes('explanation_length: thorough') &&
+              !data.markdown.includes('exercise_format: macro_challenges');
+            if (isDefault) {
+              setProfileInitialMode('customize');
+              setIsProfileModalOpen(true);
+            } else {
+              localStorage.setItem('baselayer_diagnostic_completed', 'true');
+            }
+          })
+          .catch(() => {
+            // Silently ignore if offline
+          });
+      }
     }
   }, [isAuthenticated]);
 
@@ -60,6 +89,19 @@ export default function CoursesPage() {
           <h1 className="font-bold text-xl tracking-tight">BaseLayer App</h1>
         </div>
         <div className="flex items-center gap-3">
+          {isAuthenticated && (
+            <button
+              onClick={() => {
+                setProfileInitialMode('customize');
+                setIsProfileModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
+              title="Calibrate your personal learning style"
+            >
+              <Sliders size={14} className="text-blue-400" />
+              <span>Learning Style</span>
+            </button>
+          )}
           <button
             onClick={() => setIsLearningGuideOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
@@ -69,7 +111,12 @@ export default function CoursesPage() {
             <span>Learning Guide</span>
           </button>
           {isAuthenticated ? (
-            <UserMenu />
+            <UserMenu
+              onOpenProfile={() => {
+                setProfileInitialMode('preview');
+                setIsProfileModalOpen(true);
+              }}
+            />
           ) : (
             <div className="flex items-center gap-4 text-sm font-medium">
               <div className="hidden sm:flex items-center px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 text-slate-400 text-xs font-mono">
@@ -186,6 +233,11 @@ export default function CoursesPage() {
           setIsCourseBuilderOpen(false);
           navigate(`/file-course/${slug}`);
         }}
+      />
+      <LearningProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        initialMode={profileInitialMode}
       />
     </div>
   );

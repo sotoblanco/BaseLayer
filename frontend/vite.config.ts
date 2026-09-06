@@ -18,6 +18,7 @@ export default defineConfig({
       '/auth': process.env.VITE_API_URL || 'http://localhost:8000',
       '/token': process.env.VITE_API_URL || 'http://localhost:8000',
       '/register': process.env.VITE_API_URL || 'http://localhost:8000',
+      '/me': process.env.VITE_API_URL || 'http://localhost:8000',
     }
   }
 })

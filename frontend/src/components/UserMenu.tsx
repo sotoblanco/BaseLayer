@@ -6,9 +6,10 @@ import { LearningProfileModal } from './LearningProfileModal';
 
 interface UserMenuProps {
     variant?: 'dark' | 'light';
+    onOpenProfile?: () => void;
 }
 
-export function UserMenu({ variant = 'dark' }: UserMenuProps) {
+export function UserMenu({ variant = 'dark', onOpenProfile }: UserMenuProps) {
     const { logout, user } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -59,7 +60,11 @@ export function UserMenu({ variant = 'dark' }: UserMenuProps) {
                     <div className="p-1 space-y-0.5">
                         <button
                             onClick={() => {
-                                setIsProfileOpen(true);
+                                if (onOpenProfile) {
+                                    onOpenProfile();
+                                } else {
+                                    setIsProfileOpen(true);
+                                }
                                 setIsOpen(false);
                             }}
                             className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
@@ -68,7 +73,7 @@ export function UserMenu({ variant = 'dark' }: UserMenuProps) {
                                     : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
                             }`}
                         >
-                            <BookOpen size={16} className="text-emerald-400" />
+                            <BookOpen size={16} className="text-blue-400" />
                             <span>Learning Profile</span>
                         </button>
 
@@ -96,10 +101,12 @@ export function UserMenu({ variant = 'dark' }: UserMenuProps) {
                 </div>
             )}
 
-            <LearningProfileModal
-                isOpen={isProfileOpen}
-                onClose={() => setIsProfileOpen(false)}
-            />
+            {!onOpenProfile && (
+                <LearningProfileModal
+                    isOpen={isProfileOpen}
+                    onClose={() => setIsProfileOpen(false)}
+                />
+            )}
         </div>
     );
 }

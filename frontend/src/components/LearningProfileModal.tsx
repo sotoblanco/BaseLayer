@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
 import {
-  BookOpen,
-
   X,
   Edit,
   Eye,
@@ -12,7 +10,6 @@ import {
   Activity,
   Download,
   Sliders,
-  Sparkles,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,9 +24,14 @@ import {
 interface LearningProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialMode?: 'preview' | 'edit' | 'customize';
 }
 
-export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalProps) {
+export function LearningProfileModal({
+  isOpen,
+  onClose,
+  initialMode,
+}: LearningProfileModalProps) {
   const [markdown, setMarkdown] = useState('');
   const [initialMarkdown, setInitialMarkdown] = useState('');
   const [parsed, setParsed] = useState<LearningProfileData | null>(null);
@@ -37,7 +39,7 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'customize'>('preview');
+  const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'customize'>('customize');
 
   // Simplified Diagnostic state
   const [intakePref, setIntakePref] = useState<'diagram' | 'table' | 'hands_on' | 'story'>('diagram');
@@ -52,9 +54,15 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
 
   useEffect(() => {
     if (isOpen) {
+      if (initialMode) {
+        setViewMode(initialMode);
+      } else {
+        const completed = localStorage.getItem('baselayer_diagnostic_completed') === 'true';
+        setViewMode(completed ? 'preview' : 'customize');
+      }
       loadProfile();
     }
-  }, [isOpen]);
+  }, [isOpen, initialMode]);
 
   useEffect(() => {
     if (parsed?.frontmatter) {
@@ -106,6 +114,7 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
       setMarkdown(response.markdown);
       setInitialMarkdown(response.markdown);
       setParsed(response.parsed);
+      localStorage.setItem('baselayer_diagnostic_completed', 'true');
       setSaveSuccess(true);
       setViewMode('preview');
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -165,23 +174,23 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+      <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400">
-              <BookOpen size={18} />
+            <div className="p-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300">
+              <Sliders size={18} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                <span>Living Learner Profile</span>
-                <span className="text-[11px] font-mono font-normal px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+              <h2 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
+                <span>Learning Profile</span>
+                <span className="text-[11px] font-mono font-normal px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/50">
                   LEARNING.md
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Personal learning style, recorded signals, and active preferences
+                Calibrate explanation brevity, exercise format, and tutor guidance style
               </p>
             </div>
           </div>
@@ -189,36 +198,36 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
           <div className="flex items-center gap-2">
             <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
               <button
-                onClick={() => setViewMode('preview')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold ${
-                  viewMode === 'preview'
-                    ? 'bg-slate-800 text-emerald-400'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Eye size={13} />
-                <span>Rendered</span>
-              </button>
-              <button
                 onClick={() => setViewMode('customize')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                   viewMode === 'customize'
-                    ? 'bg-slate-800 text-emerald-400'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Sliders size={13} />
+                <Sliders size={12} />
                 <span>Diagnostic</span>
               </button>
               <button
-                onClick={() => setViewMode('edit')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold ${
-                  viewMode === 'edit'
-                    ? 'bg-slate-800 text-emerald-400'
-                    : 'text-slate-400 hover:text-white'
+                onClick={() => setViewMode('preview')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  viewMode === 'preview'
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Edit size={13} />
+                <Eye size={12} />
+                <span>Overview</span>
+              </button>
+              <button
+                onClick={() => setViewMode('edit')}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  viewMode === 'edit'
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Edit size={12} />
                 <span>Markdown</span>
               </button>
             </div>
@@ -234,7 +243,7 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
           {error && (
             <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
               <AlertCircle size={15} />
@@ -244,337 +253,399 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
 
           {loading ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
-              <Loader size={24} className="animate-spin text-emerald-400" />
-              <span className="text-xs">Loading LEARNING.md...</span>
+              <Loader size={20} className="animate-spin text-slate-300" />
+              <span className="text-xs">Loading profile...</span>
             </div>
           ) : viewMode === 'customize' ? (
             <form onSubmit={handleQuestionnaireSubmit} className="space-y-6">
-              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-                  <Sparkles size={15} />
-                  <span>Interactive Learning Diagnostic</span>
-                </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Five simple questions to adapt your explanation length, practice structure,
-                  tools, and tutor support. Responses are saved privately in your unique{' '}
-                  <code>data/learners/[username]/LEARNING.md</code>.
-                </p>
-              </div>
-
-              {/* Inferred Pedagogical Calibration Preview */}
-              <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-4 space-y-2.5">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-                  <Sparkles size={14} />
-                  <span>How BaseLayer will customize for you</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[11px] text-slate-300">
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 font-bold">•</span>
-                    <span>
-                      <strong className="text-white">Explanation:</strong>{' '}
-                      {explanationLength === 'short'
-                        ? 'Concise essentials (under 3 sentences)'
-                        : 'Comprehensive with intuitions & analogies'}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 font-bold">•</span>
-                    <span>
-                      <strong className="text-white">Practice:</strong>{' '}
-                      {exerciseFormat === 'micro_steps'
-                        ? '4-6 small verified micro-steps'
-                        : '1-2 end-to-end open challenges'}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 font-bold">•</span>
-                    <span>
-                      <strong className="text-white">Primary tools:</strong>{' '}
-                      {intakePref === 'diagram'
-                        ? 'Drawings & sketches + code'
-                        : intakePref === 'table'
-                        ? 'Spreadsheet cell models + code'
-                        : intakePref === 'story'
-                        ? 'Conceptual walkthroughs + code'
-                        : 'Hands-on code editor'}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <span className="text-emerald-400 font-bold">•</span>
-                    <span>
-                      <strong className="text-white">AI Tutor:</strong>{' '}
-                      {hintPref === 'guiding_question'
-                        ? 'Socratic (guiding inquiries)'
-                        : hintPref === 'direct_explanation'
-                        ? 'Direct (theory & root-cause)'
-                        : 'Solveit (2x2 toy examples & micro-steps)'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Question 1: What makes a new concept click? */}
+              {/* Question 1: Intake Modality */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
-                  1. What makes a new concept click for you first?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div>
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                    1. Intake Modality
+                  </label>
+                  <p className="text-xs text-slate-400">What makes a new concept click for you first?</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
                     {
                       id: 'diagram',
-                      title: 'Visual Diagram & Flowchart',
-                      desc: 'Seeing boxes, arrows, and visual connections between moving parts.',
+                      title: 'Diagram & Visual',
+                      desc: 'Flowcharts, architecture maps, and visual connections between components.',
                     },
                     {
                       id: 'table',
-                      title: 'Numbers in a Spreadsheet Table',
-                      desc: 'Looking at concrete input numbers, cell formulas, and row outputs.',
+                      title: 'Table & Spreadsheet',
+                      desc: 'Concrete input numbers, cell formulas, and row-by-row calculations.',
                     },
                     {
                       id: 'hands_on',
                       title: 'Hands-on Code',
-                      desc: 'A tiny snippet of runnable code I can edit and break right away.',
+                      desc: 'A minimal snippet of working code to edit, run, and break immediately.',
                     },
                     {
                       id: 'story',
-                      title: 'Real-World Story or Analogy',
-                      desc: 'An intuitive conceptual analogy explaining the core idea in plain English.',
+                      title: 'Concept & Analogy',
+                      desc: 'Real-world analogies and clear plain-language conceptual explanations.',
                     },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() =>
-                        setIntakePref(item.id as 'diagram' | 'table' | 'hands_on' | 'story')
-                      }
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        intakePref === item.id
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold shadow-sm shadow-emerald-500/10'
-                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="block font-semibold text-white">{item.title}</span>
-                      <span className="text-[11px] text-slate-400 block mt-1 leading-relaxed">
-                        {item.desc}
-                      </span>
-                    </button>
-                  ))}
+                  ].map((item) => {
+                    const active = intakePref === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          setIntakePref(item.id as 'diagram' | 'table' | 'hands_on' | 'story')
+                        }
+                        className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                          active
+                            ? 'border-blue-500/80 bg-blue-950/20'
+                            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          }`}
+                        >
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-xs font-semibold ${
+                              active ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
+                            {item.desc}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Question 2: Explanation Length */}
+              {/* Question 2: Theory Depth */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
-                  2. How detailed should theoretical explanations be before you practice?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div>
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                    2. Explanation Depth
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    How detailed should theoretical explanations be before practice?
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
                     {
                       id: 'short',
-                      title: 'Short & to the point',
-                      desc: 'Give me 2-3 key sentences with the core rule, then let me try immediately.',
+                      title: 'Concise Essentials',
+                      desc: '2-3 key sentences with the core rule, then rapid transition directly to practice.',
                     },
                     {
                       id: 'thorough',
-                      title: 'Thorough & comprehensive',
-                      desc: 'Walk me through the background, why it matters, and detailed intuitions first.',
+                      title: 'Detailed Context',
+                      desc: 'Comprehensive background, why it matters, and detailed analogies first.',
                     },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setExplanationLength(item.id as 'short' | 'thorough')}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        explanationLength === item.id
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold shadow-sm shadow-emerald-500/10'
-                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="block font-semibold text-white">{item.title}</span>
-                      <span className="text-[11px] text-slate-400 block mt-1 leading-relaxed">
-                        {item.desc}
-                      </span>
-                    </button>
-                  ))}
+                  ].map((item) => {
+                    const active = explanationLength === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setExplanationLength(item.id as 'short' | 'thorough')}
+                        className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                          active
+                            ? 'border-blue-500/80 bg-blue-950/20'
+                            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          }`}
+                        >
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-xs font-semibold ${
+                              active ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
+                            {item.desc}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Question 3: Practice Structure */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
-                  3. How do you prefer practice challenges to be structured?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div>
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                    3. Practice Structure
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    How do you prefer practice challenges to be structured?
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
                     {
                       id: 'micro_steps',
-                      title: 'Bite-sized micro-steps',
-                      desc: '4 to 6 small verified checkpoints where each line is confirmed before moving forward.',
+                      title: 'Bite-Sized Micro-Steps',
+                      desc: '4 to 6 small verified checkpoints where each line is confirmed before advancing.',
                     },
                     {
                       id: 'macro_challenges',
-                      title: 'Fewer bigger challenges',
-                      desc: '1 to 2 larger end-to-end problems where I solve the puzzle with minimal handholding.',
+                      title: 'Macro Challenges',
+                      desc: '1 to 2 larger end-to-end problems where you solve the puzzle with minimal handholding.',
                     },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() =>
-                        setExerciseFormat(item.id as 'micro_steps' | 'macro_challenges')
-                      }
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        exerciseFormat === item.id
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold shadow-sm shadow-emerald-500/10'
-                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="block font-semibold text-white">{item.title}</span>
-                      <span className="text-[11px] text-slate-400 block mt-1 leading-relaxed">
-                        {item.desc}
-                      </span>
-                    </button>
-                  ))}
+                  ].map((item) => {
+                    const active = exerciseFormat === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          setExerciseFormat(item.id as 'micro_steps' | 'macro_challenges')
+                        }
+                        className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                          active
+                            ? 'border-blue-500/80 bg-blue-950/20'
+                            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          }`}
+                        >
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-xs font-semibold ${
+                              active ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
+                            {item.desc}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Question 4: Getting Unstuck */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
-                  4. When you get stuck on a problem, what helps you most?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                <div>
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                    4. Hint &amp; Guidance Style
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    When you get stuck on a problem, what helps you most?
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {[
                     {
                       id: 'toy_example',
-                      title: 'Tiny Toy Example',
-                      desc: 'Show me a 2x2 toy case with simple numbers to build intuition (Solveit).',
+                      title: 'Toy Example (Solveit)',
+                      desc: 'Show a 2x2 case with simple numbers to reveal the pattern.',
                     },
                     {
                       id: 'guiding_question',
-                      title: 'Guiding Question',
-                      desc: 'Ask me a thoughtful question that nudges me to spot the missing piece (Socratic).',
+                      title: 'Guiding Question (Socratic)',
+                      desc: 'Ask a thoughtful question that helps me spot the missing piece.',
                     },
                     {
                       id: 'direct_explanation',
                       title: 'Direct Explanation',
-                      desc: 'Directly explain what broke and give me the exact rule I need.',
+                      desc: 'Directly explain what broke and give the exact theoretical rule.',
                     },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() =>
-                        setHintPref(
-                          item.id as 'toy_example' | 'guiding_question' | 'direct_explanation'
-                        )
-                      }
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        hintPref === item.id
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold shadow-sm shadow-emerald-500/10'
-                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="block font-semibold text-white">{item.title}</span>
-                      <span className="text-[11px] text-slate-400 block mt-1 leading-relaxed">
-                        {item.desc}
-                      </span>
-                    </button>
-                  ))}
+                  ].map((item) => {
+                    const active = hintPref === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          setHintPref(
+                            item.id as 'toy_example' | 'guiding_question' | 'direct_explanation'
+                          )
+                        }
+                        className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                          active
+                            ? 'border-blue-500/80 bg-blue-950/20'
+                            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          }`}
+                        >
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-xs font-semibold ${
+                              active ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
+                            {item.desc}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Question 5: Cadence */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
-                  5. What is your preferred study rhythm?
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                <div>
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                    5. Preferred Rhythm
+                  </label>
+                  <p className="text-xs text-slate-400">What cadence fits your schedule best?</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
                     {
                       id: 'unhurried',
-                      title: 'Take my time (unhurried)',
-                      desc: 'Deliberate, step-by-step deep dive to understand every edge case.',
+                      title: 'Unhurried & Deliberate',
+                      desc: 'Deep dive without rush, verifying edge cases and fundamental intuition.',
                     },
                     {
                       id: 'sprint',
-                      title: 'Fast & focused (sprint)',
-                      desc: 'High-velocity iteration with quick milestones and rapid execution.',
+                      title: 'Fast & Focused Sprint',
+                      desc: 'Rapid iterations, high milestone velocity, and immediate feedback.',
                     },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setPace(item.id as 'unhurried' | 'sprint' | 'mixed')}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        pace === item.id
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold shadow-sm shadow-emerald-500/10'
-                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="block font-semibold text-white">{item.title}</span>
-                      <span className="text-[11px] text-slate-400 block mt-1 leading-relaxed">
-                        {item.desc}
-                      </span>
-                    </button>
-                  ))}
+                  ].map((item) => {
+                    const active = pace === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setPace(item.id as 'unhurried' | 'sprint' | 'mixed')}
+                        className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                          active
+                            ? 'border-blue-500/80 bg-blue-950/20'
+                            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          }`}
+                        >
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-xs font-semibold ${
+                              active ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
+                            {item.desc}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Optional Advanced Settings Toggle */}
-              <div className="pt-2 border-t border-slate-800/80">
+              {/* Optional Advanced Settings */}
+              <div className="pt-2 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAdvanced((prev) => !prev)}
-                  className="text-xs text-slate-400 hover:text-slate-200 font-medium flex items-center gap-1.5"
+                  className="text-xs text-slate-400 hover:text-slate-200 font-medium flex items-center gap-1.5 transition-colors"
                 >
                   <Sliders size={13} />
                   <span>
                     {showAdvanced
-                      ? 'Hide advanced goals & notes'
-                      : 'Add custom goal or focus area (optional)'}
+                      ? 'Hide custom goals and notes'
+                      : 'Customize goals and notes (optional)'}
                   </span>
                 </button>
 
                 {showAdvanced && (
                   <div className="space-y-3 pt-3">
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-300 block">Personal goal</label>
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-300 block font-medium">Personal goal</label>
                       <input
                         type="text"
                         value={goal}
                         onChange={(e) => setGoal(e.target.value)}
-                        placeholder="e.g. Master tensor operations and GPU memory layout"
-                        className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                        placeholder="e.g. Understand neural network training from zero"
+                        className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-slate-600 transition-colors"
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs text-slate-300 block">Special focus or notes</label>
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-300 block font-medium">
+                        Special focus areas or notes
+                      </label>
                       <input
                         type="text"
                         value={customNotes}
                         onChange={(e) => setCustomNotes(e.target.value)}
-                        placeholder="e.g. Attention weights, CUDA kernels, or specific project interests"
-                        className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                        placeholder="e.g. Backprop mathematics, PyTorch tensors, or CUDA"
+                        className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-slate-600 transition-colors"
                       />
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Submit CTA */}
-              <div className="pt-2">
+              {/* Form Footer & Submit */}
+              <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-400 leading-relaxed">
+                  Adapts: <span className="text-slate-200 font-medium">{explanationLength === 'short' ? 'Concise theory' : 'Detailed theory'}</span>
+                  {' '}&bull;{' '}
+                  <span className="text-slate-200 font-medium">{exerciseFormat === 'micro_steps' ? 'Micro-steps' : 'Macro challenges'}</span>
+                  {' '}&bull;{' '}
+                  <span className="text-slate-200 font-medium">
+                    {hintPref === 'guiding_question'
+                      ? 'Socratic hints'
+                      : hintPref === 'direct_explanation'
+                      ? 'Direct explanations'
+                      : 'Solveit toy cases'}
+                  </span>
+                </div>
                 <button
                   type="submit"
                   disabled={submittingQuestionnaire}
-                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50 transition-colors shadow-lg shadow-emerald-500/10"
+                  className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center gap-2 disabled:opacity-50 transition-colors shrink-0"
                 >
                   {submittingQuestionnaire ? (
-                    <Loader size={15} className="animate-spin" />
+                    <Loader size={14} className="animate-spin" />
                   ) : (
-                    <Check size={15} />
+                    <Check size={14} />
                   )}
-                  <span>Calibrate &amp; Update LEARNING.md</span>
+                  <span>Save Preferences</span>
                 </button>
               </div>
             </form>
