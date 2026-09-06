@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.33](https://github.com/sotoblanco/BaseLayer/compare/v0.1.32...v0.1.33) (2026-09-06)
+
+
+### Bug Fixes
+
+* **ai:** send real chat history and stop leaking tests to tutor ([#73](https://github.com/sotoblanco/BaseLayer/issues/73)) ([#83](https://github.com/sotoblanco/BaseLayer/issues/83)) ([e23d733](https://github.com/sotoblanco/BaseLayer/commit/e23d733f6982ab87532648fcd7aeba9a9e604532))
+
 ### [0.1.32](https://github.com/sotoblanco/BaseLayer/compare/v0.1.31...v0.1.32) (2026-09-06)
 
 
