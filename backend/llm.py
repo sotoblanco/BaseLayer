@@ -55,7 +55,12 @@ PROVIDERS: dict[str, ProviderSpec] = {
         docs_url="https://console.groq.com/keys",
         blurb="Fast cloud models, free tier",
         group="free",
-        suggested_models=("openai/gpt-oss-20b", "llama-3.3-70b-versatile", "qwen/qwen3.8-27b", "llama-3.1-8b-instant"),
+        suggested_models=(
+            "openai/gpt-oss-20b",
+            "llama-3.3-70b-versatile",
+            "qwen/qwen3.8-27b",
+            "llama-3.1-8b-instant",
+        ),
     ),
     "ollama": ProviderSpec(
         id="ollama",
@@ -101,7 +106,12 @@ PROVIDERS: dict[str, ProviderSpec] = {
         docs_url="https://openrouter.ai/keys",
         blurb="One key, many models",
         group="key",
-        suggested_models=("openai/gpt-5.6-luna", "google/gemini-3.5-flash-lite", "meta-llama/llama-4-scout", "deepseek/deepseek-v4-flash-latest"),
+        suggested_models=(
+            "openai/gpt-5.6-luna",
+            "google/gemini-3.5-flash-lite",
+            "meta-llama/llama-4-scout",
+            "deepseek/deepseek-v4-flash-latest",
+        ),
     ),
     "custom": ProviderSpec(
         id="custom",
