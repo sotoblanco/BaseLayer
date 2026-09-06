@@ -37,6 +37,8 @@ class LearnerFrontMatter(BaseModel):
         default_factory=lambda: ["code", "spreadsheet", "drawing"]
     )
     pace: Literal["unhurried", "sprint", "mixed"] = "unhurried"
+    explanation_length: Literal["short", "thorough"] = "short"
+    exercise_format: Literal["micro_steps", "macro_challenges"] = "micro_steps"
 
 
 class LearnerProfileData(BaseModel):
@@ -49,6 +51,26 @@ class LearnerProfileData(BaseModel):
 
 
 class LearnerQuestionnaire(BaseModel):
+    # Simplified Zero-Jargon Diagnostic Choices
+    intake_preference: Literal["diagram", "table", "hands_on", "story"] | None = Field(
+        default=None,
+        description="What makes a new concept click: diagram (visual), table (spreadsheet), hands_on (code), story (text).",
+    )
+    explanation_length: Literal["short", "thorough"] = Field(
+        default="short",
+        description="Explanation length: short (concise essentials) or thorough (detailed with analogies).",
+    )
+    exercise_format: Literal["micro_steps", "macro_challenges"] = Field(
+        default="micro_steps",
+        description="Exercise structure: micro_steps (many small verified steps) or macro_challenges (fewer larger puzzles).",
+    )
+    hint_preference: Literal["toy_example", "guiding_question", "direct_explanation"] | None = (
+        Field(
+            default=None,
+            description="Support when stuck: toy_example (Solveit), guiding_question (Socratic), direct_explanation (Direct).",
+        )
+    )
+    # Core preferences (direct or inferred)
     goal: str = Field(
         default="Understand foundational AI and systems from first principles",
         min_length=3,
@@ -62,6 +84,7 @@ class LearnerQuestionnaire(BaseModel):
     pace: Literal["unhurried", "sprint", "mixed"] = "unhurried"
     preferred_ui: Literal["classic", "light"] = "light"
     custom_notes: str = Field(default="", max_length=1000)
+
 
 
 def _default_profile_markdown(username: str) -> str:
@@ -78,6 +101,8 @@ preferred_modalities:
   - spreadsheet
   - drawing
 pace: unhurried
+explanation_length: short
+exercise_format: micro_steps
 ---
 
 # Learning profile — {username}
@@ -177,7 +202,10 @@ understanding_level: {fm.understanding_level}
 preferred_modalities:
 {modalities_yaml}
 pace: {fm.pace}
+explanation_length: {fm.explanation_length}
+exercise_format: {fm.exercise_format}
 ---"""
+
 
 
 def parse_markdown_sections(body: str) -> dict[str, list[str]]:
@@ -378,13 +406,48 @@ def record_learner_event(
     return get_or_create_profile(username, base_dir)[1]
 
 
-def _build_snapshot(answers: LearnerQuestionnaire) -> str:
-    level_desc = {
-        "beginner": "Building solid foundations from intuitive toy examples.",
-        "intermediate": "Connecting theoretical intuition with practical implementation.",
-        "advanced": "Focusing on deep systems engineering and advanced concepts.",
-    }.get(answers.understanding_level, "Connecting intuition with implementation.")
-    return f"{level_desc} Prefers a {answers.pace} pace with {answers.tutor_style} guidance."
+def _infer_tutor_style(
+    answers: LearnerQuestionnaire,
+) -> Literal["solveit", "socratic", "direct", "blooms"]:
+    if answers.hint_preference == "guiding_question":
+        return "socratic"
+    if answers.hint_preference == "direct_explanation":
+        return "direct"
+    if answers.hint_preference == "toy_example":
+        return "solveit"
+    return answers.tutor_style
+
+
+def _infer_modalities(answers: LearnerQuestionnaire) -> list[str]:
+    mapping = {
+        "diagram": ["drawing", "code"],
+        "table": ["spreadsheet", "code"],
+        "hands_on": ["code"],
+        "story": ["text", "code"],
+    }
+    if answers.intake_preference and answers.intake_preference in mapping:
+        return mapping[answers.intake_preference]
+    return answers.preferred_modalities or ["code", "spreadsheet", "drawing"]
+
+
+def _build_snapshot(
+    answers: LearnerQuestionnaire, inferred_style: str, modalities: list[str]
+) -> str:
+    expl = (
+        "concise essentials"
+        if answers.explanation_length == "short"
+        else "in-depth explanations"
+    )
+    grain = (
+        "bite-sized micro-steps"
+        if answers.exercise_format == "micro_steps"
+        else "comprehensive challenges"
+    )
+    tools = ", ".join(modalities)
+    return (
+        f"Learner prefers {expl} and practicing through {grain}. "
+        f"Primary tools: {tools} with {inferred_style} guidance at an {answers.pace} pace."
+    )
 
 
 def _build_modality_recommendations(modalities: list[str]) -> list[str]:
@@ -401,6 +464,28 @@ def _build_modality_recommendations(modalities: list[str]) -> list[str]:
     return recs
 
 
+def _build_pedagogy_recommendations(answers: LearnerQuestionnaire) -> list[str]:
+    recs: list[str] = []
+    if answers.explanation_length == "short":
+        recs.append(
+            "Keep explanations concise (under 3 sentences); transition rapidly to practice."
+        )
+    else:
+        recs.append(
+            "Provide thorough explanations with real-world analogies and conceptual context."
+        )
+
+    if answers.exercise_format == "micro_steps":
+        recs.append(
+            "Structure practice into 4-6 small micro-steps with immediate automated assertions."
+        )
+    else:
+        recs.append(
+            "Structure practice into 1-2 larger macro challenges with minimal intermediate scaffolding."
+        )
+    return recs
+
+
 def _build_tutor_recommendations(tutor_style: str) -> str:
     style_map = {
         "solveit": "Guide using the Solveit method: build intuition with toy data and verified micro-steps.",
@@ -409,6 +494,15 @@ def _build_tutor_recommendations(tutor_style: str) -> str:
         "blooms": "Structure exercises along Bloom's taxonomy: from understanding to evaluation and creation.",
     }
     return style_map.get(tutor_style, "Guide using interactive micro-steps.")
+
+
+def _build_all_recommendations(
+    tutor_rec: str, pedagogy_recs: list[str], modality_recs: list[str]
+) -> str:
+    lines = [f"- {tutor_rec}"]
+    for item in pedagogy_recs + modality_recs:
+        lines.append(f"- {item}")
+    return "\n".join(lines)
 
 
 def _format_course_list(items: list[str], default_comment: str) -> str:
@@ -424,26 +518,28 @@ def aggregate_questionnaire_to_markdown(
     existing_built: list[str] | None = None,
 ) -> str:
     """Transforms learner questionnaire responses into a formatted LEARNING.md profile."""
+    inferred_style = _infer_tutor_style(answers)
+    inferred_mods = _infer_modalities(answers)
     now_iso = datetime.now(timezone.utc).isoformat()
     fm = LearnerFrontMatter(
         username=username,
         updated_at=now_iso,
         version=1,
         preferred_ui=answers.preferred_ui,
-        tutor_style=answers.tutor_style,
+        tutor_style=inferred_style,
         understanding_level=answers.understanding_level,
-        preferred_modalities=answers.preferred_modalities,
+        preferred_modalities=inferred_mods,
         pace=answers.pace,
+        explanation_length=answers.explanation_length,
+        exercise_format=answers.exercise_format,
     )
 
-    snapshot_text = _build_snapshot(answers)
-    tutor_rec = _build_tutor_recommendations(answers.tutor_style)
-    modality_recs = _build_modality_recommendations(answers.preferred_modalities)
+    snapshot_text = _build_snapshot(answers, inferred_style, inferred_mods)
+    tutor_rec = _build_tutor_recommendations(inferred_style)
+    modality_recs = _build_modality_recommendations(inferred_mods)
+    pedagogy_recs = _build_pedagogy_recommendations(answers)
+    customize_block = _build_all_recommendations(tutor_rec, pedagogy_recs, modality_recs)
 
-    customize_lines = [f"- {tutor_rec}"]
-    for m in modality_recs:
-        customize_lines.append(f"- {m}")
-    customize_block = "\n".join(customize_lines)
 
     notes_bullet = (
         f"\n- Personal focus: {answers.custom_notes.strip()}"

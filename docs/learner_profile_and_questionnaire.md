@@ -32,38 +32,54 @@ This template defines standard frontmatter keys, allowed options, section struct
 
 ## 2. Onboarding Diagnostic Questionnaire
 
-The questionnaire provides an intuitive survey that aggregates student responses into a structured `LEARNING.md` profile.
+The questionnaire provides a simplified, zero-jargon diagnostic framework grounded in cognitive and educational research (Dual Coding, Cognitive Load Theory, and Concrete-Representational-Abstract scaffolding). It does not require learners to know educational terminology or technical prerequisite jargon; instead, it infers the student's optimal pedagogy through 5 simple preference choices:
 
-### Questionnaire Fields
+### Diagnostic Questions
 
-1. **Learning Goal (`goal`)**
-   - Captures the student's core motivation (for example: conceptual mathematical intuition, clean systems engineering, or visual model exploration).
-2. **Preferred Modalities (`preferred_modalities`)**
-   - Multi-select: `code`, `spreadsheet`, `drawing`, `text`.
-   - Informs the Agentic Course Builder which lesson types to generate (Python/Rust exercises, Google Sheets intuition warm-ups, or whiteboard sketches).
-3. **Understanding Level (`understanding_level`)**
-   - Choices: `beginner`, `intermediate`, `advanced`.
-   - Tunes AI explanations and starting assumptions.
-4. **Tutor Guidance Style (`tutor_style`)**
-   - `solveit`: Guided step-by-step with toy data and unit test assertions.
-   - `socratic`: Progressive questions leading to insights before revealing code.
-   - `direct`: Clear theory and concise code walkthroughs.
-   - `blooms`: Cognitive scaffolding following Bloom's taxonomy.
-5. **Cadence & Pace (`pace`)**
-   - Choices: `unhurried`, `sprint`, `mixed`.
-6. **Custom Notes (`custom_notes`)**
-   - Allows learners to specify specific topics of interest (such as backpropagation, attention matrices, or GPU kernels).
+1. **Intake Preference ("What makes a new concept click for you first?")**
+   - **Visual Diagram (`diagram`)**: Boxes, arrows, and visual flowcharts -> infers `drawing` + `code` modalities.
+   - **Numbers & Tables (`table`)**: Concrete input numbers, cell formulas, and row outputs -> infers `spreadsheet` + `code` modalities.
+   - **Hands-on Code (`hands_on`)**: A tiny snippet of runnable code to break and experiment with -> infers `code` modality.
+   - **Story & Analogy (`story`)**: Conceptual real-world analogies and narrative walkthroughs -> infers `text` + `code` modalities.
+
+2. **Explanation Depth ("How detailed should theoretical explanations be before practice?")**
+   - **Short & to the point (`short`)**: 2-3 key sentences with the core rule, rapidly transitioning to practice.
+   - **Thorough & comprehensive (`thorough`)**: In-depth explanations with conceptual background, why it matters, and detailed analogies.
+
+3. **Practice Structure ("How do you prefer practice challenges to be structured?")**
+   - **Bite-sized micro-steps (`micro_steps`)**: 4 to 6 small verified checkpoints where each step is confirmed before moving forward.
+   - **Fewer bigger challenges (`macro_challenges`)**: 1 to 2 larger end-to-end problems with minimal intermediate handholding.
+
+4. **Getting Unstuck ("When you get stuck on a problem, what helps you most?")**
+   - **Tiny Toy Example (`toy_example`)**: A 2x2 concrete case with simple numbers -> infers `solveit` tutor style.
+   - **Guiding Question (`guiding_question`)**: A thoughtful inquiry nudging the learner to discover the insight -> infers `socratic` tutor style.
+   - **Direct Explanation (`direct_explanation`)**: Immediate explanation of the bug and the exact theoretical rule -> infers `direct` tutor style.
+
+5. **Study Rhythm & Cadence ("What is your preferred study rhythm?")**
+   - **Take my time (`unhurried`)**: Deliberate, step-by-step deep dive exploring nuances and edge cases.
+   - **Fast & focused (`sprint`)**: High-velocity iteration with quick milestones and rapid feedback loops.
+
+6. **Optional Advanced Tuning**
+   - Personal goal: Custom objective in the learner's own words.
+   - Special focus areas: Specific topics or keywords of personal interest.
 
 ---
 
-## 3. Aggregation Logic and Profile Generation
+## 3. Aggregation Logic and Pedagogical Inference
 
-When answers are submitted:
-1. **Frontmatter Serialization**: Standard YAML frontmatter is generated with validated keys and ISO timestamp.
-2. **Snapshot Synthesis**: Synthesizes a high-level summary paragraph describing the student's learning strategy.
-3. **Modalities Recommendation**: Formulates clear guidance for the AI tutor and course authoring agent based on selected modalities.
-4. **Course History Preservation**: If the student has already started or built courses, existing entries in `Courses taken` and `Courses built` are preserved across questionnaire calibrations.
-5. **File Persistence**: Writes to `data/learners/{username}/LEARNING.md` and returns both raw markdown and parsed structured data.
+When responses are submitted:
+1. **Pedagogical Inference**:
+   - `_infer_tutor_style(answers)` resolves hint preferences to tutor personalities (`solveit`, `socratic`, `direct`).
+   - `_infer_modalities(answers)` resolves intake preferences to modal tools (`drawing`, `spreadsheet`, `code`, `text`).
+2. **Frontmatter Serialization**: Standard YAML frontmatter is generated with validated keys, including `explanation_length` and `exercise_format`.
+3. **Pedagogical Directives**:
+   - For `short` explanations: "Keep explanations concise (under 3 sentences); transition rapidly to practice."
+   - For `thorough` explanations: "Provide thorough explanations with real-world analogies and conceptual context."
+   - For `micro_steps`: "Structure practice into 4-6 small micro-steps with immediate automated assertions."
+   - For `macro_challenges`: "Structure practice into 1-2 larger macro challenges with minimal intermediate scaffolding."
+4. **Snapshot Synthesis**: Synthesizes an updated summary paragraph detailing the learner's explanation brevity, exercise grain, primary tools, and guidance pace.
+5. **Course History Preservation**: Existing entries in `Courses taken` and `Courses built` are preserved across calibrations.
+6. **File Persistence**: Writes to `data/learners/{username}/LEARNING.md` and returns both raw markdown and parsed data.
 
 ---
 
