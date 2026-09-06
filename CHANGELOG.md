@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.24](https://github.com/sotoblanco/BaseLayer/compare/v0.1.23...v0.1.24) (2026-09-06)
+
+
+### Features
+
+* **editor:** persist code drafts in localStorage and add reset confirmation ([#47](https://github.com/sotoblanco/BaseLayer/issues/47)) ([#63](https://github.com/sotoblanco/BaseLayer/issues/63)) ([77698c0](https://github.com/sotoblanco/BaseLayer/commit/77698c07bc625a256196105c7512e9256cd8c462)), closes [#30](https://github.com/sotoblanco/BaseLayer/issues/30)
+
 ### [0.1.23](https://github.com/sotoblanco/BaseLayer/compare/v0.1.22...v0.1.23) (2026-09-06)
 
 
