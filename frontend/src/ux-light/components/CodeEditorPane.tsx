@@ -11,11 +11,13 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import type { EditorTab } from '../types';
+import { studentTestsPlaceholder } from '../../testVisibility';
 
 interface CodeEditorPaneProps {
   code: string;
   onChange: (value: string) => void;
   testCode: string;
+  testsVisible?: boolean;
   solutionCode: string;
   activeTab: EditorTab;
   onSelectTab: (tab: EditorTab) => void;
@@ -35,6 +37,7 @@ export function CodeEditorPane({
   code,
   onChange,
   testCode,
+  testsVisible = true,
   solutionCode,
   activeTab,
   onSelectTab,
@@ -105,7 +108,13 @@ export function CodeEditorPane({
 
   const isReadOnly = activeTab !== 'script';
   const displayedCode =
-    activeTab === 'script' ? code : activeTab === 'tests' ? testCode : solutionCode;
+    activeTab === 'script'
+      ? code
+      : activeTab === 'tests'
+        ? testsVisible
+          ? testCode
+          : studentTestsPlaceholder(language)
+        : solutionCode;
 
   return (
     <div className={`h-full flex flex-col relative select-none ${isDark ? 'bg-[#05192d] text-[#e6edf3]' : 'bg-white text-[#1a2733]'}`}>

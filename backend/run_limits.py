@@ -12,6 +12,7 @@ AI_RATE_LIMIT = 20
 AI_RATE_WINDOW = 60.0
 MAX_AI_MESSAGE_CHARS = 4_000
 MAX_AI_CONTEXT_CHARS = 20_000
+MAX_AI_HISTORY_MESSAGES = 20
 
 _hits: dict[str, list[float]] = defaultdict(list)
 _ai_hits: dict[str, list[float]] = defaultdict(list)
@@ -47,9 +48,34 @@ def enforce_run_limits(username: str, code: str, language: str, test_code: str =
     )
 
 
-def enforce_ai_limits(username: str, message: str, context: str = "") -> None:
-    if len(message) > MAX_AI_MESSAGE_CHARS or len(context) > MAX_AI_CONTEXT_CHARS:
+def _message_content(msg: object) -> str:
+    if isinstance(msg, dict):
+        return str(msg.get("content") or "")
+    content = getattr(msg, "content", None)
+    return str(content or "")
+
+
+def enforce_ai_chat_limits(username: str, messages: list[object], context: str = "") -> None:
+    """Enforce size/rate limits for multi-turn chat history.
+
+    Each message is capped at ``MAX_AI_MESSAGE_CHARS`` and the combined request
+    (all message contents + context) is capped at ``MAX_AI_CONTEXT_CHARS`` so a
+    growing history can never blow past the model's token budget.
+    """
+    if len(messages) > MAX_AI_HISTORY_MESSAGES:
         raise HTTPException(status_code=413, detail="AI request too large")
+    if len(context) > MAX_AI_CONTEXT_CHARS:
+        raise HTTPException(status_code=413, detail="AI request too large")
+
+    total = len(context)
+    for msg in messages:
+        content = _message_content(msg)
+        if len(content) > MAX_AI_MESSAGE_CHARS:
+            raise HTTPException(status_code=413, detail="AI request too large")
+        total += len(content)
+    if total > MAX_AI_CONTEXT_CHARS:
+        raise HTTPException(status_code=413, detail="AI request too large")
+
     _enforce_rate(
         _ai_hits,
         username,

@@ -35,11 +35,12 @@ import { testsToRun } from '../testsToRun';
 import { useAuth } from '../context/AuthContext';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
+import { isAuthorRole } from '../testVisibility';
 
 export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { token, isAuthenticated, logout } = useAuth();
+  const { token, isAuthenticated, logout, user } = useAuth();
 
   const [course, setCourse] = useState<FileCourse | null>(null);
   const [chapters, setChapters] = useState<UXLightChapter[]>([]);
@@ -504,6 +505,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         code={code}
         onChange={handleCodeChange}
         testCode={lesson.test_code || ''}
+        testsVisible={isAuthorRole(user?.role)}
         solutionCode={loadedSolution}
         activeTab={activeEditorTab}
         onSelectTab={setActiveEditorTab}

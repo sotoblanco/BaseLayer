@@ -23,7 +23,30 @@ export const generateExercise = async (prompt: string, language: string = 'pytho
     return response.json();
 };
 
-export const discussImplementation = async (message: string, context?: string, understandingLevel: string = "Intermediate") => {
+export interface ChatTurn {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+export type TutorStyleId = 'solveit' | 'socratic' | 'direct' | 'blooms';
+
+/**
+ * Sends the accumulated conversation to SocratiQ.
+ *
+ * @param messages Ordered prior turns (oldest first) WITHOUT the canned greeting.
+ *   The server owns the system prompt and trims/bounds the history itself.
+ * @param context Stable per-session exercise context (lesson + current code).
+ *   Never includes test.py / solution content.
+ * @param tutorStyle Optional explicit style override for this request. When
+ *   omitted the server uses the learner's LEARNING.md profile as the source of
+ *   truth. The in-app control only sends this after persisting the choice to
+ *   the profile via `emitLearnerEvent`.
+ */
+export const discussImplementation = async (
+    messages: ChatTurn[],
+    context?: string,
+    tutorStyle?: TutorStyleId,
+) => {
     const token = localStorage.getItem('token');
     if (!token) {
         throw new Error('Please sign in to use the tutor.');
@@ -36,7 +59,11 @@ export const discussImplementation = async (message: string, context?: string, u
     const response = await fetch(`${API_BASE_URL}/ai/discuss`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ message, context, understanding_level: understandingLevel }),
+        body: JSON.stringify({
+            messages,
+            context,
+            tutor_style: tutorStyle,
+        }),
     });
 
     if (!response.ok) {

@@ -5,10 +5,20 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import { discussImplementation } from '../services/aiService';
+import { getLearningProfile, emitLearnerEvent } from '../services/profileService';
+import {
+    TUTOR_STYLES,
+    TUTOR_STYLE_BY_ID,
+    isTutorStyleId,
+    type TutorStyleId,
+} from '../tutorStyles';
 
 interface Message {
     role: 'user' | 'assistant';
     content: string;
+    // Locally rendered filler (greeting / error bubbles) that must never be
+    // sent back to the model as conversation history.
+    local?: boolean;
 }
 
 interface AIChatPanelProps {
@@ -17,7 +27,16 @@ interface AIChatPanelProps {
     variant?: 'standalone' | 'integrated';
 }
 
-const GREETING: Message = { role: 'assistant', content: "Greetings! I am **SocratiQ**, your AI Coding Tutor. How can I assist you with your exercise today?" };
+const GREETING: Message = {
+    role: 'assistant',
+    content: 'Greetings! I am **SocratiQ**, your AI Coding Tutor. How can I assist you with your exercise today?',
+    local: true,
+};
+
+// Client-side history bound: send at most the last 12 turns and keep the total
+// far under the server's MAX_AI_CONTEXT_CHARS (20000) so context keeps room.
+const MAX_SENT_MESSAGES = 12;
+const MAX_SENT_CHARS = 12_000;
 
 export default function AIChatPanel({ context, lessonId, variant = 'standalone' }: AIChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([GREETING]);
@@ -26,8 +45,29 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [understandingLevel, setUnderstandingLevel] = useState(1); // 0=Beginner, 1=Intermediate, 2=Advanced, 3=Bloom's
-    const levelNames = ["Beginner", "Intermediate", "Advanced", "Bloom's Taxonomy"];
+    // Tutor style is sourced from LEARNING.md (single source of truth). Until the
+    // profile loads we do not send an override so the server applies the profile.
+    const [tutorStyle, setTutorStyle] = useState<TutorStyleId | null>(null);
+    const [userOverrodeStyle, setUserOverrodeStyle] = useState(false);
+
+    // Load the learner's persisted tutor style once so the control reflects
+    // LEARNING.md instead of a divergent local default.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const profile = await getLearningProfile();
+                if (!cancelled && isTutorStyleId(profile.parsed.frontmatter.tutor_style)) {
+                    setTutorStyle((current) => current ?? profile.parsed.frontmatter.tutor_style);
+                }
+            } catch {
+                // Profile is optional; the server falls back to its defaults.
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const scrollToBottom = () => {
         if (scrollContainerRef.current) {
@@ -55,6 +95,35 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
         setIsSettingsOpen(false);
     }, [lessonId]);
 
+    /**
+     * Build the bounded history for this request: drop the local greeting/error
+     * bubbles, then keep the most recent turns that fit the message budget.
+     */
+    const buildHistory = (): Array<{ role: 'user' | 'assistant'; content: string }> => {
+        const turns = messages
+            .filter((msg) => !msg.local)
+            .map(({ role, content }) => ({ role, content }))
+            .slice(-MAX_SENT_MESSAGES);
+
+        const kept: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+        let total = 0;
+        for (let i = turns.length - 1; i >= 0; i -= 1) {
+            if (total + turns[i].content.length > MAX_SENT_CHARS) break;
+            kept.unshift(turns[i]);
+            total += turns[i].content.length;
+        }
+        return kept;
+    };
+
+    const handleSelectStyle = (id: TutorStyleId) => {
+        setTutorStyle(id);
+        setUserOverrodeStyle(true);
+        setIsSettingsOpen(false);
+        // Persist the choice to LEARNING.md so the profile stays the single
+        // source of truth on the next load and for the server system prompt.
+        void emitLearnerEvent('tutor_level_changed', { tutor_style: id });
+    };
+
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
 
@@ -64,15 +133,23 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
         setIsLoading(true);
 
         try {
-            const response = await discussImplementation(userMessage, context, levelNames[understandingLevel]);
+            // The server builds the system prompt from the profile each turn and
+            // gets the full prior conversation so hints build on one another.
+            const response = await discussImplementation(
+                buildHistory().concat([{ role: 'user', content: userMessage }]),
+                context,
+                userOverrodeStyle ? tutorStyle ?? undefined : undefined,
+            );
             setMessages(prev => [...prev, { role: 'assistant', content: response.response }]);
         } catch (error) {
-            setMessages(prev => [...prev, { role: 'assistant', content: "I'm having trouble connecting right now. Please try again later." }]);
+            setMessages(prev => [...prev, { role: 'assistant', content: "I'm having trouble connecting right now. Please try again later.", local: true }]);
             console.error(error);
         } finally {
             setIsLoading(false);
         }
     };
+
+    const activeStyle = TUTOR_STYLE_BY_ID[tutorStyle ?? 'solveit'];
 
     const renderMessages = () => (
         <div className={`p-4 space-y-6 ${variant === 'standalone' ? 'flex-1 overflow-y-auto custom-scrollbar' : ''}`} ref={variant === 'standalone' ? scrollContainerRef : null}>
@@ -145,9 +222,9 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
     const renderInput = () => (
         <div className={`p-4 bg-slate-900/30 border-t border-slate-800 ${variant === 'integrated' ? 'sticky bottom-0 z-20 backdrop-blur-md pb-6' : ''}`}>
             <div className="relative max-w-4xl mx-auto">
-                {/* Level selector popover */}
+                {/* Tutor-style selector popover */}
                 {isSettingsOpen && (
-                    <div className="absolute bottom-full left-0 mb-3 w-72 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden z-30 animate-in slide-in-from-bottom-2 duration-200">
+                    <div className="absolute bottom-full left-0 mb-3 w-80 bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden z-30 animate-in slide-in-from-bottom-2 duration-200">
                         <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
                             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Tutoring Style</span>
                             <button onClick={() => setIsSettingsOpen(false)} className="text-slate-500 hover:text-white transition-colors">
@@ -155,45 +232,42 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
                             </button>
                         </div>
                         <div className="p-2 space-y-1">
-                            {levelNames.map((name, idx) => (
-                                <button
-                                    key={name}
-                                    onClick={() => {
-                                        setUnderstandingLevel(idx);
-                                        setIsSettingsOpen(false);
-                                    }}
-                                    className={`w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left ${
-                                        understandingLevel === idx 
-                                            ? 'bg-blue-600/20 border border-blue-500/30 ring-1 ring-blue-500/20' 
-                                            : 'hover:bg-slate-800 border border-transparent'
-                                    }`}
-                                >
-                                    <span className="text-xl shrink-0">{['🚲', '🚗', '🚁', '🛸'][idx]}</span>
-                                    <div>
-                                        <div className={`text-xs font-bold ${understandingLevel === idx ? 'text-blue-400' : 'text-slate-200'}`}>{name}</div>
-                                        <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
-                                            {[
-                                                "Foundational concepts & tools.",
-                                                "Design & optimization principles.",
-                                                "Complex problems & innovation.",
-                                                "Higher-order cognitive evaluation."
-                                            ][idx]}
-                                        </p>
-                                    </div>
-                                </button>
-                            ))}
+                            {TUTOR_STYLES.map((option) => {
+                                const active = option.id === (tutorStyle ?? 'solveit');
+                                return (
+                                    <button
+                                        key={option.id}
+                                        onClick={() => handleSelectStyle(option.id)}
+                                        className={`w-full flex items-start gap-3 p-3 rounded-xl transition-all text-left ${
+                                            active
+                                                ? 'bg-blue-600/20 border border-blue-500/30 ring-1 ring-blue-500/20'
+                                                : 'hover:bg-slate-800 border border-transparent'
+                                        }`}
+                                    >
+                                        <span className="text-xl shrink-0">{option.emoji}</span>
+                                        <div>
+                                            <div className={`text-xs font-bold ${active ? 'text-blue-400' : 'text-slate-200'}`}>
+                                                {option.label}
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+                                                {option.tagline}
+                                            </p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
 
                 <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all shadow-2xl relative">
-                    {/* Level Emoji Trigger */}
+                    {/* Tutor-style Emoji Trigger */}
                     <button
                         onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                         className="flex items-center justify-center w-12 h-12 text-xl hover:bg-slate-900/50 transition-colors border-r border-slate-800/50 rounded-l-xl"
-                        title="Change Tutoring Level"
+                        title="Change tutoring style"
                     >
-                        {['🚲', '🚗', '🚁', '🛸'][understandingLevel]}
+                        {activeStyle.emoji}
                     </button>
 
                     <input
@@ -205,7 +279,7 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
                         className="flex-1 bg-transparent py-3 px-4 text-sm text-slate-300 focus:outline-none placeholder:text-slate-600"
                         disabled={isLoading}
                     />
-                    
+
                     <button
                         onClick={handleSend}
                         disabled={!input.trim() || isLoading}
@@ -231,7 +305,7 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
                             <div className="flex items-center gap-2">
                                 <h3 className="text-sm font-semibold text-slate-200">SocratiQ</h3>
                                 <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-sm bg-blue-900/50 text-blue-300 border border-blue-500/20">
-                                    {levelNames[understandingLevel]}
+                                    {activeStyle.label}
                                 </span>
                             </div>
                             <p className="text-xs text-slate-400">AI Coding Tutor</p>
@@ -249,5 +323,3 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
         </div>
     );
 }
-
-

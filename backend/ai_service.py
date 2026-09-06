@@ -11,6 +11,104 @@ from llm import (
     load_settings,
     validate_settings,
 )
+from run_limits import MAX_AI_HISTORY_MESSAGES
+
+
+def _base_socratiq_prompt() -> str:
+    return """You are SocratiQ, a programming tutor in BaseLayer.
+
+Your job is to help the learner understand the current exercise and solve it
+themselves — never hand over the finished answer. Lessons in BaseLayer are
+verified by automated tests, but those test files are NOT part of your context:
+never reconstruct, quote, or hint at their assertions or expected values. Ground
+every answer only in the exercise instructions and in the learner's own code and
+messages.
+
+Use the conversation history for continuity: remember the hints you already gave
+and build on them instead of repeating yourself. When the learner shares an
+error, first ask what the traceback or message tells them before jumping in."""
+
+
+def _style_instruction(style: str) -> str:
+    style = (style or "solveit").lower()
+    guidance = {
+        "solveit": """## Tutor style: Solveit
+Guide the learner through the Solve It method, one small verified step at a time:
+- S - State the problem: ask the learner to restate the task, inputs, outputs, and constraints.
+- O - Outline the logic: sketch the flow or pseudocode before writing code.
+- L - Locate the tools: identify which constructs (loops, conditionals, data structures) are needed.
+- V - Verify & execute: have the learner run tiny experiments and inspect the output on small toy data (3-5 items).
+- E - Evaluate: ask why the code works and how it could be improved.
+Keep each step to 1-3 logical lines. Never write the complete solution. End with exactly one Socratic question.""",
+        "socratic": """## Tutor style: Socratic
+Guide through pointed questions before revealing any answer. Break the problem
+into atomic micro-lessons: do not move to concept B until the learner shows
+mastery of concept A. When the learner shares an error, do not fix it — ask what
+the traceback tells them. Never give the full solution. End with exactly one
+probing question to keep the learner in the driver's seat.""",
+        "direct": """## Tutor style: Direct
+Be clear and direct. Give concise, correct explanations and name the exact
+theoretical rule the learner is missing, with minimal preamble. Small unrelated
+syntax examples are fine, but never write the learner's solution for them —
+always leave the final step to the learner.""",
+        "blooms": """## Tutor style: Bloom's taxonomy
+Structure guidance through Bloom's levels: remember, understand, apply, analyze,
+evaluate, and create. Anchor on the learner's current code and move them up one
+level at a time instead of revealing the finished solution.""",
+    }
+    return guidance.get(style, guidance["solveit"])
+
+
+def _understanding_level_instruction(level: str) -> str:
+    level = (level or "intermediate").lower()
+    guidance = {
+        "beginner": (
+            "The learner is at a beginner level: focus on foundational concepts, "
+            "definitions, and straightforward applications. Assume little to no prior knowledge."
+        ),
+        "intermediate": (
+            "The learner is at an intermediate level: emphasize problem-solving, "
+            "system design, and practical implementation on top of core concepts."
+        ),
+        "advanced": (
+            "The learner is at an advanced level: challenge them to analyze, optimize, "
+            "and innovate rather than re-explain fundamentals."
+        ),
+    }
+    return guidance.get(level, guidance["intermediate"])
+
+
+def _explanation_length_instruction(length: str) -> str:
+    length = (length or "short").lower()
+    if length == "thorough":
+        return (
+            "Give thorough explanations: context, why it matters, and analogies "
+            "before moving into practice."
+        )
+    return (
+        "Keep explanations concise: the essential rule in a few sentences, then "
+        "transition quickly to practice."
+    )
+
+
+def build_system_prompt(profile: dict[str, Any] | None = None, style: str | None = None) -> str:
+    """Build the stable SocratiQ system prompt for a learner profile.
+
+    ``profile`` is the parsed structure returned by
+    ``learner_profile.get_or_create_profile`` (i.e. ``{"frontmatter": {...}, ...}``).
+    The profile's ``tutor_style`` is the single source of truth for tutoring
+    style; ``style`` may override it for an individual request.
+    """
+    frontmatter = (profile or {}).get("frontmatter") or {}
+    effective_style = style or frontmatter.get("tutor_style") or "solveit"
+
+    sections = [
+        _base_socratiq_prompt(),
+        _style_instruction(effective_style),
+        _understanding_level_instruction(frontmatter.get("understanding_level") or "intermediate"),
+        _explanation_length_instruction(frontmatter.get("explanation_length") or "short"),
+    ]
+    return "\n\n".join(sections)
 
 
 class AIService:
@@ -62,9 +160,15 @@ class AIService:
     def complete(self, prompt: str) -> str:
         if not self.is_configured:
             raise RuntimeError("AI service not configured")
+        return self._chat_complete([{"role": "user", "content": prompt}])
+
+    def _chat_complete(self, messages: list[dict[str, Any]]) -> str:
+        """Send an OpenAI-compatible ``messages`` payload to the configured model."""
+        if not self.is_configured:
+            raise RuntimeError("AI service not configured")
         response = self.client.chat.completions.create(
             model=self.settings.model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
         )
         return (response.choices[0].message.content or "").strip()
 
@@ -211,38 +315,42 @@ GROUNDING CONTEXT:
             raise RuntimeError(f"Failed to create a valid learning path: {exc}") from exc
 
     def chat(
-        self, message: str, context: str = "", understanding_level: str = "Intermediate"
+        self,
+        history: list[dict[str, Any]] | None = None,
+        context: str = "",
+        profile: dict[str, Any] | None = None,
+        style: str | None = None,
     ) -> str:
+        """Have a multi-turn conversation with SocratiQ.
+
+        ``history`` is an ordered list of ``{"role": ..., "content": ...}`` turns
+        (roles ``user``/``assistant``). The system prompt is built server-side from
+        the learner's profile (tutor style + understanding level + explanation
+        length); ``context`` is the current exercise context for this turn. The
+        history is trimmed to the last ``MAX_AI_HISTORY_MESSAGES`` turns so token
+        limits stay bounded.
+        """
         if not self.is_configured:
             return "AI service not configured."
 
-        system_prompt = """
-        You are SocratiQ, an expert AI coding tutor.
+        system_prompt = build_system_prompt(profile, style)
+        if context and context.strip():
+            system_prompt = (
+                f"{system_prompt}\n\n---\n\n### Current exercise context "
+                f"(this changes each turn)\n{context.strip()}"
+            )
 
-        Your Goal: Help the student understand the current exercise and solve the problem WITHOUT giving away the answer.
+        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        for turn in (history or [])[-MAX_AI_HISTORY_MESSAGES:]:
+            role = turn.get("role")
+            content = (turn.get("content") or "").strip()
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+        if not any(m["role"] in ("user", "assistant") for m in messages):
+            messages.append({"role": "user", "content": "Hello."})
 
-        Guidelines:
-        1.  **Persona**: Be encouraging, clear, and highly practical. Avoid magical jargon.
-        2.  **No Solutions**: Never write the full code solution. If asked, explain the *logic* or give a small syntax example unrelated to the exact solution.
-        3.  **Socratic Method**: Ask guiding questions to help them realize the answer.
-        4.  **Use Context**: Always integrate the specific details of the exercise description and the student's current code provided in the context into your guidance.
-        """
-
-        level_prompts = {
-            "Beginner": "You are conversing with a Beginner learner: Focus on foundational concepts, definitions, and straightforward applications in machine learning systems, suitable for learners with little to no prior knowledge.",
-            "Intermediate": "You are conversing with an Intermediate learner: Emphasize problem-solving, system design, and practical implementations, targeting learners with a basic understanding of machine learning principles.",
-            "Advanced": "You are conversing with an Advanced learner: Challenge learners to analyze, innovate, and optimize complex machine learning systems, requiring deep expertise and a holistic grasp of advanced techniques.",
-            "Bloom's Taxonomy": "You are an expert ML teacher using Bloom’s Taxonomy: Create responses that progress through Bloom’s levels: remember, understand, apply, analyze, evaluate, and create. Guide my learning.",
-            "Solveit": "You are a Solveit pair programming navigator (Fast.ai / Answer.AI): Guide the learner through 1 to 3 line micro-steps on small toy data (3-5 items). Prompt them to run and inspect the intermediate output. Never write the complete solution. End with exactly one Socratic question.",
-        }
-
-        level_instruction = level_prompts.get(understanding_level, level_prompts["Intermediate"])
-        full_prompt = (
-            f"{system_prompt}\n\nUnderstanding Level Context:\n{level_instruction}"
-            f"\n\nContext: {context}\n\nUser: {message}"
-        )
         try:
-            return self.complete(full_prompt)
+            return self._chat_complete(messages)
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
 

@@ -1,17 +1,22 @@
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ai_service import ai_service
 from auth import User, get_current_admin, get_current_user
 from learning_paths import LearningResource
 from llm import providers_public
 from routers.file_courses import COURSES_DIR
-from run_limits import MAX_AI_CONTEXT_CHARS, MAX_AI_MESSAGE_CHARS, enforce_ai_limits
+from run_limits import (
+    MAX_AI_CONTEXT_CHARS,
+    MAX_AI_HISTORY_MESSAGES,
+    MAX_AI_MESSAGE_CHARS,
+    enforce_ai_chat_limits,
+)
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -54,10 +59,25 @@ class GenerateExerciseRequest(BaseModel):
     language: str = "python"
 
 
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"] = "user"
+    content: str = Field(..., min_length=1, max_length=MAX_AI_MESSAGE_CHARS)
+
+
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=MAX_AI_MESSAGE_CHARS)
+    model_config = ConfigDict(extra="forbid")
+
+    # Ordered conversation turns (oldest first). The server owns the system
+    # prompt and rebuilds it from the learner profile every turn.
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=MAX_AI_HISTORY_MESSAGES)
+    # Stable per-session exercise context (lesson + current code). Recomputed by
+    # the client each turn, but never includes test_code/solution content.
     context: str | None = Field(default="", max_length=MAX_AI_CONTEXT_CHARS)
-    understanding_level: str = "Intermediate"
+    # Optional per-request tutor style override. When absent the learner's
+    # LEARNING.md profile is the single source of truth.
+    tutor_style: Literal["solveit", "socratic", "direct", "blooms"] | None = None
 
 
 class ConfigureKeyRequest(BaseModel):
@@ -254,22 +274,31 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
 
 @router.post("/discuss")
 def discuss_implementation(request: ChatRequest, user: User = Depends(get_current_user)):
-    enforce_ai_limits(user.username, request.message, request.context or "")
+    history = [message.model_dump() for message in request.messages]
+    enforce_ai_chat_limits(user.username, history, request.context or "")
 
-    level = request.understanding_level
-    # Personalize tutor style from LEARNING.md if default Intermediate was provided
+    # LEARNING.md is the single source of truth for tutoring style. An explicit
+    # per-request override (sent by the same single in-app control, which also
+    # persists the choice to the profile) takes precedence for this turn only.
+    parsed_profile: dict[str, Any] = {}
     try:
         from learner_profile import get_or_create_profile
 
-        _, parsed = get_or_create_profile(user.username)
-        fm = parsed.get("frontmatter", {})
-        if request.understanding_level == "Intermediate":
-            if fm.get("tutor_style") == "solveit":
-                level = "Solveit"
-            elif fm.get("understanding_level"):
-                level = fm["understanding_level"].title()
+        _, parsed_profile = get_or_create_profile(user.username)
     except Exception:
-        pass
+        parsed_profile = {}
 
-    response = ai_service.chat(request.message, request.context, level)
-    return {"response": response}
+    frontmatter = parsed_profile.get("frontmatter", {})
+    style = request.tutor_style or frontmatter.get("tutor_style") or "solveit"
+
+    response = ai_service.chat(
+        history=history,
+        context=request.context or "",
+        profile=parsed_profile,
+        style=style,
+    )
+    return {
+        "response": response,
+        "tutor_style": style,
+        "understanding_level": frontmatter.get("understanding_level", "intermediate"),
+    }
