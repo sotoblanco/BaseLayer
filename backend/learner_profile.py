@@ -38,7 +38,7 @@ class LearnerFrontMatter(BaseModel):
     )
     pace: Literal["unhurried", "sprint", "mixed"] = "unhurried"
     explanation_length: Literal["short", "thorough"] = "short"
-    exercise_format: Literal["micro_steps", "macro_challenges"] = "micro_steps"
+    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] = "micro_steps"
 
 
 class LearnerProfileData(BaseModel):
@@ -60,9 +60,11 @@ class LearnerQuestionnaire(BaseModel):
         default="short",
         description="Explanation length: short (concise essentials) or thorough (detailed with analogies).",
     )
-    exercise_format: Literal["micro_steps", "macro_challenges"] = Field(
-        default="micro_steps",
-        description="Exercise structure: micro_steps (many small verified steps) or macro_challenges (fewer larger puzzles).",
+    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] | None = (
+        Field(
+            default=None,
+            description="Exercise structure: micro_steps (bite-sized verified steps), macro_challenges (larger puzzles), or guided_completion (scaffolded fill-in-the-blanks).",
+        )
     )
     hint_preference: Literal["toy_example", "guiding_question", "direct_explanation"] | None = (
         Field(
@@ -428,17 +430,31 @@ def _infer_modalities(answers: LearnerQuestionnaire) -> list[str]:
     return answers.preferred_modalities or ["code", "spreadsheet", "drawing"]
 
 
+def _infer_exercise_format(
+    answers: LearnerQuestionnaire,
+) -> Literal["micro_steps", "macro_challenges", "guided_completion"]:
+    if answers.exercise_format:
+        return answers.exercise_format
+    if answers.understanding_level == "beginner":
+        return "guided_completion"
+    return "micro_steps"
+
+
 def _build_snapshot(
-    answers: LearnerQuestionnaire, inferred_style: str, modalities: list[str]
+    answers: LearnerQuestionnaire,
+    inferred_style: str,
+    modalities: list[str],
+    inferred_format: str = "micro_steps",
 ) -> str:
     expl = (
         "concise essentials" if answers.explanation_length == "short" else "in-depth explanations"
     )
-    grain = (
-        "bite-sized micro-steps"
-        if answers.exercise_format == "micro_steps"
-        else "comprehensive challenges"
-    )
+    if inferred_format == "guided_completion":
+        grain = "guided fill-in-the-blank code completion"
+    elif inferred_format == "micro_steps":
+        grain = "bite-sized micro-steps"
+    else:
+        grain = "comprehensive challenges"
     tools = ", ".join(modalities)
     return (
         f"Learner prefers {expl} and practicing through {grain}. "
@@ -460,7 +476,9 @@ def _build_modality_recommendations(modalities: list[str]) -> list[str]:
     return recs
 
 
-def _build_pedagogy_recommendations(answers: LearnerQuestionnaire) -> list[str]:
+def _build_pedagogy_recommendations(
+    answers: LearnerQuestionnaire, inferred_format: str = "micro_steps"
+) -> list[str]:
     recs: list[str] = []
     if answers.explanation_length == "short":
         recs.append(
@@ -471,7 +489,11 @@ def _build_pedagogy_recommendations(answers: LearnerQuestionnaire) -> list[str]:
             "Provide thorough explanations with real-world analogies and conceptual context."
         )
 
-    if answers.exercise_format == "micro_steps":
+    if inferred_format == "guided_completion":
+        recs.append(
+            "Provide pre-structured code templates with fill-in-the-blank placeholders (`____`) to eliminate syntax friction."
+        )
+    elif inferred_format == "micro_steps":
         recs.append(
             "Structure practice into 4-6 small micro-steps with immediate automated assertions."
         )
@@ -516,6 +538,7 @@ def aggregate_questionnaire_to_markdown(
     """Transforms learner questionnaire responses into a formatted LEARNING.md profile."""
     inferred_style = _infer_tutor_style(answers)
     inferred_mods = _infer_modalities(answers)
+    inferred_format = _infer_exercise_format(answers)
     now_iso = datetime.now(timezone.utc).isoformat()
     fm = LearnerFrontMatter(
         username=username,
@@ -527,13 +550,13 @@ def aggregate_questionnaire_to_markdown(
         preferred_modalities=inferred_mods,
         pace=answers.pace,
         explanation_length=answers.explanation_length,
-        exercise_format=answers.exercise_format,
+        exercise_format=inferred_format,
     )
 
-    snapshot_text = _build_snapshot(answers, inferred_style, inferred_mods)
+    snapshot_text = _build_snapshot(answers, inferred_style, inferred_mods, inferred_format)
     tutor_rec = _build_tutor_recommendations(inferred_style)
     modality_recs = _build_modality_recommendations(inferred_mods)
-    pedagogy_recs = _build_pedagogy_recommendations(answers)
+    pedagogy_recs = _build_pedagogy_recommendations(answers, inferred_format)
     customize_block = _build_all_recommendations(tutor_rec, pedagogy_recs, modality_recs)
 
     notes_bullet = (
