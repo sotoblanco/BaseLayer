@@ -88,6 +88,28 @@ Each learner has a personal profile file at `data/learners/{username}/LEARNING.m
 - Code won’t run → Docker Desktop is running
 - Ports busy → free **8000** (API) and **5173** (Vite)
 
+### Docker Compose (whole stack in containers)
+
+Prefer `./docker-compose.yml` when you want every service containerized:
+
+```bash
+./docker-dev.sh            # generates .env.docker from .env, builds, starts
+./docker-dev.sh logs       # follow logs
+./docker-dev.sh down
+```
+
+The compose backend never mounts the Docker socket (security), so it runs student
+code through the **remote Modal sandbox** (`EXECUTION_ENV=modal`, the same engine
+production uses). For that, put Modal credentials in `.env`
+(`MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`, from `modal token new`) and have the app
+reachable (deployed with `modal deploy modal_app.py`, see [Deploy (Modal)](#deploy-modal)).
+The compose frontend reads `VITE_GOOGLE_CLIENT_ID` from `.env` (same value as
+`GOOGLE_CLIENT_ID`); leave it unset to hide “Sign in with Google”.
+
+No Modal account? Run the stack on the host with `./dev.sh` instead — the backend
+then executes student code against your **local Docker daemon** using the
+`sandbox-runner` image (built automatically from `research/sandbox`).
+
 ---
 
 ## Build a course with the Agentic Workflow

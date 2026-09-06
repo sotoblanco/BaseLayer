@@ -91,14 +91,14 @@ else
     # Build Sandbox Runner Image only if it doesn't already exist
     if ! docker image inspect sandbox-runner:latest >/dev/null 2>&1; then
         log "Building sandbox-runner Docker image..."
-        docker build -t sandbox-runner ./sandbox
+        docker build -t sandbox-runner research/sandbox
         if [ $? -ne 0 ]; then
             error "Failed to build sandbox-runner image. Proceeding anyway..."
         else
             log "Sandbox image built successfully."
         fi
     else
-        log "sandbox-runner image already exists, skipping build (use \`docker build\` manually after making changes)."
+        log "sandbox-runner image already exists, skipping build (use \`docker build -t sandbox-runner research/sandbox\` manually after making changes)."
     fi
 fi
 

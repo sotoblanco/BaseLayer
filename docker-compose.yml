@@ -3,11 +3,21 @@
 #
 # Security notes:
 #   - Backend and frontend run as non-root users inside their containers.
-#   - Secrets are loaded from .env.docker (not hardcoded).
+#   - Secrets are loaded from .env.docker / your local .env (not hardcoded).
 #   - Containers communicate on an internal network; only ports 5173/8000
 #     are exposed to the host.
 #   - The Docker socket is NOT mounted (removed for security).
-#     Code execution uses the remote Modal sandbox in production.
+#
+# Code execution (/run):
+#   - EXECUTION_ENV=modal is set on the backend below, so student code runs in
+#     the remote Modal sandbox (the same engine production uses). The container
+#     needs Modal credentials (MODAL_TOKEN_ID / MODAL_TOKEN_SECRET in your .env)
+#     and a reachable Modal app, e.g. one deployed with `modal deploy modal_app.py`.
+#     See the README "Deploy (Modal)" section.
+#   - No Modal account? Run the stack on your host with `./dev.sh` instead: the
+#     backend then executes student code against your local Docker daemon using
+#     the `sandbox-runner` image. We intentionally do NOT mount the Docker socket
+#     into the compose backend.
 # =============================================================================
 
 services:
@@ -29,6 +39,10 @@ services:
       - DATABASE_URL=sqlite:///database.db
       - COURSES_DIR=/courses
       - ALLOW_LOCAL_WELCOME=true
+      # Route /run to the remote Modal sandbox (see header comment).
+      # The compose container has no Docker socket, so leaving this unset would
+      # try `docker run sandbox-runner` against a daemon it cannot reach.
+      - EXECUTION_ENV=modal
     networks:
       - baselayer-net
     restart: unless-stopped
@@ -46,7 +60,10 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://backend:8000
-      - VITE_GOOGLE_CLIENT_ID=816844223678-1dh0td3bc0mv3aj4dhanlnm1ubldc6ah.apps.googleusercontent.com
+      # Same client ID as GOOGLE_CLIENT_ID in the backend .env. Provided via env
+      # interpolation (your shell / .env) instead of being hardcoded here. Leave
+      # unset to hide the "Sign in with Google" button in local dev.
+      - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID:-}
     depends_on:
       - backend
     networks:
