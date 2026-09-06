@@ -5,5 +5,10 @@
   "skills": [
     "Dot product",
     "MMULT"
+  ],
+  "hints": [
+    "A dot product is element-wise multiply then sum. Try SUMPRODUCT on the two vector columns and predict the single number before you press Enter.",
+    "Matrix multiplication needs matching inner dimensions: each result cell is the dot product of one row of A with one column of B.",
+    "Inspect the MMULT result grid cell-by-cell against the manual SUMPRODUCT example before submitting."
   ]
 }

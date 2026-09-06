@@ -271,18 +271,32 @@ GROUNDING CONTEXT:
         **Your Task:**
         1. Look at the FIRST image provided (the background diagram 'question.png').
         2. Look at the SECOND image provided (the student's drawing 'sketch.png').{solution_ref_text}
-        4. Evaluate if the student correctly followed the instructions.
-        5. **Flexibility is Key**: If the student demonstrates the correct *idea* or *intent*, even if the drawing is imperfect, they should PASS.
-        6. Focus on the core concept being taught. Minor aesthetic issues or slight inaccuracies that don't compromise the understanding of the concept should be ignored.
-        7. {"If a solution image was provided, ensure the student's sketch matches the intent of the solution." if solution_img_bytes else ""}
-        8. Be encouraging and focus on what they got right.
+        3. Evaluate if the student correctly followed the instructions, then grade them
+           against a short, structured rubric so the learner knows exactly what to fix.
+        4. **Flexibility is Key**: If the student demonstrates the correct *idea* or *intent*,
+           even if the drawing is imperfect, the intent check should PASS.
+        5. Focus on the core concept being taught. Minor aesthetic issues or slight inaccuracies
+           that don't compromise the understanding of the concept should be ignored.
+        6. {"If a solution image was provided, ensure the student's sketch matches the intent of the solution." if solution_img_bytes else ""}
 
-        Provide the result in raw JSON format (no markdown) with:
+        Produce 3 rubric checks that map to the exercise:
+        - "intent": does the drawing show the intended concept/structure (correct layers, labels, order)?
+        - "missing": are required edges/elements/labels absent or incorrect?
+        - "extra": are there irrelevant or wrong extra marks that obscure the answer?
+        Adapt the labels to the specific exercise (e.g. name the required layers/parts).
+
+        Provide the result in raw JSON format (no markdown) with EXACTLY this shape:
         {{
             "passed": boolean,
             "score": float (0.0 to 1.0),
-            "message": "Feedback for the student"
+            "message": "One or two sentence overall feedback for the student",
+            "checks": [
+                {{"label": "Intent matches the instructions", "passed": boolean, "feedback": "short actionable note"}},
+                {{"label": "No missing required elements", "passed": boolean, "feedback": "short actionable note"}},
+                {{"label": "No extra or confusing marks", "passed": boolean, "feedback": "short actionable note"}}
+            ]
         }}
+        "passed" must be true only when every check passed.
         """
 
         try:
@@ -294,18 +308,80 @@ GROUNDING CONTEXT:
                 images.append((solution_img_bytes, "image/png"))
 
             text = self._complete_multimodal(prompt, images)
-            json_match = re.search(r"(\{.*?\})", text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group(1))
+            return self._parse_drawing_result(text)
+        except Exception as e:
+            print(f"Error in evaluate_drawing: {e}")
+            return {"error": f"AI evaluation failed: {str(e)}"}
 
+    @staticmethod
+    def _coerce_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value or "").strip().lower() == "true"
+
+    def _parse_drawing_result(self, text: str) -> dict[str, Any]:
+        """Parse the model's JSON into a stable drawing-grading result dict."""
+        parsed = self._extract_json_object(text)
+        if not isinstance(parsed, dict):
             return {
                 "passed": "pass" in text.lower() or "correct" in text.lower(),
                 "score": 1.0 if "pass" in text.lower() else 0.0,
                 "message": text,
+                "checks": [],
             }
-        except Exception as e:
-            print(f"Error in evaluate_drawing: {e}")
-            return {"error": f"AI evaluation failed: {str(e)}"}
+
+        checks = parsed.get("checks")
+        checks_list: list[dict[str, Any]] = []
+        if isinstance(checks, list):
+            for item in checks:
+                if not isinstance(item, dict):
+                    continue
+                checks_list.append(
+                    {
+                        "label": str(item.get("label", "Rubric check")),
+                        "passed": self._coerce_bool(item.get("passed")),
+                        "feedback": str(item.get("feedback", "")),
+                    }
+                )
+        checks_list = checks_list[:5]
+        passed = (
+            all(c["passed"] for c in checks_list)
+            if checks_list
+            else self._coerce_bool(parsed.get("passed"))
+        )
+
+        score = parsed.get("score")
+        if isinstance(score, bool):
+            score = 1.0 if score else 0.0
+        if not isinstance(score, (int, float)):
+            score = 1.0 if passed else 0.0
+        message = str(parsed.get("message") or text).strip()
+
+        return {
+            "passed": passed,
+            "score": float(score),
+            "message": message,
+            "checks": checks_list,
+        }
+
+    @staticmethod
+    def _extract_json_object(text: str) -> dict[str, Any] | None:
+        """Locate and parse the first balanced top-level JSON object in ``text``."""
+        import json as json_lib
+
+        decoder = json_lib.JSONDecoder()
+        for i, char in enumerate(text):
+            if char != "{":
+                continue
+            try:
+                obj, _ = decoder.raw_decode(text[i:])
+            except json_lib.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                return obj
+        return None
 
 
 ai_service = AIService()

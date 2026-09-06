@@ -1,6 +1,6 @@
-import { Lightbulb, Send } from 'lucide-react';
+import { CheckCircle2, Lightbulb, Send, XCircle } from 'lucide-react';
 import DrawingCanvas from '../../components/DrawingCanvas';
-import type { FileLesson } from '../types';
+import type { DrawingFeedback, FileLesson } from '../types';
 import { API_BASE_URL } from '../../config';
 
 interface DrawingPaneProps {
@@ -11,7 +11,7 @@ interface DrawingPaneProps {
   onCanvasRef: (ref: HTMLCanvasElement | null) => void;
   onSubmit: () => void;
   isSubmitting: boolean;
-  feedback: string;
+  feedback: DrawingFeedback | null;
 }
 
 export function DrawingPane({
@@ -24,12 +24,11 @@ export function DrawingPane({
   isSubmitting,
   feedback,
 }: DrawingPaneProps) {
-  const passed =
-    feedback.toLowerCase().includes('pass') ||
-    feedback.toLowerCase().includes('great job') ||
-    feedback.toLowerCase().includes('correct');
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const imageAuthQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+  const passed = feedback?.passed ?? false;
+  const hasFeedback = feedback !== null;
+  const checks = feedback?.checks?.length ? feedback.checks : [];
 
   return (
     <div className="flex flex-col h-full bg-[#05192d]">
@@ -62,14 +61,65 @@ export function DrawingPane({
       </div>
 
       <div className="shrink-0 flex flex-col border-t border-[#1d3952]">
-        <div className="h-24 overflow-y-auto px-4 py-3 custom-scrollbar font-mono bg-[#0b2338] border-b border-[#1d3952]">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#93a3b4]">AI Feedback</span>
-          {feedback ? (
-            <p className={`text-xs whitespace-pre-wrap leading-relaxed mt-1 ${passed ? 'text-[#03ef62]' : 'text-[#e6edf3]'}`}>
-              {feedback}
-            </p>
+        <div className="max-h-40 overflow-y-auto px-4 py-3 custom-scrollbar bg-[#0b2338] border-b border-[#1d3952]">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#93a3b4]">
+              AI Feedback
+            </span>
+            {hasFeedback && (
+              <span
+                className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${
+                  passed ? 'text-[#03ef62]' : 'text-[#ffb800]'
+                }`}
+              >
+                {passed ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                {passed ? 'Passed' : 'Keep iterating'}
+              </span>
+            )}
+          </div>
+
+          {isSubmitting ? (
+            <p className="text-xs text-[#5b6b7b] italic mt-2">Evaluating your drawing...</p>
+          ) : hasFeedback ? (
+            <div className="mt-2 space-y-2">
+              {feedback && feedback.message && (
+                <p
+                  className={`text-xs leading-relaxed whitespace-pre-wrap ${
+                    passed ? 'text-[#03ef62]' : 'text-[#e6edf3]'
+                  }`}
+                >
+                  {feedback.message}
+                </p>
+              )}
+              {checks.length > 0 && (
+                <ul className="space-y-1.5 pt-1 border-t border-[#1d3952]">
+                  {checks.map((check, idx) => (
+                    <li key={`${check.label}-${idx}`} className="flex items-start gap-2 text-xs">
+                      {check.passed ? (
+                        <CheckCircle2 size={14} className="text-[#03ef62] shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle size={14} className="text-[#ff6b6b] shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0">
+                        <span
+                          className={check.passed ? 'text-[#e6edf3]' : 'text-[#ffb800]'}
+                        >
+                          {check.label}
+                        </span>
+                        {check.feedback && (
+                          <span className="block text-[#93a3b4]">{check.feedback}</span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           ) : (
-            <p className="text-xs text-[#5b6b7b] italic mt-1">Submit your drawing to receive feedback...</p>
+            <p className="text-xs text-[#5b6b7b] italic mt-2">
+              Submit your drawing to receive rubric feedback (intent / missing elements / extra
+              marks)...
+            </p>
           )}
         </div>
         <div className="h-12 flex items-center justify-between px-4 gap-3">

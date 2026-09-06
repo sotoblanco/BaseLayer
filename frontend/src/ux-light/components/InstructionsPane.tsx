@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Lightbulb, Zap, Eye, EyeOff, ChevronRight, ChevronLeft } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github.css';
 import type { FileLesson } from '../types';
+import { buildLessonHints } from '../lessonHints';
 import AIChatPanel from '../../components/AIChatPanel';
 import { buildTutorContext } from '../../tutorContext';
 
@@ -37,12 +38,9 @@ export function InstructionsPane({
     setHintIndex(0);
   }, [lesson.slug]);
 
+  const hints = useMemo(() => buildLessonHints(lesson), [lesson]);
+
   const currentXp = Math.max(5, 35 - xpPenalty);
-  const hints = [
-    'Read the task list carefully and fill in any `____` blanks in the starter code.',
-    'Run your code first, then submit once the output looks right.',
-    'Compare your approach with the tests tab if you get stuck.',
-  ];
 
   return (
     <div className="h-full flex flex-col bg-white text-[#1a2733] select-text">

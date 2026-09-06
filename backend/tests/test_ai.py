@@ -64,3 +64,69 @@ class TestDiscussEndpoint:
         assert client.post("/ai/discuss", json=payload, headers=auth_headers).status_code == 200
         third = client.post("/ai/discuss", json=payload, headers=auth_headers)
         assert third.status_code == 429
+
+
+class TestDrawingRubricParsing:
+    """Tests for the structured rubric parsing in ai_service."""
+
+    def test_parse_drawing_result_structured(self):
+        from ai_service import ai_service
+
+        text = (
+            'Here you go: {"passed": false, "score": 0.5, '
+            '"message": "Layers right but labels missing.", '
+            '"checks": [{"label": "Intent matches", "passed": true, "feedback": "ok"}, '
+            '{"label": "No missing required elements", "passed": false, '
+            '"feedback": "Add layer names"}]}'
+        )
+        result = ai_service._parse_drawing_result(text)
+        assert result["passed"] is False
+        assert result["score"] == 0.5
+        assert result["message"] == "Layers right but labels missing."
+        assert len(result["checks"]) == 2
+        assert result["checks"][1]["label"] == "No missing required elements"
+        assert result["checks"][1]["passed"] is False
+
+    def test_parse_drawing_result_all_passing_means_passed(self):
+        from ai_service import ai_service
+
+        text = (
+            '{"passed": true, "score": 0.9, "message": "Great", '
+            '"checks": [{"label": "a", "passed": true}, {"label": "b", "passed": true}]}'
+        )
+        result = ai_service._parse_drawing_result(text)
+        assert result["passed"] is True
+        assert result["checks"][0]["feedback"] == ""
+
+    def test_parse_drawing_result_nested_json_is_balanced(self):
+        from ai_service import ai_service
+
+        text = (
+            '{"passed": false, "score": 0.0, "message": "no", '
+            '"checks": [{"label": "a", "passed": false, "feedback": "x { y } z"}]}'
+        )
+        result = ai_service._parse_drawing_result(text)
+        assert result["passed"] is False
+        assert result["checks"][0]["feedback"] == "x { y } z"
+
+    def test_parse_drawing_result_coerces_string_bools(self):
+        from ai_service import ai_service
+
+        text = (
+            '{"passed": "false", "score": 0.0, "message": "nope", '
+            '"checks": [{"label": "a", "passed": "true", "feedback": "ok"}, '
+            '{"label": "b", "passed": "false", "feedback": ""}]}'
+        )
+        result = ai_service._parse_drawing_result(text)
+        assert result["passed"] is False
+        assert result["checks"][0]["passed"] is True
+        assert result["checks"][1]["passed"] is False
+        assert result["score"] == 0.0
+
+    def test_parse_drawing_result_unparsable_falls_back_to_text(self):
+        from ai_service import ai_service
+
+        result = ai_service._parse_drawing_result("The sketch looks correct overall!")
+        assert result["passed"] is True
+        assert "correct" in result["message"]
+        assert result["checks"] == []

@@ -30,8 +30,8 @@ This will automatically fill a new range with the doubled values of `T1`, just l
 
 Task:
 
-- [ ] Click on make a copy and past the link to your spreadsheet
+- [ ] Click on **Make a private copy**, fill in the sheet, and paste the link to your copy
 - [ ] Use the correct Google Sheets formulas to get the matrix shape and size
 - [ ] Multiply the matrix by 2 and observe the result
 
-If you did everything correct you will get a message saying 
+> If you did everything correctly you will get a message saying the spreadsheet lesson is complete, and you can move on to the next lesson.

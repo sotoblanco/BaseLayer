@@ -25,6 +25,8 @@ import type {
   EditorTab,
   OutputMessage,
   GradingResult,
+  DrawingFeedback,
+  SpreadsheetVerification,
 } from './types';
 import type { ShareKind, SharePayload } from './shareCard';
 import { API_BASE_URL } from '../config';
@@ -69,9 +71,12 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
 
   const [userSheetUrl, setUserSheetUrl] = useState('');
-  const [drawingOutput, setDrawingOutput] = useState('');
+  const [drawingFeedback, setDrawingFeedback] = useState<DrawingFeedback | null>(null);
   const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
   const [showDrawingSolution, setShowDrawingSolution] = useState(false);
+  const [sheetVerification, setSheetVerification] = useState<SpreadsheetVerification | null>(null);
+  const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
+  const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
@@ -142,7 +147,9 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     setXpPenalty(0);
     setGradingResult(null);
     setOutputs([]);
-    setDrawingOutput('');
+    setDrawingFeedback(null);
+    setSheetVerification(null);
+    setSheetVerifyError(null);
     setActiveConsoleTab('shell');
     setMobileTab('instructions');
     const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
@@ -315,7 +322,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   const handleDrawingSubmit = async () => {
     if (!lesson || !drawingCanvasRef.current || !slug) return;
     setIsSubmittingDrawing(true);
-    setDrawingOutput('Evaluating your drawing...');
+    setDrawingFeedback(null);
     try {
       const imageData = drawingCanvasRef.current.toDataURL('image/png');
       const response = await fetch(`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/submit-drawing`, {
@@ -329,16 +336,67 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       if (response.status === 401) {
         logout();
         setIsAuthModalOpen(true);
-        setDrawingOutput('Your session has expired. Please sign in again.');
+        setDrawingFeedback({ passed: false, message: 'Your session has expired. Please sign in again.' });
         return;
       }
-      const data = await response.json();
-      setDrawingOutput(data.message);
-      if (data.passed) triggerSuccess(data.message);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setDrawingFeedback({
+          passed: false,
+          message: data.detail || 'Drawing evaluation failed. Please try again.',
+        });
+        return;
+      }
+      const feedback: DrawingFeedback = {
+        passed: !!data.passed,
+        score: data.score,
+        message: data.message || (data.passed ? 'Your drawing passed.' : 'Your drawing needs work.'),
+        checks: Array.isArray(data.checks) ? data.checks : undefined,
+      };
+      setDrawingFeedback(feedback);
+      if (feedback.passed) triggerSuccess(feedback.message);
     } catch {
-      setDrawingOutput('Failed to submit drawing.');
+      setDrawingFeedback({ passed: false, message: 'Failed to submit drawing.' });
     } finally {
       setIsSubmittingDrawing(false);
+    }
+  };
+
+  const handleSheetVerify = async (sheetUrl: string) => {
+    if (!lesson || !slug) return;
+    setSheetVerification(null);
+    setSheetVerifyError(null);
+    setIsVerifyingSheet(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/verify-sheet`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ sheet_id: sheetUrl }),
+        }
+      );
+      if (response.status === 401) {
+        logout();
+        setIsAuthModalOpen(true);
+        setSheetVerifyError('Your session has expired. Please sign in again.');
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSheetVerifyError(data.detail || 'Could not verify your sheet. Please try again.');
+        return;
+      }
+      const verification = data as SpreadsheetVerification;
+      setSheetVerification(verification);
+      if (verification.passed) triggerSuccess(verification.message);
+    } catch {
+      setSheetVerifyError('Failed to reach the verification service.');
+    } finally {
+      setIsVerifyingSheet(false);
     }
   };
 
@@ -427,13 +485,17 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         }}
         onSubmit={handleDrawingSubmit}
         isSubmitting={isSubmittingDrawing}
-        feedback={drawingOutput}
+        feedback={drawingFeedback}
       />
     ) : exerciseType === 'spreadsheet' && lesson.google_sheet_id ? (
       <SpreadsheetPane
         lesson={lesson}
         userSheetUrl={userSheetUrl}
         onChangeUrl={setUserSheetUrl}
+        onVerify={handleSheetVerify}
+        isVerifying={isVerifyingSheet}
+        verification={sheetVerification}
+        verifyError={sheetVerifyError}
         onMarkComplete={() => triggerSuccess('Spreadsheet lesson marked complete.')}
         isComplete={completedIds.has(lesson.slug)}
       />

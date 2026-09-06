@@ -5,5 +5,10 @@
   "skills": [
     "Tensor shape",
     "Google Sheets"
+  ],
+  "hints": [
+    "Put a small block of numbers (e.g. 9 values in B2:D4) — that block is your tensor T1. Make the numbers concrete, like 1..9.",
+    "Before touching formulas, predict: how many rows and columns does your block have, and how many values are in it?",
+    "Inspect the results: the shape formula should read rows x columns (e.g. 3x3) and the size formula should equal the count of values (e.g. 9)."
   ]
 }
