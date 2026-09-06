@@ -466,8 +466,9 @@ Return a JSON object with this exact shape:
                 if self.generate_text is not None:
                     llm_text = self.generate_text(system_solveit_prompt)
                 elif self.client is not None and hasattr(self.client, "chat"):
+                    default_m = "gemini-2.5-flash" if os.environ.get("LLM_PROVIDER") == "gemini" else "gpt-4.1-mini"
                     completion = self.client.chat.completions.create(
-                        model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+                        model=os.environ.get("LLM_MODEL") or default_m,
                         messages=[{"role": "user", "content": system_solveit_prompt}],
                     )
                     llm_text = (completion.choices[0].message.content or "").strip()

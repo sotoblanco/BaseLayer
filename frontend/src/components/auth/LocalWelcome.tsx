@@ -26,21 +26,23 @@ const FALLBACK_PROVIDERS: AIProviderInfo[] = [
     id: 'gemini',
     name: 'Google Gemini',
     needs_key: true,
-    default_model: 'gemini-2.0-flash',
+    default_model: 'gemini-2.5-flash',
     default_base: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     docs_url: 'https://aistudio.google.com/app/apikey',
     blurb: 'Free key from Google AI Studio',
     group: 'free',
+    suggested_models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
   },
   {
     id: 'groq',
     name: 'Groq',
     needs_key: true,
-    default_model: 'llama-3.1-8b-instant',
+    default_model: 'llama-3.3-70b-versatile',
     default_base: 'https://api.groq.com/openai/v1',
     docs_url: 'https://console.groq.com/keys',
     blurb: 'Fast cloud models, free tier',
     group: 'free',
+    suggested_models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
   },
   {
     id: 'ollama',
@@ -51,6 +53,7 @@ const FALLBACK_PROVIDERS: AIProviderInfo[] = [
     docs_url: 'https://ollama.com',
     blurb: 'Local models, no API key',
     group: 'free',
+    suggested_models: ['llama3.2', 'qwen2.5-coder:7b', 'llama3.3'],
   },
   {
     id: 'lmstudio',
@@ -61,36 +64,40 @@ const FALLBACK_PROVIDERS: AIProviderInfo[] = [
     docs_url: 'https://lmstudio.ai',
     blurb: 'Local desktop app, no API key',
     group: 'free',
+    suggested_models: ['local-model'],
   },
   {
     id: 'openai',
     name: 'OpenAI',
     needs_key: true,
-    default_model: 'gpt-4o-mini',
+    default_model: 'gpt-4.1-mini',
     default_base: 'https://api.openai.com/v1',
     docs_url: 'https://platform.openai.com/api-keys',
     blurb: 'GPT models',
     group: 'key',
+    suggested_models: ['gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o-mini', 'gpt-4.1'],
   },
   {
     id: 'openrouter',
     name: 'OpenRouter',
     needs_key: true,
-    default_model: 'openai/gpt-4o-mini',
+    default_model: 'openai/gpt-4.1-mini',
     default_base: 'https://openrouter.ai/api/v1',
     docs_url: 'https://openrouter.ai/keys',
     blurb: 'One key, many models',
     group: 'key',
+    suggested_models: ['openai/gpt-4.1-mini', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat'],
   },
   {
     id: 'custom',
     name: 'Custom endpoint',
     needs_key: false,
-    default_model: 'gpt-4o-mini',
+    default_model: 'gpt-4.1-mini',
     default_base: null,
     docs_url: '',
     blurb: 'Any OpenAI-compatible URL',
     group: 'key',
+    suggested_models: ['gpt-4.1-mini'],
   },
 ];
 
@@ -127,7 +134,7 @@ export function LocalWelcome({
   const [loadingAiStatus, setLoadingAiStatus] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('gemini');
-  const [modelInput, setModelInput] = useState('gemini-2.0-flash');
+  const [modelInput, setModelInput] = useState('gemini-2.5-flash');
   const [apiBaseInput, setApiBaseInput] = useState('');
   const [savingKey, setSavingKey] = useState(false);
   const [keyFeedback, setKeyFeedback] = useState<{
@@ -529,9 +536,16 @@ export function LocalWelcome({
 
                   <form onSubmit={handleSaveKey} className="space-y-3">
                     <div>
-                      <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                        Model
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-medium text-slate-300">
+                          Model
+                        </label>
+                        {currentProvider?.default_model && (
+                          <span className="text-[11px] text-slate-400">
+                            Default: <span className="font-mono text-emerald-400">{currentProvider.default_model}</span> (recommended best value)
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="text"
                         value={modelInput}
@@ -539,6 +553,38 @@ export function LocalWelcome({
                         placeholder={currentProvider?.default_model || 'model name'}
                         className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-lg text-white font-mono text-xs placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                       />
+                      {currentProvider?.suggested_models && currentProvider.suggested_models.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          <span className="text-[11px] text-slate-400 block">
+                            Suggested models:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {currentProvider.suggested_models.map((m) => {
+                              const isSelected = modelInput === m;
+                              const isDefault = m === currentProvider.default_model;
+                              return (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setModelInput(m)}
+                                  className={`px-2.5 py-1 rounded text-xs font-mono transition-colors flex items-center gap-1.5 ${
+                                    isSelected
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                  }`}
+                                >
+                                  <span>{m}</span>
+                                  {isDefault && (
+                                    <span className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-sans font-medium">
+                                      Best Value
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {showBaseField && (
