@@ -6,6 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from learner_profile import (
+    LearnerQuestionnaire,
+    aggregate_questionnaire_to_markdown,
+    apply_questionnaire_profile,
     get_or_create_profile,
     parse_frontmatter,
     record_learner_event,
@@ -165,6 +168,20 @@ I prefer visual and drawing warm-ups before jumping to code.
             for b in parsed["courses_built"]
         )
 
+    def test_record_tutor_level_changed_event(self, tmp_path: Path):
+        get_or_create_profile("tutor_user", base_dir=tmp_path)
+
+        record_learner_event(
+            username="tutor_user",
+            event_type="tutor_level_changed",
+            payload={"tutor_style": "socratic", "understanding_level": "advanced"},
+            base_dir=tmp_path,
+        )
+
+        _, parsed = get_or_create_profile("tutor_user", base_dir=tmp_path)
+        assert parsed["frontmatter"]["tutor_style"] == "socratic"
+        assert parsed["frontmatter"]["understanding_level"] == "advanced"
+
 
 class TestLearnerProfileAPI:
     def test_get_learning_profile_requires_auth(self, client):
@@ -226,3 +243,76 @@ Advanced test runner.
         assert response.json()["success"] is True
         signals = response.json()["profile"]["signals"]
         assert any("Reset exercise on tinytorch" in s for s in signals)
+
+    def test_aggregate_questionnaire_to_markdown(self):
+        answers = LearnerQuestionnaire(
+            goal="Master tensor broadcasting and matrix multiplications",
+            preferred_modalities=["spreadsheet", "drawing"],
+            understanding_level="beginner",
+            tutor_style="solveit",
+            pace="unhurried",
+            preferred_ui="light",
+            custom_notes="Focus on visual matrix dimensions",
+        )
+        md = aggregate_questionnaire_to_markdown("visual_student", answers)
+        fm, body = parse_frontmatter(md)
+
+        assert fm["username"] == "visual_student"
+        assert fm["understanding_level"] == "beginner"
+        assert fm["preferred_modalities"] == ["spreadsheet", "drawing"]
+        assert fm["tutor_style"] == "solveit"
+        assert fm["pace"] == "unhurried"
+        assert "Master tensor broadcasting" in body
+        assert "Focus on visual matrix dimensions" in body
+        assert "Offer spreadsheet cell formulas" in body
+        assert "Include visual diagrams" in body
+
+    def test_apply_questionnaire_profile_preserves_courses(self, tmp_path: Path):
+        # 1. Create initial profile with some progress
+        get_or_create_profile("active_student", base_dir=tmp_path)
+        record_learner_event(
+            username="active_student",
+            event_type="lesson_opened",
+            payload={"course_slug": "tinytorch", "lesson_slug": "tensor-ops", "ui": "light"},
+            base_dir=tmp_path,
+        )
+
+        # 2. Re-run questionnaire with new preferences
+        answers = LearnerQuestionnaire(
+            goal="Build high performance CUDA kernels",
+            preferred_modalities=["code"],
+            understanding_level="advanced",
+            tutor_style="direct",
+            pace="sprint",
+            preferred_ui="classic",
+        )
+        content, parsed = apply_questionnaire_profile("active_student", answers, base_dir=tmp_path)
+
+        assert parsed["frontmatter"]["understanding_level"] == "advanced"
+        assert parsed["frontmatter"]["tutor_style"] == "direct"
+        assert parsed["frontmatter"]["preferred_ui"] == "classic"
+        assert any("tinytorch" in line for line in parsed["courses_taken"])
+        assert "Build high performance CUDA kernels" in content
+
+    def test_submit_questionnaire_authenticated(self, client, auth_headers, tmp_path: Path):
+        payload = {
+            "goal": "Understand transformers from zero",
+            "preferred_modalities": ["code", "spreadsheet"],
+            "understanding_level": "intermediate",
+            "tutor_style": "socratic",
+            "pace": "unhurried",
+            "preferred_ui": "light",
+            "custom_notes": "Interested in self-attention weights",
+        }
+        with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
+            response = client.post(
+                "/me/learning-profile/questionnaire",
+                json=payload,
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["parsed"]["frontmatter"]["tutor_style"] == "socratic"
+        assert data["parsed"]["frontmatter"]["preferred_modalities"] == ["code", "spreadsheet"]
+        assert "Understand transformers from zero" in data["markdown"]

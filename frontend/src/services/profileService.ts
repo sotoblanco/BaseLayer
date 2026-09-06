@@ -90,3 +90,39 @@ export const emitLearnerEvent = async (
     // Non-blocking telemetry
   }
 };
+
+export interface LearnerQuestionnaire {
+  goal: string;
+  preferred_modalities: string[];
+  understanding_level: 'beginner' | 'intermediate' | 'advanced';
+  tutor_style: 'solveit' | 'socratic' | 'direct' | 'blooms';
+  pace: 'unhurried' | 'sprint' | 'mixed';
+  preferred_ui: 'classic' | 'light';
+  custom_notes?: string;
+}
+
+export const submitLearnerQuestionnaire = async (
+  answers: LearnerQuestionnaire
+): Promise<LearningProfileResponse> => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('Please sign in to customize your learning profile.');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/me/learning-profile/questionnaire`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(answers),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to submit questionnaire');
+  }
+
+  return response.json();
+};
+

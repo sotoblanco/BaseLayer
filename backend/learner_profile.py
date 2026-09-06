@@ -48,6 +48,22 @@ class LearnerProfileData(BaseModel):
     customize_next: list[str] = Field(default_factory=list)
 
 
+class LearnerQuestionnaire(BaseModel):
+    goal: str = Field(
+        default="Understand foundational AI and systems from first principles",
+        min_length=3,
+        max_length=500,
+    )
+    preferred_modalities: list[str] = Field(
+        default_factory=lambda: ["code", "spreadsheet", "drawing"]
+    )
+    understanding_level: Literal["beginner", "intermediate", "advanced"] = "intermediate"
+    tutor_style: Literal["solveit", "socratic", "direct", "blooms"] = "solveit"
+    pace: Literal["unhurried", "sprint", "mixed"] = "unhurried"
+    preferred_ui: Literal["classic", "light"] = "light"
+    custom_notes: str = Field(default="", max_length=1000)
+
+
 def _default_profile_markdown(username: str) -> str:
     now_iso = datetime.now(timezone.utc).isoformat()
     return f"""---
@@ -82,6 +98,54 @@ Exploratory learner using the Solveit methodology: building from toy data and ve
 """
 
 
+def _parse_scalar_value(val: str) -> Any:
+    cleaned = val.split(" #", 1)[0].strip() if " #" in val else val.strip()
+    if cleaned.isdigit():
+        return int(cleaned)
+    if cleaned.lower() in ("true", "false"):
+        return cleaned.lower() == "true"
+    return cleaned
+
+
+def _assign_frontmatter_kv(line: str, parsed_fm: dict[str, Any]) -> str | None:
+    key, val = line.split(":", 1)
+    key = key.strip()
+    val = val.strip()
+    if not val:
+        parsed_fm[key] = []
+        return key
+    parsed_fm[key] = _parse_scalar_value(val)
+    return None
+
+
+def _is_ignorable_fm_line(line: str) -> bool:
+    trimmed = line.strip()
+    return not trimmed or trimmed.startswith("#")
+
+
+def _append_list_item(trimmed: str, parsed_fm: dict[str, Any], key: str | None) -> bool:
+    if key and trimmed.startswith("- "):
+        parsed_fm.setdefault(key, []).append(trimmed[2:].strip())
+        return True
+    return False
+
+
+def _process_frontmatter_line(
+    line: str, parsed_fm: dict[str, Any], current_list_key: str | None
+) -> str | None:
+    if _is_ignorable_fm_line(line):
+        return current_list_key
+
+    trimmed = line.strip()
+    if _append_list_item(trimmed, parsed_fm, current_list_key):
+        return current_list_key
+
+    if ":" in line:
+        return _assign_frontmatter_kv(line, parsed_fm)
+
+    return current_list_key
+
+
 def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     """Extract YAML-like frontmatter and body markdown."""
     match = re.search(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
@@ -95,34 +159,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     current_list_key: str | None = None
 
     for line in fm_text.splitlines():
-        trimmed = line.strip()
-        if not trimmed or trimmed.startswith("#"):
-            continue
-
-        if trimmed.startswith("- ") and current_list_key:
-            parsed_fm.setdefault(current_list_key, []).append(trimmed[2:].strip())
-            continue
-
-        if ":" in line:
-            key, val = line.split(":", 1)
-            key = key.strip()
-            val = val.strip()
-
-            # Check if this starts a list
-            if not val:
-                current_list_key = key
-                parsed_fm[key] = []
-            else:
-                current_list_key = None
-                # Strip comments
-                if " #" in val:
-                    val = val.split(" #", 1)[0].strip()
-                if val.isdigit():
-                    parsed_fm[key] = int(val)
-                elif val.lower() in ("true", "false"):
-                    parsed_fm[key] = val.lower() == "true"
-                else:
-                    parsed_fm[key] = val
+        current_list_key = _process_frontmatter_line(line, parsed_fm, current_list_key)
 
     return parsed_fm, body
 
@@ -165,6 +202,10 @@ def get_profile_path(username: str, base_dir: Path | None = None) -> Path:
     return root / clean_name / "LEARNING.md"
 
 
+def _extract_bullet_items(lines: list[str]) -> list[str]:
+    return [line.strip() for line in lines if line.strip().startswith("- ")]
+
+
 def get_or_create_profile(
     username: str, base_dir: Path | None = None
 ) -> tuple[str, dict[str, Any]]:
@@ -183,24 +224,10 @@ def get_or_create_profile(
     return content, {
         "frontmatter": fm.model_dump(),
         "snapshot": "\n".join(sections.get("Snapshot", [])).strip(),
-        "courses_taken": [
-            line.strip()
-            for line in sections.get("Courses taken", [])
-            if line.strip().startswith("- ")
-        ],
-        "courses_built": [
-            line.strip()
-            for line in sections.get("Courses built", [])
-            if line.strip().startswith("- ")
-        ],
-        "signals": [
-            line.strip() for line in sections.get("Signals", []) if line.strip().startswith("- ")
-        ],
-        "customize_next": [
-            line.strip()
-            for line in sections.get("Customize next", [])
-            if line.strip().startswith("- ")
-        ],
+        "courses_taken": _extract_bullet_items(sections.get("Courses taken", [])),
+        "courses_built": _extract_bullet_items(sections.get("Courses built", [])),
+        "signals": _extract_bullet_items(sections.get("Signals", [])),
+        "customize_next": _extract_bullet_items(sections.get("Customize next", [])),
     }
 
 
@@ -224,21 +251,114 @@ def update_profile_markdown(
     return get_or_create_profile(username, base_dir)
 
 
+def _handle_lesson_opened(
+    fm: LearnerFrontMatter, sections: dict[str, list[str]], payload: dict[str, Any]
+) -> None:
+    ui = payload.get("ui")
+    if ui in ("classic", "light"):
+        fm.preferred_ui = ui
+
+    course_slug = payload.get("course_slug", "")
+    lesson_slug = payload.get("lesson_slug", "")
+    if not course_slug:
+        return
+
+    taken = sections.get("Courses taken", [])
+    entry_prefix = f"- **{course_slug}**"
+    new_entry = f"- **{course_slug}** — {lesson_slug} (in progress)."
+
+    for idx, line in enumerate(taken):
+        if line.strip().startswith(entry_prefix):
+            taken[idx] = new_entry
+            sections["Courses taken"] = taken
+            return
+
+    taken.append(new_entry)
+    sections["Courses taken"] = taken
+
+
+def _handle_run_result(sections: dict[str, list[str]], payload: dict[str, Any]) -> None:
+    if not payload.get("is_submit", False):
+        return
+
+    course_slug = payload.get("course_slug", "")
+    lesson_slug = payload.get("lesson_slug", "")
+    language = payload.get("language", "python")
+    signals = sections.get("Signals", [])
+
+    if payload.get("success", False):
+        signal_text = f"- Completed {course_slug} ({lesson_slug}) with passing {language} tests."
+    else:
+        signal_text = f"- Retrying test assertion on {course_slug} ({lesson_slug}, {language})."
+
+    if signal_text not in signals:
+        signals.append(signal_text)
+    sections["Signals"] = signals[-10:]
+
+
+def _handle_reset(sections: dict[str, list[str]], payload: dict[str, Any]) -> None:
+    course_slug = payload.get("course_slug", "")
+    lesson_slug = payload.get("lesson_slug", "")
+    signals = sections.get("Signals", [])
+    signals.append(f"- Reset exercise on {course_slug} ({lesson_slug}) to re-attempt from scratch.")
+    sections["Signals"] = signals[-10:]
+
+
+def _handle_tutor_level_changed(fm: LearnerFrontMatter, payload: dict[str, Any]) -> None:
+    style = payload.get("tutor_style")
+    if style in ("solveit", "socratic", "direct", "blooms"):
+        fm.tutor_style = style
+    level = payload.get("understanding_level", "").lower()
+    if level in ("beginner", "intermediate", "advanced"):
+        fm.understanding_level = level
+
+
+def _handle_course_authored(sections: dict[str, list[str]], payload: dict[str, Any]) -> None:
+    course_slug = payload.get("course_slug", "")
+    title = payload.get("title", course_slug)
+    count = payload.get("lesson_count", 1)
+    built = sections.get("Courses built", [])
+    entry = f"- **{course_slug}** — authored '{title}' ({count} Solveit lessons)."
+    if entry not in built:
+        built.append(entry)
+    sections["Courses built"] = built
+
+
+def _dispatch_learner_event(
+    event_type: str,
+    fm: LearnerFrontMatter,
+    sections: dict[str, list[str]],
+    payload: dict[str, Any],
+) -> None:
+    handlers = {
+        "lesson_opened": lambda: _handle_lesson_opened(fm, sections, payload),
+        "run_result": lambda: _handle_run_result(sections, payload),
+        "reset": lambda: _handle_reset(sections, payload),
+        "tutor_level_changed": lambda: _handle_tutor_level_changed(fm, payload),
+        "course_authored": lambda: _handle_course_authored(sections, payload),
+    }
+    handler = handlers.get(event_type)
+    if handler:
+        handler()
+
+
+def _reconstruct_markdown_body(username: str, sections: dict[str, list[str]]) -> str:
+    body_parts = [f"# Learning profile — {username}\n"]
+    for sec_name, lines in sections.items():
+        if sec_name != "Intro":
+            body_parts.append(f"## {sec_name}")
+            body_parts.append("\n".join(lines).strip())
+            body_parts.append("")
+    return "\n\n".join(p for p in body_parts if p).strip()
+
+
 def record_learner_event(
     username: str,
     event_type: str,
     payload: dict[str, Any],
     base_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Records an operational learning event into LEARNING.md:
-
-    Supported events:
-    - lesson_opened: course_slug, lesson_slug, ui
-    - run_result: course_slug, lesson_slug, success (bool), is_submit (bool), language
-    - reset: course_slug, lesson_slug
-    - tutor_level_changed: tutor_style, understanding_level
-    - course_authored: course_slug, title, lesson_count
-    """
+    """Records an operational learning event into LEARNING.md."""
     file_path = get_profile_path(username, base_dir)
     if not file_path.is_file():
         get_or_create_profile(username, base_dir)
@@ -247,90 +367,144 @@ def record_learner_event(
     fm_raw, body = parse_frontmatter(raw_text)
     fm = LearnerFrontMatter.model_validate(fm_raw)
     fm.updated_at = datetime.now(timezone.utc).isoformat()
-
     sections = parse_markdown_sections(body)
 
-    # Dispatch event
-    course_slug = payload.get("course_slug", "")
-    lesson_slug = payload.get("lesson_slug", "")
+    _dispatch_learner_event(event_type, fm, sections, payload)
 
-    if event_type == "lesson_opened":
-        ui = payload.get("ui")
-        if ui in ("classic", "light"):
-            fm.preferred_ui = ui
-
-        # Update Courses taken section
-        taken = sections.get("Courses taken", [])
-        entry_prefix = f"- **{course_slug}**"
-        new_entry = f"- **{course_slug}** — {lesson_slug} (in progress)."
-
-        # Replace or append
-        replaced = False
-        for idx, line in enumerate(taken):
-            if line.strip().startswith(entry_prefix):
-                taken[idx] = new_entry
-                replaced = True
-                break
-        if not replaced and course_slug:
-            taken.append(new_entry)
-        sections["Courses taken"] = taken
-
-    elif event_type == "run_result":
-        success = bool(payload.get("success", False))
-        is_submit = bool(payload.get("is_submit", False))
-        language = payload.get("language", "python")
-
-        signals = sections.get("Signals", [])
-
-        if not success and is_submit:
-            # Struggle signal
-            signal_text = f"- Retrying test assertion on {course_slug} ({lesson_slug}, {language})."
-            if signal_text not in signals:
-                signals.append(signal_text)
-        elif success and is_submit:
-            signal_text = (
-                f"- Completed {course_slug} ({lesson_slug}) with passing {language} tests."
-            )
-            if signal_text not in signals:
-                signals.append(signal_text)
-
-        sections["Signals"] = signals[-10:]  # Keep last 10 signals
-
-    elif event_type == "reset":
-        signals = sections.get("Signals", [])
-        signal_text = (
-            f"- Reset exercise on {course_slug} ({lesson_slug}) to re-attempt from scratch."
-        )
-        signals.append(signal_text)
-        sections["Signals"] = signals[-10:]
-
-    elif event_type == "tutor_level_changed":
-        style = payload.get("tutor_style")
-        if style in ("solveit", "socratic", "direct", "blooms"):
-            fm.tutor_style = style
-        level = payload.get("understanding_level", "").lower()
-        if level in ("beginner", "intermediate", "advanced"):
-            fm.understanding_level = level
-
-    elif event_type == "course_authored":
-        title = payload.get("title", course_slug)
-        count = payload.get("lesson_count", 1)
-        built = sections.get("Courses built", [])
-        entry = f"- **{course_slug}** — authored '{title}' ({count} Solveit lessons)."
-        if entry not in built:
-            built.append(entry)
-        sections["Courses built"] = built
-
-    # Reconstruct body
-    body_parts = [f"# Learning profile — {fm.username}\n"]
-    for sec_name, lines in sections.items():
-        if sec_name != "Intro":
-            body_parts.append(f"## {sec_name}")
-            body_parts.append("\n".join(lines).strip())
-            body_parts.append("")
-
-    new_body = "\n\n".join(p for p in body_parts if p).strip()
+    new_body = _reconstruct_markdown_body(fm.username, sections)
     new_content = f"{serialize_frontmatter(fm)}\n\n{new_body}\n"
     file_path.write_text(new_content, encoding="utf-8")
 
     return get_or_create_profile(username, base_dir)[1]
+
+
+def _build_snapshot(answers: LearnerQuestionnaire) -> str:
+    level_desc = {
+        "beginner": "Building solid foundations from intuitive toy examples.",
+        "intermediate": "Connecting theoretical intuition with practical implementation.",
+        "advanced": "Focusing on deep systems engineering and advanced concepts.",
+    }.get(answers.understanding_level, "Connecting intuition with implementation.")
+    return f"{level_desc} Prefers a {answers.pace} pace with {answers.tutor_style} guidance."
+
+
+def _build_modality_recommendations(modalities: list[str]) -> list[str]:
+    recs: list[str] = []
+    mod_set = set(modalities)
+    if "spreadsheet" in mod_set:
+        recs.append("Offer spreadsheet cell formulas and mental models before coding.")
+    if "drawing" in mod_set:
+        recs.append("Include visual diagrams, whiteboard sketches, and architecture blueprints.")
+    if "code" in mod_set:
+        recs.append("Provide hands-on Python/Rust coding exercises with automated micro-tests.")
+    if "text" in mod_set:
+        recs.append("Provide structured conceptual walkthroughs and Socratic discussions.")
+    return recs
+
+
+def _build_tutor_recommendations(tutor_style: str) -> str:
+    style_map = {
+        "solveit": "Guide using the Solveit method: build intuition with toy data and verified micro-steps.",
+        "socratic": "Guide with Socratic inquiry: ask progressive questions before revealing solutions.",
+        "direct": "Provide clear, direct explanations with minimal preamble before diving in.",
+        "blooms": "Structure exercises along Bloom's taxonomy: from understanding to evaluation and creation.",
+    }
+    return style_map.get(tutor_style, "Guide using interactive micro-steps.")
+
+
+def _format_course_list(items: list[str], default_comment: str) -> str:
+    if not items:
+        return default_comment
+    return "\n".join(items)
+
+
+def aggregate_questionnaire_to_markdown(
+    username: str,
+    answers: LearnerQuestionnaire,
+    existing_taken: list[str] | None = None,
+    existing_built: list[str] | None = None,
+) -> str:
+    """Transforms learner questionnaire responses into a formatted LEARNING.md profile."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    fm = LearnerFrontMatter(
+        username=username,
+        updated_at=now_iso,
+        version=1,
+        preferred_ui=answers.preferred_ui,
+        tutor_style=answers.tutor_style,
+        understanding_level=answers.understanding_level,
+        preferred_modalities=answers.preferred_modalities,
+        pace=answers.pace,
+    )
+
+    snapshot_text = _build_snapshot(answers)
+    tutor_rec = _build_tutor_recommendations(answers.tutor_style)
+    modality_recs = _build_modality_recommendations(answers.preferred_modalities)
+
+    customize_lines = [f"- {tutor_rec}"]
+    for m in modality_recs:
+        customize_lines.append(f"- {m}")
+    customize_block = "\n".join(customize_lines)
+
+    notes_bullet = (
+        f"\n- Personal focus: {answers.custom_notes.strip()}"
+        if answers.custom_notes.strip()
+        else ""
+    )
+
+    taken_block = _format_course_list(
+        existing_taken or [],
+        "<!-- Completed or in-progress courses are recorded here automatically -->",
+    )
+    built_block = _format_course_list(
+        existing_built or [],
+        "<!-- Personal courses generated with the Agentic Course Builder are listed here -->",
+    )
+
+    fm_yaml = serialize_frontmatter(fm)
+    return f"""{fm_yaml}
+
+# Learning profile — {username}
+
+## Snapshot
+{snapshot_text}
+
+## Goals & Focus
+- {answers.goal.strip()}{notes_bullet}
+
+## Courses taken
+{taken_block}
+
+## Courses built
+{built_block}
+
+## Signals
+- Initialized learning profile from onboarding diagnostic questionnaire.
+
+## Customize next
+{customize_block}
+"""
+
+
+def apply_questionnaire_profile(
+    username: str,
+    answers: LearnerQuestionnaire,
+    base_dir: Path | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Generates and writes a personalized LEARNING.md file from questionnaire answers."""
+    file_path = get_profile_path(username, base_dir)
+    existing_taken: list[str] = []
+    existing_built: list[str] = []
+    if file_path.is_file():
+        try:
+            _, parsed = get_or_create_profile(username, base_dir)
+            existing_taken = parsed.get("courses_taken", [])
+            existing_built = parsed.get("courses_built", [])
+        except Exception:
+            pass
+
+    markdown = aggregate_questionnaire_to_markdown(
+        username, answers, existing_taken, existing_built
+    )
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(markdown, encoding="utf-8")
+    return get_or_create_profile(username, base_dir)
