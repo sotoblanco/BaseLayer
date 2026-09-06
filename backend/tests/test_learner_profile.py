@@ -370,6 +370,26 @@ Advanced test runner.
         fm4, _ = parse_frontmatter(md4)
         assert fm4["preferred_modalities"] == ["text", "code"]
 
+        # Case 5: guided_completion explicitly selected
+        q5 = LearnerQuestionnaire(
+            intake_preference="hands_on",
+            exercise_format="guided_completion",
+        )
+        md5 = aggregate_questionnaire_to_markdown("guided_user", q5)
+        fm5, body5 = parse_frontmatter(md5)
+        assert fm5["exercise_format"] == "guided_completion"
+        assert "guided fill-in-the-blank code completion" in body5
+        assert "fill-in-the-blank placeholders (`____`)" in body5
+
+        # Case 6: beginner understanding level infers guided_completion if not set
+        q6 = LearnerQuestionnaire(
+            understanding_level="beginner",
+        )
+        md6 = aggregate_questionnaire_to_markdown("beginner_user", q6)
+        fm6, body6 = parse_frontmatter(md6)
+        assert fm6["exercise_format"] == "guided_completion"
+        assert "guided fill-in-the-blank code completion" in body6
+
     def test_submit_questionnaire_with_simplified_diagnostic(
         self, client, auth_headers, tmp_path: Path
     ):
@@ -395,3 +415,22 @@ Advanced test runner.
         assert fm["preferred_modalities"] == ["drawing", "code"]
         assert fm["explanation_length"] == "short"
         assert fm["exercise_format"] == "micro_steps"
+
+        # Submit with guided_completion
+        payload_guided = {
+            "intake_preference": "hands_on",
+            "exercise_format": "guided_completion",
+            "understanding_level": "beginner",
+        }
+        with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
+            response_guided = client.post(
+                "/me/learning-profile/questionnaire",
+                json=payload_guided,
+                headers=auth_headers,
+            )
+
+        assert response_guided.status_code == 200
+        data_guided = response_guided.json()
+        fm_guided = data_guided["parsed"]["frontmatter"]
+        assert fm_guided["exercise_format"] == "guided_completion"
+        assert "guided fill-in-the-blank code completion" in data_guided["parsed"]["snapshot"]

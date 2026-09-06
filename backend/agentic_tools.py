@@ -65,6 +65,7 @@ class LearnerContextResult(BaseModel):
     understanding_level: Literal["Beginner", "Intermediate", "Advanced"]
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"]
     pace: Literal["unhurried", "sprint", "mixed"]
+    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] = "micro_steps"
     prior_courses: list[str] = Field(default_factory=list)
     personalization_guidance: str
 
@@ -263,6 +264,7 @@ def get_context_learning(
             understanding_level = "Intermediate"
             tutor_style = "solveit"
             pace = "unhurried"
+            exercise_format = "micro_steps"
 
             front_matter_match = re.search(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
             if front_matter_match:
@@ -280,6 +282,14 @@ def get_context_learning(
                         val = line.split(":", 1)[1].strip().lower()
                         if val in ("unhurried", "sprint", "mixed"):
                             pace = val
+                    elif line.startswith("exercise_format:"):
+                        val = line.split(":", 1)[1].strip().lower()
+                        if val in ("micro_steps", "macro_challenges", "guided_completion"):
+                            exercise_format = val
+
+                # Infer guided_completion if beginner without explicit exercise_format
+                if "exercise_format:" not in fm_text and understanding_level == "Beginner":
+                    exercise_format = "guided_completion"
 
                 # Check modalities list in YAML
                 if "spreadsheet" in fm_text:
@@ -295,10 +305,18 @@ def get_context_learning(
             # Parse courses taken if present
             courses_taken = re.findall(r"-\s+\*\*([a-zA-Z0-9_\-]+)\*\*", content)
 
+            if exercise_format == "guided_completion":
+                format_guidance = (
+                    "Use Guided Code Completion: provide pre-structured code templates with "
+                    "fill-in-the-blank placeholders (`____`) to eliminate syntax friction."
+                )
+            else:
+                format_guidance = "Structure lessons to build spatial/mechanical intuition before introducing code."
+
             guidance = (
-                f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace). "
+                f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace, {exercise_format} format). "
                 f"Preferred modalities: {', '.join(preferred_modalities)}. "
-                "Structure lessons to build spatial/mechanical intuition before introducing code."
+                f"{format_guidance}"
             )
 
             return LearnerContextResult(
@@ -308,6 +326,7 @@ def get_context_learning(
                 understanding_level=understanding_level,
                 tutor_style=tutor_style,
                 pace=pace,
+                exercise_format=exercise_format,
                 prior_courses=courses_taken,
                 personalization_guidance=guidance,
             )
@@ -326,6 +345,7 @@ def get_context_learning(
         understanding_level="Intermediate",
         tutor_style="solveit",
         pace="unhurried",
+        exercise_format="micro_steps",
         prior_courses=[],
         personalization_guidance=guidance,
     )
@@ -466,10 +486,19 @@ def curate_solveit_course(
                 ast.parse(test_code)
                 ast.parse(solution_code)
             except SyntaxError:
-                # Provide a safe self-healing fallback wrapper
-                starter_code = f"# Micro-step: {objective}\npass\n"
-                test_code = "from main import *\nassert True\n"
-                solution_code = "pass\n"
+                if "____" in starter_code:
+                    # Guided completion template: blank placeholders in starter_code are expected before completion
+                    try:
+                        ast.parse(test_code)
+                        ast.parse(solution_code)
+                    except SyntaxError:
+                        test_code = "from main import *\nassert True\n"
+                        solution_code = "pass\n"
+                else:
+                    # Provide a safe self-healing fallback wrapper
+                    starter_code = f"# Micro-step: {objective}\npass\n"
+                    test_code = "from main import *\nassert True\n"
+                    solution_code = "pass\n"
 
         curated_lessons.append(
             CuratedLessonBlueprint(

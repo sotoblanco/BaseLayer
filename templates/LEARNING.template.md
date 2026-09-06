@@ -21,7 +21,7 @@ preferred_modalities:
 
 pace: unhurried                   # Options: unhurried (step-by-step deep dive), sprint (rapid execution), mixed
 explanation_length: short         # Options: short (concise essentials), thorough (detailed with analogies)
-exercise_format: micro_steps      # Options: micro_steps (bite-sized verified steps), macro_challenges (larger puzzles)
+exercise_format: micro_steps      # Options: guided_completion (scaffolded fill-in-the-blanks), micro_steps (bite-sized verified steps), macro_challenges (larger puzzles)
 ---
 
 # Learning profile — learner
