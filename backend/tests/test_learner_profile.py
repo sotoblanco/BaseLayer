@@ -370,7 +370,9 @@ Advanced test runner.
         fm4, _ = parse_frontmatter(md4)
         assert fm4["preferred_modalities"] == ["text", "code"]
 
-    def test_submit_questionnaire_with_simplified_diagnostic(self, client, auth_headers, tmp_path: Path):
+    def test_submit_questionnaire_with_simplified_diagnostic(
+        self, client, auth_headers, tmp_path: Path
+    ):
         payload = {
             "intake_preference": "diagram",
             "hint_preference": "guiding_question",
@@ -393,4 +395,3 @@ Advanced test runner.
         assert fm["preferred_modalities"] == ["drawing", "code"]
         assert fm["explanation_length"] == "short"
         assert fm["exercise_format"] == "micro_steps"
-

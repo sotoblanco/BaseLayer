@@ -86,7 +86,6 @@ class LearnerQuestionnaire(BaseModel):
     custom_notes: str = Field(default="", max_length=1000)
 
 
-
 def _default_profile_markdown(username: str) -> str:
     now_iso = datetime.now(timezone.utc).isoformat()
     return f"""---
@@ -205,7 +204,6 @@ pace: {fm.pace}
 explanation_length: {fm.explanation_length}
 exercise_format: {fm.exercise_format}
 ---"""
-
 
 
 def parse_markdown_sections(body: str) -> dict[str, list[str]]:
@@ -434,9 +432,7 @@ def _build_snapshot(
     answers: LearnerQuestionnaire, inferred_style: str, modalities: list[str]
 ) -> str:
     expl = (
-        "concise essentials"
-        if answers.explanation_length == "short"
-        else "in-depth explanations"
+        "concise essentials" if answers.explanation_length == "short" else "in-depth explanations"
     )
     grain = (
         "bite-sized micro-steps"
@@ -539,7 +535,6 @@ def aggregate_questionnaire_to_markdown(
     modality_recs = _build_modality_recommendations(inferred_mods)
     pedagogy_recs = _build_pedagogy_recommendations(answers)
     customize_block = _build_all_recommendations(tutor_rec, pedagogy_recs, modality_recs)
-
 
     notes_bullet = (
         f"\n- Personal focus: {answers.custom_notes.strip()}"
