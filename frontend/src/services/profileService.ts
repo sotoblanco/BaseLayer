@@ -27,6 +27,26 @@ export interface LearningProfileResponse {
   parsed: LearningProfileData;
 }
 
+async function parseJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    if (text.startsWith('<!doctype') || text.startsWith('<html')) {
+      throw new Error(
+        'The backend API server returned HTML instead of JSON. Ensure the backend server is running and /me routes are proxied.'
+      );
+    }
+    throw new Error(text || fallbackError);
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || fallbackError);
+  }
+
+  return response.json();
+}
+
 export const getLearningProfile = async (): Promise<LearningProfileResponse> => {
   const token = localStorage.getItem('token');
   if (!token) {
@@ -39,12 +59,7 @@ export const getLearningProfile = async (): Promise<LearningProfileResponse> => 
     },
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || 'Failed to fetch learning profile');
-  }
-
-  return response.json();
+  return parseJsonResponse<LearningProfileResponse>(response, 'Failed to fetch learning profile');
 };
 
 export const updateLearningProfile = async (
@@ -64,12 +79,7 @@ export const updateLearningProfile = async (
     body: JSON.stringify({ markdown }),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || 'Failed to update learning profile');
-  }
-
-  return response.json();
+  return parseJsonResponse<LearningProfileResponse>(response, 'Failed to update learning profile');
 };
 
 export const emitLearnerEvent = async (
@@ -124,11 +134,6 @@ export const submitLearnerQuestionnaire = async (
     body: JSON.stringify(answers),
   });
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || 'Failed to submit questionnaire');
-  }
-
-  return response.json();
+  return parseJsonResponse<LearningProfileResponse>(response, 'Failed to submit questionnaire');
 };
 
