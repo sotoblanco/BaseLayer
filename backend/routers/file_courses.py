@@ -25,6 +25,16 @@ from pydantic import BaseModel, Field
 from ai_service import ai_service
 from auth import get_current_user, get_current_user_for_media
 from models import User
+from spreadsheet_verification import (
+    SheetReadError,
+    SpreadsheetTargetCell,
+    SpreadsheetVerificationResult,
+    VerificationUnavailableError,
+    extract_sheet_id,
+    grade_sheet,
+    parse_success_cells,
+    read_user_sheet_values,
+)
 
 router = APIRouter(prefix="/file-courses", tags=["file-courses"])
 
@@ -106,6 +116,10 @@ class FileLesson(BaseModel):
     stroke_color: str = "#e11d48"  # Default stroke color for drawing exercises
     stroke_width: int = 4  # Default stroke width for drawing exercises
     skills: list[str] = Field(default_factory=list)
+    success_cells: list[SpreadsheetTargetCell] = Field(
+        default_factory=list, description="Target cells/expected values for spreadsheet checks"
+    )
+    hints: list[str] = Field(default_factory=list, description="Lesson-specific hints")
 
 
 class FileCourseSummary(BaseModel):
@@ -224,6 +238,8 @@ class LessonMeta:
     image_url: str | None = None
     skills: list[str] = field(default_factory=list)
     title: str | None = None
+    success_cells: list[SpreadsheetTargetCell] = field(default_factory=list)
+    hints: list[str] = field(default_factory=list)
 
 
 def _extract_metadata(lesson_path: Path) -> LessonMeta:
@@ -242,6 +258,8 @@ def _extract_metadata(lesson_path: Path) -> LessonMeta:
         image_url=image_url,
         skills=_normalize_skills(metadata.get("skills")),
         title=_optional_str(metadata.get("title")),
+        success_cells=parse_success_cells(metadata.get("success_cells")),
+        hints=_normalize_skills(metadata.get("hints"))[:5],
     )
 
 
@@ -285,6 +303,8 @@ def parse_lesson(
         stroke_color=meta.stroke_color,
         stroke_width=meta.stroke_width,
         skills=meta.skills,
+        success_cells=meta.success_cells,
+        hints=meta.hints,
     )
 
 
@@ -591,7 +611,7 @@ def submit_drawing(
     submission: DrawingSubmission,
     user: User = Depends(get_current_user),
 ):
-    """Evaluate a drawing submission using AI."""
+    """Evaluate a drawing submission using AI, returning structured rubric feedback."""
     lesson_dir = _get_safe_lesson_dir_or_404(course_slug, lesson_slug)
     instructions, question_bytes, solution_bytes = _load_drawing_context_files(lesson_dir)
     sketch_bytes = _decode_sketch_image(submission.image_data)
@@ -599,6 +619,8 @@ def submit_drawing(
     result = ai_service.evaluate_drawing(instructions, question_bytes, sketch_bytes, solution_bytes)
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
+    if result.get("passed"):
+        _record_modality_pass(user.username, course_slug, lesson_slug, "drawing")
     return result
 
 
@@ -663,3 +685,67 @@ def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(g
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {e}") from e
+
+
+class SpreadsheetVerificationRequest(BaseModel):
+    sheet_id: str  # Student copy URL or bare sheet id
+
+
+def _record_modality_pass(username: str, course_slug: str, lesson_slug: str, modality: str) -> None:
+    """Append a completion signal to the learner's LEARNING.md (best-effort)."""
+    try:
+        from learner_profile import record_learner_event
+
+        record_learner_event(
+            username=username,
+            event_type="lesson_passed",
+            payload={
+                "course_slug": course_slug,
+                "lesson_slug": lesson_slug,
+                "modality": modality,
+            },
+        )
+    except Exception:
+        pass
+
+
+def _validate_verifiable_spreadsheet(course_slug: str, lesson_slug: str) -> FileLesson:
+    """Find a spreadsheet lesson that defines success_cells to verify against."""
+    lesson = _find_lesson_for_copy(course_slug, lesson_slug)
+    if not lesson.success_cells:
+        raise HTTPException(
+            status_code=400,
+            detail="This spreadsheet lesson does not define success_cells to verify against.",
+        )
+    return lesson
+
+
+@router.post(
+    "/{course_slug}/{lesson_slug}/verify-sheet",
+    response_model=SpreadsheetVerificationResult,
+)
+def verify_spreadsheet(
+    course_slug: str,
+    lesson_slug: str,
+    submission: SpreadsheetVerificationRequest,
+    user: User = Depends(get_current_user),
+):
+    """Verify a student's sheet copy against the lesson's target cells (Issue #75)."""
+    lesson = _validate_verifiable_spreadsheet(course_slug, lesson_slug)
+    sheet_id = extract_sheet_id(submission.sheet_id)
+    if not sheet_id:
+        raise HTTPException(
+            status_code=400, detail="Provide a Google Sheets URL or a valid sheet id."
+        )
+
+    try:
+        actual_values = read_user_sheet_values(sheet_id)
+    except VerificationUnavailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except SheetReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    result = grade_sheet(lesson.success_cells, actual_values)
+    if result.passed:
+        _record_modality_pass(user.username, course_slug, lesson_slug, "spreadsheet")
+    return result

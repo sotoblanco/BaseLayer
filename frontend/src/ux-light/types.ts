@@ -1,5 +1,10 @@
 export type ExerciseType = 'code' | 'spreadsheet' | 'drawing';
 
+export interface SheetTargetCell {
+  cell: string;
+  expected: string;
+}
+
 export interface FileLesson {
   slug: string;
   title: string;
@@ -18,6 +23,8 @@ export interface FileLesson {
   stroke_color?: string;
   stroke_width?: number;
   skills?: string[];
+  success_cells?: SheetTargetCell[];
+  hints?: string[];
 }
 
 export interface FileCourse {
@@ -60,6 +67,33 @@ export interface GradingResult {
   xpEarned: number;
   message: string;
   errorDetail?: string;
+}
+
+export interface DrawingRubricCheck {
+  label: string;
+  passed: boolean;
+  feedback?: string;
+}
+
+export interface DrawingFeedback {
+  passed: boolean;
+  score?: number;
+  message: string;
+  checks?: DrawingRubricCheck[];
+}
+
+export interface SheetCellCheck {
+  cell: string;
+  expected: string;
+  actual: string | null;
+  ok: boolean;
+}
+
+export interface SpreadsheetVerification {
+  passed: boolean;
+  checks: SheetCellCheck[];
+  message: string;
+  verification: string;
 }
 
 export interface PlotFigure {

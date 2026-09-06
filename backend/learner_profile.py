@@ -329,6 +329,18 @@ def _handle_run_result(sections: dict[str, list[str]], payload: dict[str, Any]) 
     sections["Signals"] = signals[-10:]
 
 
+def _handle_lesson_passed(sections: dict[str, list[str]], payload: dict[str, Any]) -> None:
+    """Record a passing non-code submission (spreadsheet/drawing) as a signal."""
+    course_slug = payload.get("course_slug", "")
+    lesson_slug = payload.get("lesson_slug", "")
+    modality = payload.get("modality", "submission")
+    signals = sections.get("Signals", [])
+    signal_text = f"- Completed {course_slug} ({lesson_slug}) with a passing {modality} submission."
+    if signal_text not in signals:
+        signals.append(signal_text)
+    sections["Signals"] = signals[-10:]
+
+
 def _handle_reset(sections: dict[str, list[str]], payload: dict[str, Any]) -> None:
     course_slug = payload.get("course_slug", "")
     lesson_slug = payload.get("lesson_slug", "")
@@ -367,6 +379,7 @@ def _dispatch_learner_event(
         "lesson_opened": lambda: _handle_lesson_opened(fm, sections, payload),
         "run_result": lambda: _handle_run_result(sections, payload),
         "reset": lambda: _handle_reset(sections, payload),
+        "lesson_passed": lambda: _handle_lesson_passed(sections, payload),
         "tutor_level_changed": lambda: _handle_tutor_level_changed(fm, payload),
         "course_authored": lambda: _handle_course_authored(sections, payload),
     }

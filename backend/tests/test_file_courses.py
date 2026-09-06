@@ -634,6 +634,49 @@ class TestFileCoursesEndpoints:
         assert data["passed"] is True
         assert data["message"] == "Great drawing!"
 
+    @patch("routers.file_courses.ai_service.evaluate_drawing")
+    def test_submit_drawing_passes_through_rubric(
+        self, mock_eval, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        course_dir = courses_dir / "draw_course"
+        course_dir.mkdir()
+        lesson_dir = course_dir / "lesson1"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# Draw layers")
+        (lesson_dir / "question.png").write_bytes(b"q")
+
+        mock_eval.return_value = {
+            "passed": False,
+            "score": 0.4,
+            "message": "Intent is right but labels are missing.",
+            "checks": [
+                {"label": "Intent matches the instructions", "passed": True, "feedback": "Good"},
+                {
+                    "label": "No missing required elements",
+                    "passed": False,
+                    "feedback": "Add labels",
+                },
+                {"label": "No extra or confusing marks", "passed": True, "feedback": "Clean"},
+            ],
+        }
+
+        res = client.post(
+            "/file-courses/draw_course/lesson1/submit-drawing",
+            json={"image_data": "aGVsbG8="},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["passed"] is False
+        assert data["message"] == "Intent is right but labels are missing."
+        assert len(data["checks"]) == 3
+        assert data["checks"][1]["label"] == "No missing required elements"
+        assert data["checks"][1]["passed"] is False
+
     def test_submit_drawing_nonexistent_lesson(self, client: TestClient, auth_headers):
         res = client.post(
             "/file-courses/ghost_course/ghost_lesson/submit-drawing",
@@ -789,3 +832,226 @@ class TestFileCoursesEndpoints:
         # In environment without googleapiclient, it returns 501
         assert res.status_code == 501
         assert "not installed" in res.json()["detail"].lower()
+
+
+class TestSpreadsheetVerification:
+    """Tests for spreadsheet success_cells parsing and the verify-sheet endpoint."""
+
+    def _write_lesson(
+        self, tmp_path: Path, monkeypatch, *, exercise_type="spreadsheet", success_cells=None
+    ) -> str:
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir(exist_ok=True)
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        course_dir = courses_dir / "c_sheet"
+        course_dir.mkdir(exist_ok=True)
+        lesson_dir = course_dir / "l_sheet"
+        lesson_dir.mkdir(exist_ok=True)
+        (lesson_dir / "README.md").write_text("# Sheet")
+        metadata = {
+            "exercise_type": exercise_type,
+            "google_sheet_id": "template_sheet_id",
+            "success_cells": success_cells or [],
+        }
+        (lesson_dir / "metadata.json").write_text(json.dumps(metadata))
+        return "l_sheet"
+
+    def test_parse_lesson_success_cells_and_hints(self, tmp_path: Path):
+        lesson_dir = tmp_path / "lesson_sheet"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# Sheet Lesson")
+        metadata = {
+            "exercise_type": "spreadsheet",
+            "google_sheet_id": "sheet_12345",
+            "hints": ["First hint", " Second hint ", "First hint", 3],
+            "success_cells": [
+                {"cell": "b2", "expected": 6},
+                {"cell": " C5 ", "expected": "3x3"},
+                {"cell": "bad-cell", "expected": "x"},
+                {"cell": "D7"},
+            ],
+        }
+        (lesson_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        lesson = parse_lesson(tmp_path, "lesson_sheet", 1)
+        assert lesson is not None
+        assert lesson.hints == ["First hint", "Second hint"]
+        assert [c.model_dump() for c in lesson.success_cells] == [
+            {"cell": "B2", "expected": "6"},
+            {"cell": "C5", "expected": "3x3"},
+        ]
+
+    def test_verify_sheet_requires_auth(self, client: TestClient, tmp_path: Path, monkeypatch):
+        self._write_lesson(
+            tmp_path,
+            monkeypatch,
+            success_cells=[{"cell": "B2", "expected": "6"}],
+        )
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet", json={"sheet_id": "sheet_abc123"}
+        )
+        assert res.status_code == 401
+
+    def test_verify_sheet_not_spreadsheet(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        self._write_lesson(tmp_path, monkeypatch, exercise_type="code")
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "sheet_abc123"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+        assert "not a spreadsheet exercise" in res.json()["detail"]
+
+    def test_verify_sheet_no_success_cells(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        self._write_lesson(tmp_path, monkeypatch)
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "sheet_abc123"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+        assert "success_cells" in res.json()["detail"]
+
+    def test_verify_sheet_invalid_sheet_id(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        self._write_lesson(tmp_path, monkeypatch, success_cells=[{"cell": "B2", "expected": "6"}])
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "not a url or id!!!"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 400
+        assert "Provide a Google Sheets URL" in res.json()["detail"]
+
+    @patch("routers.file_courses.read_user_sheet_values")
+    def test_verify_sheet_passed(
+        self, mock_read, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        self._write_lesson(
+            tmp_path,
+            monkeypatch,
+            success_cells=[{"cell": "B2", "expected": "6"}, {"cell": "C5", "expected": "3x3"}],
+        )
+        mock_read.return_value = {"B2": 6.0, "C5": "3x3"}
+
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "https://docs.google.com/spreadsheets/d/student_copy_id/edit"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["passed"] is True
+        assert data["verification"] == "ok"
+        assert data["checks"][0] == {
+            "cell": "B2",
+            "expected": "6",
+            "actual": "6",
+            "ok": True,
+        }
+        assert all(c["ok"] for c in data["checks"])
+        assert "All target cells match" in data["message"]
+        mock_read.assert_called_once_with("student_copy_id")
+
+    @patch("routers.file_courses.read_user_sheet_values")
+    def test_verify_sheet_failed_reports_cells(
+        self, mock_read, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        self._write_lesson(
+            tmp_path,
+            monkeypatch,
+            success_cells=[{"cell": "B2", "expected": "6"}, {"cell": "C5", "expected": "3x3"}],
+        )
+        mock_read.return_value = {"B2": 5}
+
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "student_copy_id"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["passed"] is False
+        assert data["checks"][0]["ok"] is False
+        assert data["checks"][0]["actual"] == "5"
+        assert data["checks"][1]["ok"] is False
+        assert data["checks"][1]["actual"] is None
+        assert "2 of 2 target cells did not match" in data["message"]
+
+    @patch("routers.file_courses.read_user_sheet_values")
+    def test_verify_sheet_unavailable(
+        self, mock_read, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        from spreadsheet_verification import VerificationUnavailableError
+
+        self._write_lesson(tmp_path, monkeypatch, success_cells=[{"cell": "B2", "expected": "6"}])
+        mock_read.side_effect = VerificationUnavailableError("verification is not configured")
+
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "student_copy_id"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 501
+        assert "not configured" in res.json()["detail"]
+
+    @patch("routers.file_courses.read_user_sheet_values")
+    def test_verify_sheet_read_error(
+        self, mock_read, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        from spreadsheet_verification import SheetReadError
+
+        self._write_lesson(tmp_path, monkeypatch, success_cells=[{"cell": "B2", "expected": "6"}])
+        mock_read.side_effect = SheetReadError("could not read sheet")
+
+        res = client.post(
+            "/file-courses/c_sheet/l_sheet/verify-sheet",
+            json={"sheet_id": "student_copy_id"},
+            headers=auth_headers,
+        )
+        assert res.status_code == 502
+        assert res.json()["detail"] == "could not read sheet"
+
+    def test_grade_sheet_and_value_helpers(self):
+        from spreadsheet_verification import (
+            SpreadsheetTargetCell,
+            extract_sheet_id,
+            grade_sheet,
+            normalize_cell_reference,
+            normalize_sheet_value,
+            parse_success_cells,
+            values_match,
+        )
+
+        assert extract_sheet_id("https://docs.google.com/spreadsheets/d/AbC123-xyz/edit#gid=0") == (
+            "AbC123-xyz"
+        )
+        assert extract_sheet_id("AbC123-xyz_9") == "AbC123-xyz_9"
+        assert extract_sheet_id("") is None
+        assert extract_sheet_id(123) is None
+        assert normalize_cell_reference("  c5 ") == "C5"
+        assert normalize_cell_reference("bad-cell") is None
+        assert normalize_sheet_value(None) == ""
+        assert normalize_sheet_value(6.0) == "6"
+        assert values_match("6", 6.0) is True
+        assert values_match("3x3", "3X3") is True
+        assert values_match("6", "5") is False
+        assert parse_success_cells(None) == []
+        assert parse_success_cells([{"cell": "B2", "expected": 2}, "junk"]) == [
+            SpreadsheetTargetCell(cell="B2", expected="2")
+        ]
+
+        cells = parse_success_cells(
+            [{"cell": "A1", "expected": "hello"}, {"cell": "B2", "expected": "3"}]
+        )
+        result = grade_sheet(cells, {"A1": "hello", "B2": 3.0})
+        assert result.passed is True
+        assert len(result.checks) == 2
+        missing = grade_sheet(cells, {"A1": "nope"})
+        assert missing.passed is False
+        assert missing.checks[1].actual is None

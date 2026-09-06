@@ -61,6 +61,45 @@ courses/
 }
 ```
 
+### Target-cell checks (`success_cells`) — Issue #75 / #3
+Add `success_cells` to close the pass loop: the learner pastes their copy's link and
+the backend reads the copied sheet and checks the expected cells.
+
+```json
+{
+  "exercise_type": "spreadsheet",
+  "google_sheet_id": "1A2B3C4D5E6F7G8H9I0J1K2L3M4N5O6P",
+  "copy_on_open": true,
+  "success_cells": [
+    { "cell": "B2", "expected": "6" },
+    { "cell": "C5", "expected": "3x3" }
+  ]
+}
+```
+
+- `cell` is an A1 reference (e.g. `B2`). Numeric and string expected values are both supported;
+  numbers are compared numerically (`6` == `6.0`).
+- Only lessons that define `success_cells` can be auto-verified. The "Check my work" button in the
+  light player calls `POST /file-courses/{course}/{lesson}/verify-sheet` with the student's copy
+  link. Verification requires a Google service account
+  (`GOOGLE_SERVICE_ACCOUNT_FILE` or `SERVICE_ACCOUNT_FILE`) that can read the student's copy and the
+  optional `googleapiclient` library; when either is missing the server returns a clear
+  "verification not available" response instead of faking a pass.
+
+### Lesson-specific hints (`hints`) — Issue #75
+The light player used three generic hints ("look at the tests tab"). Add per-lesson hints to replace
+them (Solveit-style: toy data + predict + inspect):
+
+```json
+{
+  "hints": [
+    "Put a small block of numbers in B2:D4 — that is your tensor.",
+    "Predict the shape/size values before entering the formulas.",
+    "Inspect the formula results before moving on."
+  ]
+}
+```
+
 ### No Google Cloud / Quick Copy Mode
 If you don't want to use Google Cloud or a service account, set `copy_on_open: true` and the UI will show a "Make a private copy" button. Clicking it opens Google Sheets' native copy dialog (`https://docs.google.com/spreadsheets/d/{SHEET_ID}/copy`), letting each student save an editable copy to their own Drive.
 
