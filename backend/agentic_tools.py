@@ -311,9 +311,7 @@ def get_context_learning(
                     "fill-in-the-blank placeholders (`____`) to eliminate syntax friction."
                 )
             else:
-                format_guidance = (
-                    "Structure lessons to build spatial/mechanical intuition before introducing code."
-                )
+                format_guidance = "Structure lessons to build spatial/mechanical intuition before introducing code."
 
             guidance = (
                 f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace, {exercise_format} format). "

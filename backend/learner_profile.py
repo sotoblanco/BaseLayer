@@ -60,11 +60,9 @@ class LearnerQuestionnaire(BaseModel):
         default="short",
         description="Explanation length: short (concise essentials) or thorough (detailed with analogies).",
     )
-    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] | None = (
-        Field(
-            default=None,
-            description="Exercise structure: micro_steps (bite-sized verified steps), macro_challenges (larger puzzles), or guided_completion (scaffolded fill-in-the-blanks).",
-        )
+    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] | None = Field(
+        default=None,
+        description="Exercise structure: micro_steps (bite-sized verified steps), macro_challenges (larger puzzles), or guided_completion (scaffolded fill-in-the-blanks).",
     )
     hint_preference: Literal["toy_example", "guiding_question", "direct_explanation"] | None = (
         Field(
