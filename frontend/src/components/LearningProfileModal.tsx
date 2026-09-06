@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   BookOpen,
+
   X,
   Edit,
   Eye,
@@ -10,6 +11,8 @@ import {
   AlertCircle,
   Activity,
   Download,
+  Sliders,
+  Sparkles,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -17,6 +20,7 @@ import Editor from '@monaco-editor/react';
 import {
   getLearningProfile,
   updateLearningProfile,
+  submitLearnerQuestionnaire,
   type LearningProfileData,
 } from '../services/profileService';
 
@@ -33,7 +37,23 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [viewMode, setViewMode] = useState<'preview' | 'edit'>('preview');
+  const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'customize'>('preview');
+
+  // Questionnaire state
+  const [goal, setGoal] = useState(
+    'Understand foundational AI and systems from first principles'
+  );
+  const [modalities, setModalities] = useState<string[]>([
+    'code',
+    'spreadsheet',
+    'drawing',
+  ]);
+  const [level, setLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('intermediate');
+  const [tutorStyle, setTutorStyle] = useState<'solveit' | 'socratic' | 'direct' | 'blooms'>('solveit');
+  const [pace, setPace] = useState<'unhurried' | 'sprint' | 'mixed'>('unhurried');
+  const [customNotes, setCustomNotes] = useState('');
+  const [submittingQuestionnaire, setSubmittingQuestionnaire] = useState(false);
+
 
   useEffect(() => {
     if (isOpen) {
@@ -41,7 +61,62 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (parsed) {
+      if (parsed.frontmatter.understanding_level) {
+        setLevel(parsed.frontmatter.understanding_level);
+      }
+      if (parsed.frontmatter.tutor_style) {
+        setTutorStyle(parsed.frontmatter.tutor_style);
+      }
+      if (parsed.frontmatter.pace) {
+        setPace(parsed.frontmatter.pace);
+      }
+      if (parsed.frontmatter.preferred_modalities?.length) {
+        setModalities(parsed.frontmatter.preferred_modalities);
+      }
+    }
+  }, [parsed]);
+
+  const toggleModality = (mod: string) => {
+    setModalities((prev) =>
+      prev.includes(mod)
+        ? prev.length > 1
+          ? prev.filter((m) => m !== mod)
+          : prev
+        : [...prev, mod]
+    );
+  };
+
+  const handleQuestionnaireSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingQuestionnaire(true);
+    setError('');
+    try {
+      const response = await submitLearnerQuestionnaire({
+        goal,
+        preferred_modalities: modalities,
+        understanding_level: level,
+        tutor_style: tutorStyle,
+        pace,
+        preferred_ui: parsed?.frontmatter.preferred_ui || 'light',
+        custom_notes: customNotes,
+      });
+      setMarkdown(response.markdown);
+      setInitialMarkdown(response.markdown);
+      setParsed(response.parsed);
+      setSaveSuccess(true);
+      setViewMode('preview');
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to calibrate profile');
+    } finally {
+      setSubmittingQuestionnaire(false);
+    }
+  };
+
   const loadProfile = async () => {
+
     setLoading(true);
     setError('');
     try {
@@ -124,6 +199,17 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
                 <span>Rendered</span>
               </button>
               <button
+                onClick={() => setViewMode('customize')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold ${
+                  viewMode === 'customize'
+                    ? 'bg-slate-800 text-emerald-400'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sliders size={13} />
+                <span>Diagnostic</span>
+              </button>
+              <button
                 onClick={() => setViewMode('edit')}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold ${
                   viewMode === 'edit'
@@ -160,6 +246,263 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
               <Loader size={24} className="animate-spin text-emerald-400" />
               <span className="text-xs">Loading LEARNING.md...</span>
             </div>
+          ) : viewMode === 'customize' ? (
+            <form onSubmit={handleQuestionnaireSubmit} className="space-y-6">
+              <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+                  <Sparkles size={15} />
+                  <span>Interactive Learning Diagnostic</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Calibrate your unique learning style and modalities. Responses generate a
+                  private <code>data/learners/[username]/LEARNING.md</code> profile that dynamically
+                  steers AI tutoring and curriculum generation.
+                </p>
+              </div>
+
+              {/* Question 1: Goal */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                  1. What is your primary learning goal?
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    'Understand foundational AI and systems from first principles',
+                    'Hands-on implementation and shipping clean code',
+                    'Visual and spatial understanding through interactive diagrams',
+                    'Master tensor operations, broadcasting, and memory layout',
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setGoal(preset)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all text-left ${
+                        goal === preset
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold'
+                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  rows={2}
+                  className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                  placeholder="Describe your learning goal in your own words..."
+                />
+              </div>
+
+              {/* Question 2: Modalities */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                  2. Preferred learning modalities
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  {[
+                    {
+                      id: 'code',
+                      title: 'Hands-on Code',
+                      desc: 'Interactive Python & Rust programming with automated unit test assertions.',
+                    },
+                    {
+                      id: 'spreadsheet',
+                      title: 'Spreadsheets & Cells',
+                      desc: 'Cell formula modeling and intuitive mental models before syntax.',
+                    },
+                    {
+                      id: 'drawing',
+                      title: 'Visual Drawing & Sketches',
+                      desc: 'Whiteboard diagramming, visual tracing, and architecture blueprints.',
+                    },
+                    {
+                      id: 'text',
+                      title: 'Guided Explanations',
+                      desc: 'Structured conceptual walkthroughs and Socratic inquiries.',
+                    },
+                  ].map((mod) => {
+                    const active = modalities.includes(mod.id);
+                    return (
+                      <button
+                        key={mod.id}
+                        type="button"
+                        onClick={() => toggleModality(mod.id)}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          active
+                            ? 'border-emerald-500 bg-emerald-500/10'
+                            : 'border-slate-800 bg-slate-950/50 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`font-semibold ${
+                              active ? 'text-emerald-300' : 'text-slate-200'
+                            }`}
+                          >
+                            {mod.title}
+                          </span>
+                          <span
+                            className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${
+                              active
+                                ? 'bg-emerald-500 text-slate-950 font-bold'
+                                : 'border border-slate-700'
+                            }`}
+                          >
+                            {active ? '✓' : ''}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">{mod.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Question 3: Understanding Level */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                  3. Baseline depth / current understanding
+                </label>
+                <div className="grid grid-cols-3 gap-2.5 text-xs">
+                  {[
+                    { id: 'beginner', title: 'Beginner', desc: 'Starting fresh from toy examples' },
+                    {
+                      id: 'intermediate',
+                      title: 'Intermediate',
+                      desc: 'Connecting math intuition to code',
+                    },
+                    {
+                      id: 'advanced',
+                      title: 'Advanced',
+                      desc: 'Deep systems engineering & optimization',
+                    },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        setLevel(item.id as 'beginner' | 'intermediate' | 'advanced')
+                      }
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        level === item.id
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 font-semibold'
+                          : 'border-slate-800 bg-slate-950/50 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="block font-semibold text-white">{item.title}</span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{item.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Question 4: AI Tutor Guidance Style */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                  4. Preferred AI tutor guidance style
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  {[
+                    { id: 'solveit', title: 'Solveit', desc: 'Toy data & micro-steps' },
+                    { id: 'socratic', title: 'Socratic', desc: 'Guided questions first' },
+                    { id: 'direct', title: 'Direct', desc: 'Concise theory first' },
+                    { id: 'blooms', title: 'Blooms', desc: 'Multi-tiered cognitive' },
+                  ].map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() =>
+                        setTutorStyle(style.id as 'solveit' | 'socratic' | 'direct' | 'blooms')
+                      }
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        tutorStyle === style.id
+                          ? 'border-emerald-500 bg-emerald-500/10 font-semibold'
+                          : 'border-slate-800 bg-slate-950/50 hover:border-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`block font-semibold ${
+                          tutorStyle === style.id ? 'text-emerald-300' : 'text-white'
+                        }`}
+                      >
+                        {style.title}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{style.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Question 5: Learning Pace */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                  5. Desired learning cadence
+                </label>
+                <div className="grid grid-cols-3 gap-2.5 text-xs">
+                  {[
+                    {
+                      id: 'unhurried',
+                      title: 'Unhurried',
+                      desc: 'Deliberate, step-by-step deep dive',
+                    },
+                    { id: 'sprint', title: 'Sprint', desc: 'Rapid milestones & quick execution' },
+                    { id: 'mixed', title: 'Mixed', desc: 'Balanced exploration & execution' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPace(p.id as 'unhurried' | 'sprint' | 'mixed')}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        pace === p.id
+                          ? 'border-emerald-500 bg-emerald-500/10 font-semibold'
+                          : 'border-slate-800 bg-slate-950/50 hover:border-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`block font-semibold ${
+                          pace === p.id ? 'text-emerald-300' : 'text-white'
+                        }`}
+                      >
+                        {p.title}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">{p.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Question 6: Custom Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider block">
+                  6. Specific topics or focus areas (optional)
+                </label>
+                <input
+                  type="text"
+                  value={customNotes}
+                  onChange={(e) => setCustomNotes(e.target.value)}
+                  placeholder="e.g. Attention mechanisms, backprop from scratch, GPU kernels..."
+                  className="w-full text-xs bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
+
+              {/* Submit CTA */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={submittingQuestionnaire}
+                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-50 transition-colors shadow-lg shadow-emerald-500/10"
+                >
+                  {submittingQuestionnaire ? (
+                    <Loader size={15} className="animate-spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  <span>Calibrate &amp; Update LEARNING.md</span>
+                </button>
+              </div>
+            </form>
           ) : viewMode === 'edit' ? (
             <div className="h-[420px] rounded-xl overflow-hidden border border-slate-800">
               <Editor
@@ -179,6 +522,7 @@ export function LearningProfileModal({ isOpen, onClose }: LearningProfileModalPr
             </div>
           ) : (
             <div className="space-y-6">
+
               {/* Profile Meta Cards */}
               {parsed && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">

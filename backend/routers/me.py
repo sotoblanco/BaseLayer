@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field
 
 from auth import User, get_current_user
 from learner_profile import (
+    LearnerQuestionnaire,
+    apply_questionnaire_profile,
     get_or_create_profile,
     record_learner_event,
     update_profile_markdown,
@@ -74,3 +76,17 @@ def emit_learning_event(event: ProfileEventRequest, user: User = Depends(get_cur
         return ProfileEventResponse(success=True, profile=updated_parsed)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to record event: {str(exc)}") from exc
+
+
+@router.post("/learning-profile/questionnaire", response_model=LearningProfileResponse)
+def submit_learner_questionnaire(
+    answers: LearnerQuestionnaire, user: User = Depends(get_current_user)
+):
+    """Calibrate learning profile using onboarding diagnostic questionnaire answers."""
+    try:
+        markdown, parsed = apply_questionnaire_profile(user.username, answers)
+        return LearningProfileResponse(markdown=markdown, parsed=parsed)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to process questionnaire: {str(exc)}"
+        ) from exc

@@ -12,6 +12,8 @@ os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["GOOGLE_CLIENT_ID"] = "fake-google-client-id.apps.googleusercontent.com"
 os.environ["DATABASE_URL"] = "sqlite://"  # in-memory
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
@@ -19,6 +21,15 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from database import get_session
 from main import app
+
+
+@pytest.fixture(autouse=True)
+def isolate_learners_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Ensure tests write learner profiles to a temporary directory instead of data/learners/."""
+    learners_dir = tmp_path / "learners"
+    learners_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LEARNERS_DATA_DIR", str(learners_dir))
+
 
 # Single shared in-memory engine
 # StaticPool ensures every connection sees the same in-memory database.
