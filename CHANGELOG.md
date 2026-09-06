@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.21](https://github.com/sotoblanco/BaseLayer/compare/v0.1.20...v0.1.21) (2026-09-06)
+
+
+### Features
+
+* **courses:** display both database and file courses on homepage ([#48](https://github.com/sotoblanco/BaseLayer/issues/48)) ([#64](https://github.com/sotoblanco/BaseLayer/issues/64)) ([ec6452e](https://github.com/sotoblanco/BaseLayer/commit/ec6452e3c2158931c1e032d573d3d4b611ac79ed))
+
 ### [0.1.20](https://github.com/sotoblanco/BaseLayer/compare/v0.1.19...v0.1.20) (2026-09-06)
 
 
