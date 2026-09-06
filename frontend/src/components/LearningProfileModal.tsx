@@ -44,10 +44,15 @@ export function LearningProfileModal({
   // Simplified Diagnostic state
   const [intakePref, setIntakePref] = useState<'diagram' | 'table' | 'hands_on' | 'story'>('diagram');
   const [explanationLength, setExplanationLength] = useState<'short' | 'thorough'>('short');
-  const [exerciseFormat, setExerciseFormat] = useState<'micro_steps' | 'macro_challenges'>('micro_steps');
+  const [exerciseFormat, setExerciseFormat] = useState<
+    'micro_steps' | 'macro_challenges' | 'guided_completion'
+  >('micro_steps');
   const [hintPref, setHintPref] = useState<'toy_example' | 'guiding_question' | 'direct_explanation'>('toy_example');
   const [tone, setTone] = useState<'direct' | 'pragmatic' | 'concise'>('pragmatic');
   const [pace, setPace] = useState<'unhurried' | 'sprint' | 'mixed'>('unhurried');
+  const [understandingLevel, setUnderstandingLevel] = useState<
+    'beginner' | 'intermediate' | 'advanced'
+  >('intermediate');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [goal, setGoal] = useState('Understand foundational AI and systems from first principles');
   const [customNotes, setCustomNotes] = useState('');
@@ -78,6 +83,9 @@ export function LearningProfileModal({
       }
       if (parsed.frontmatter.tone) {
         setTone(parsed.frontmatter.tone);
+      }
+      if (parsed.frontmatter.understanding_level) {
+        setUnderstandingLevel(parsed.frontmatter.understanding_level);
       }
       if (parsed.frontmatter.tutor_style) {
         if (parsed.frontmatter.tutor_style === 'socratic') {
@@ -115,6 +123,7 @@ export function LearningProfileModal({
         goal,
         custom_notes: customNotes,
         preferred_ui: parsed?.frontmatter.preferred_ui || 'light',
+        understanding_level: understandingLevel,
       });
       setMarkdown(response.markdown);
       setInitialMarkdown(response.markdown);
@@ -403,8 +412,13 @@ export function LearningProfileModal({
                     How do you prefer practice challenges to be structured?
                   </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {[
+                    {
+                      id: 'guided_completion',
+                      title: 'Guided Fill-in-the-Blanks',
+                      desc: 'Code templates with guided blanks (____) to fill in — minimal syntax anxiety, ideal for beginners.',
+                    },
                     {
                       id: 'micro_steps',
                       title: 'Bite-Sized Micro-Steps',
@@ -422,7 +436,9 @@ export function LearningProfileModal({
                         key={item.id}
                         type="button"
                         onClick={() =>
-                          setExerciseFormat(item.id as 'micro_steps' | 'macro_challenges')
+                          setExerciseFormat(
+                            item.id as 'micro_steps' | 'macro_challenges' | 'guided_completion'
+                          )
                         }
                         className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
                           active
@@ -665,6 +681,37 @@ export function LearningProfileModal({
                 {showAdvanced && (
                   <div className="space-y-3 pt-3">
                     <div className="space-y-1">
+                      <label className="text-xs text-slate-300 block font-medium">
+                        Baseline experience level
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: 'beginner', label: 'Beginner' },
+                          { id: 'intermediate', label: 'Intermediate' },
+                          { id: 'advanced', label: 'Advanced' },
+                        ].map((lvl) => (
+                          <button
+                            key={lvl.id}
+                            type="button"
+                            onClick={() => {
+                              const nextLvl = lvl.id as 'beginner' | 'intermediate' | 'advanced';
+                              setUnderstandingLevel(nextLvl);
+                              if (nextLvl === 'beginner' && exerciseFormat === 'micro_steps') {
+                                setExerciseFormat('guided_completion');
+                              }
+                            }}
+                            className={`py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all ${
+                              understandingLevel === lvl.id
+                                ? 'border-blue-500 bg-blue-950/40 text-white'
+                                : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {lvl.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
                       <label className="text-xs text-slate-300 block font-medium">Personal goal</label>
                       <input
                         type="text"
@@ -695,7 +742,13 @@ export function LearningProfileModal({
                 <div className="text-[11px] text-slate-400 leading-relaxed">
                   Adapts: <span className="text-slate-200 font-medium">{explanationLength === 'short' ? 'Concise theory' : 'Detailed theory'}</span>
                   {' '}&bull;{' '}
-                  <span className="text-slate-200 font-medium">{exerciseFormat === 'micro_steps' ? 'Micro-steps' : 'Macro challenges'}</span>
+                  <span className="text-slate-200 font-medium">
+                    {exerciseFormat === 'guided_completion'
+                      ? 'Guided completion'
+                      : exerciseFormat === 'micro_steps'
+                      ? 'Micro-steps'
+                      : 'Macro challenges'}
+                  </span>
                   {' '}&bull;{' '}
                   <span className="text-slate-200 font-medium capitalize">{tone} tone</span>
                   {' '}&bull;{' '}
@@ -769,6 +822,8 @@ export function LearningProfileModal({
                     <p className="font-bold text-cyan-400 capitalize">
                       {parsed.frontmatter.exercise_format === 'macro_challenges'
                         ? 'Macro puzzles'
+                        : parsed.frontmatter.exercise_format === 'guided_completion'
+                        ? 'Guided completion'
                         : 'Micro-steps'}
                     </p>
                   </div>

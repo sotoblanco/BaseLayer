@@ -81,11 +81,22 @@ def build_fallback_solveit_lessons(
 
     # Incorporate learner preferred modalities if available
     preferred = learner_ctx.preferred_modalities
+    is_guided = getattr(learner_ctx, "exercise_format", "") == "guided_completion"
 
     lessons: list[dict[str, Any]] = []
 
     # Lesson 1: Toy Data & Foundation
     c1 = primary_concepts[0] if len(primary_concepts) > 0 else "data"
+    l1_starter = (
+        f"def create_{c1}():\n    # Replace each ____ with the corresponding number (10, 30)\n    return [____, 20, ____]\n"
+        if is_guided
+        else f"def create_{c1}():\n    # Write 1-2 lines to return [10, 20, 30]\n    pass\n"
+    )
+    l1_task = (
+        f"Replace the blanks (`____`) in `create_{c1}()` with `10` and `30`."
+        if is_guided
+        else f"Define `create_{c1}()` returning the 3-element list or vector."
+    )
     lessons.append(
         {
             "title": f"Foundation: Minimal {c1.title()}",
@@ -94,10 +105,10 @@ def build_fallback_solveit_lessons(
             "objective": f"Initialize and inspect a minimal 3-element {c1} structure.",
             "toy_data": "sample = [10, 20, 30] -> len is 3",
             "expected_result": "3",
-            "micro_task": f"Define `create_{c1}()` returning the 3-element list or vector.",
+            "micro_task": l1_task,
             "inspect_prompt": f"Run the code. Does `create_{c1}()` have length 3?",
             "curiosity_prompt": "Can we define this using a list comprehension or generator?",
-            "starter_code": f"def create_{c1}():\n    # Write 1-2 lines to return [10, 20, 30]\n    pass\n",
+            "starter_code": l1_starter,
             "test_code": f"from main import create_{c1}\n\nres = create_{c1}()\nassert len(res) == 3\nassert res[0] == 10\n",
             "solution_code": f"def create_{c1}():\n    return [10, 20, 30]\n",
             "source_refs": ["Platform Sandbox", intent.topic],
@@ -107,6 +118,16 @@ def build_fallback_solveit_lessons(
 
     # Lesson 2: Transformation / Operation
     c2 = primary_concepts[1] if len(primary_concepts) > 1 else "transform"
+    l2_starter = (
+        "def scale_by_two(items):\n    # Replace each ____ with x to double each element\n    return [____ * 2 for ____ in items]\n"
+        if is_guided
+        else "def scale_by_two(items):\n    # 1-2 lines: return doubled elements\n    pass\n"
+    )
+    l2_task = (
+        "Replace the `____` blanks in `scale_by_two(items)` with variable `x`."
+        if is_guided
+        else "Implement `scale_by_two(items)` in 1-2 lines."
+    )
     lessons.append(
         {
             "title": f"Micro-Step: {c2.title()} Transformation",
@@ -115,10 +136,10 @@ def build_fallback_solveit_lessons(
             "objective": "Apply a 1-line transformation to double each element.",
             "toy_data": "items = [1, 2, 3] -> doubled = [2, 4, 6]",
             "expected_result": "[2, 4, 6]",
-            "micro_task": "Implement `scale_by_two(items)` in 1-2 lines.",
+            "micro_task": l2_task,
             "inspect_prompt": "Print the scaled output. Did [1, 2, 3] become [2, 4, 6]?",
             "curiosity_prompt": "How does this compare to element-wise operations in NumPy or PyTorch?",
-            "starter_code": "def scale_by_two(items):\n    # 1-2 lines: return doubled elements\n    pass\n",
+            "starter_code": l2_starter,
             "test_code": "from main import scale_by_two\n\nassert scale_by_two([1, 2, 3]) == [2, 4, 6]\nassert scale_by_two([]) == []\n",
             "solution_code": "def scale_by_two(items):\n    return [x * 2 for x in items]\n",
             "source_refs": ["Solveit JRY-before-DRY", "Platform Python Sandbox"],
@@ -165,6 +186,16 @@ def build_fallback_solveit_lessons(
 
     # Lesson 4: Composition into working primitive
     c3 = primary_concepts[2] if len(primary_concepts) > 2 else "pipeline"
+    l4_starter = (
+        f"class {c3.title()}Runner:\n    def compute(self, data):\n        # Replace ____ with x to sum doubled items\n        return sum(____ * 2 for x in data)\n"
+        if is_guided
+        else f"class {c3.title()}Runner:\n    def compute(self, data):\n        # 1-3 lines: sum the doubled elements of data\n        pass\n"
+    )
+    l4_task = (
+        "Replace the `____` blank in `compute(data)` with variable `x`."
+        if is_guided
+        else f"Build `class {c3.title()}Runner` with a `compute(data)` method."
+    )
     lessons.append(
         {
             "title": f"Composition: Clean {c3.title()} Primitive",
@@ -173,10 +204,10 @@ def build_fallback_solveit_lessons(
             "objective": "Compose the steps into a clean, minimal class (<25 lines).",
             "toy_data": "data = [5, 10] -> processed = 30",
             "expected_result": "30",
-            "micro_task": f"Build `class {c3.title()}Runner` with a `compute(data)` method.",
+            "micro_task": l4_task,
             "inspect_prompt": "Instantiate the class and check the return value of compute([5, 10]).",
             "curiosity_prompt": "Can we replace any remaining boilerplate with dynamic dispatch or properties?",
-            "starter_code": f"class {c3.title()}Runner:\n    def compute(self, data):\n        # 1-3 lines: sum the doubled elements of data\n        pass\n",
+            "starter_code": l4_starter,
             "test_code": f"from main import {c3.title()}Runner\n\nrunner = {c3.title()}Runner()\nassert runner.compute([5, 10]) == 30\n",
             "solution_code": f"class {c3.title()}Runner:\n    def compute(self, data):\n        return sum(x * 2 for x in data)\n",
             "source_refs": ["Solveit Directive 3: Ruthless Boilerplate Elimination"],
@@ -412,6 +443,15 @@ class AgenticCourseWorkflow:
         # Attempt to consult LLM with the outputs of Tools 1, 2, and 3
         if self.generate_text is not None or self.client is not None:
             try:
+                guided_directive = ""
+                if getattr(learner_ctx, "exercise_format", "") == "guided_completion":
+                    guided_directive = (
+                        "\n7. GUIDED CODE COMPLETION DIRECTIVE:\n"
+                        "The learner has selected Guided Code Completion (scaffolded fill-in-the-blanks).\n"
+                        "starter_code must be a pre-structured code skeleton containing `____` placeholders to fill in.\n"
+                        "micro_task should clearly instruct the learner what values/keywords should replace each `____` blank.\n"
+                    )
+
                 system_solveit_prompt = f"""
 You are an expert Solveit Curriculum Designer (Fast.ai / Answer.AI principles).
 You have already received the results of the 3 context-gathering tools:
@@ -438,7 +478,7 @@ Plan 3 to 5 micro-step lessons applying the Solveit methodology:
 3. Live inspection prompt
 4. Curiosity reflection prompt
 5. Python code lessons must import only {platform_tools.installed_sandbox_libraries}
-6. test_code must import from main (e.g. from main import ...) and assert results.
+6. test_code must import from main (e.g. from main import ...) and assert results.{guided_directive}
 7. WRITING STYLE & TONE DIRECTIVES (STRICT ANTI-AI CONSTRAINTS):
    Tone: {learner_ctx.tone.upper()}
    - If PRAGMATIC: Understated, dry developer realism about software gotchas, bugs, and computer literalism. No forced comedy or puns.
@@ -477,8 +517,13 @@ Return a JSON object with this exact shape:
                 if self.generate_text is not None:
                     llm_text = self.generate_text(system_solveit_prompt)
                 elif self.client is not None and hasattr(self.client, "chat"):
+                    default_m = (
+                        "gemini-3.5-flash-lite"
+                        if os.environ.get("LLM_PROVIDER") == "gemini"
+                        else "gpt-5.6-luna"
+                    )
                     completion = self.client.chat.completions.create(
-                        model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+                        model=os.environ.get("LLM_MODEL") or default_m,
                         messages=[{"role": "user", "content": system_solveit_prompt}],
                     )
                     llm_text = (completion.choices[0].message.content or "").strip()

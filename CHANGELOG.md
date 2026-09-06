@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.29](https://github.com/sotoblanco/BaseLayer/compare/v0.1.28...v0.1.29) (2026-09-06)
+
+
+### Features
+
+* update default models to latest generation lowest-cost options ([#79](https://github.com/sotoblanco/BaseLayer/issues/79)) ([ddfe311](https://github.com/sotoblanco/BaseLayer/commit/ddfe3113fcc6d61dbe928dca30dadace75db0e8e))
+
+### [0.1.28](https://github.com/sotoblanco/BaseLayer/compare/v0.1.27...v0.1.28) (2026-09-06)
+
+
+### Features
+
+* add guided code completion exercise style and learner diagnostic option ([#78](https://github.com/sotoblanco/BaseLayer/issues/78)) ([1d9de35](https://github.com/sotoblanco/BaseLayer/commit/1d9de3505e8b6e47e5f7165cd567427e1c9efe0d))
+
 ### [0.1.27](https://github.com/sotoblanco/BaseLayer/compare/v0.1.26...v0.1.27) (2026-09-06)
 
 ### [0.1.26](https://github.com/sotoblanco/BaseLayer/compare/v0.1.25...v0.1.26) (2026-09-06)

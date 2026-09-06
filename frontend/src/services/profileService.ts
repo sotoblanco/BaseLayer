@@ -11,7 +11,7 @@ export interface ProfileFrontMatter {
   preferred_modalities: string[];
   pace: 'unhurried' | 'sprint' | 'mixed';
   explanation_length?: 'short' | 'thorough';
-  exercise_format?: 'micro_steps' | 'macro_challenges';
+  exercise_format?: 'micro_steps' | 'macro_challenges' | 'guided_completion';
 }
 
 export interface LearningProfileData {
@@ -107,7 +107,7 @@ export const emitLearnerEvent = async (
 export interface LearnerQuestionnaire {
   intake_preference?: 'diagram' | 'table' | 'hands_on' | 'story';
   explanation_length?: 'short' | 'thorough';
-  exercise_format?: 'micro_steps' | 'macro_challenges';
+  exercise_format?: 'micro_steps' | 'macro_challenges' | 'guided_completion';
   hint_preference?: 'toy_example' | 'guiding_question' | 'direct_explanation';
   goal?: string;
   preferred_modalities?: string[];

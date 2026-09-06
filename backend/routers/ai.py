@@ -84,6 +84,7 @@ class ProviderInfo(BaseModel):
     docs_url: str = ""
     blurb: str = ""
     group: str = "key"
+    suggested_models: list[str] = Field(default_factory=list)
 
 
 class AIStatusResponse(BaseModel):

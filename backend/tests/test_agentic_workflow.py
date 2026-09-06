@@ -104,6 +104,41 @@ preferred_modalities:
         assert "Direct technical manual style" in result.personalization_guidance
         assert "Ban AI tropes" in result.personalization_guidance
 
+    def test_parses_guided_completion_profile_and_infers_for_beginner(self, tmp_path: Path):
+        data_dir = tmp_path / "data"
+        user_dir = data_dir / "learners" / "sam"
+        user_dir.mkdir(parents=True)
+
+        # Explicit guided_completion
+        profile_content = """---
+understanding_level: Beginner
+tutor_style: solveit
+pace: unhurried
+exercise_format: guided_completion
+preferred_modalities:
+  - code
+---
+"""
+        (user_dir / "LEARNING.md").write_text(profile_content, encoding="utf-8")
+        result = get_context_learning(username="sam", data_dir=data_dir)
+        assert result.exercise_format == "guided_completion"
+        assert "Guided Code Completion" in result.personalization_guidance
+
+        # Inferred for beginner when exercise_format is omitted
+        user2_dir = data_dir / "learners" / "taylor"
+        user2_dir.mkdir(parents=True)
+        profile_content_2 = """---
+understanding_level: Beginner
+tutor_style: solveit
+pace: unhurried
+preferred_modalities:
+  - code
+---
+"""
+        (user2_dir / "LEARNING.md").write_text(profile_content_2, encoding="utf-8")
+        result2 = get_context_learning(username="taylor", data_dir=data_dir)
+        assert result2.exercise_format == "guided_completion"
+
 
 class TestTool3PlatformContentTools:
     def test_returns_modalities_and_installed_libraries(self):
@@ -167,6 +202,32 @@ class TestTool4CurateSolveitCourse:
         assert curated.solveit_compliance["curiosity_loop_active"] is True
         assert curated.lessons[0].modality == "code"
         assert curated.lessons[1].modality == "spreadsheet"
+
+    def test_curate_solveit_course_preserves_guided_blank_templates(self):
+        # Guided completion blank templates with ____ syntax
+        raw_lessons = [
+            {
+                "title": "Fill the Tensor Creation Blank",
+                "modality": "code",
+                "objective": "Fill in the blank to return [10, 20, 30]",
+                "toy_data": "[10, 20, 30]",
+                "expected_result": "[10, 20, 30]",
+                "micro_task": "Replace ____ with 10 and 30",
+                "inspect_prompt": "Run to check the array values",
+                "curiosity_prompt": "How does this compare to list literals?",
+                "starter_code": "def make_list():\n    return [____, 20, ____]\n",
+                "test_code": "from main import make_list\nassert make_list() == [10, 20, 30]\n",
+                "solution_code": "def make_list():\n    return [10, 20, 30]\n",
+            }
+        ]
+        curated = curate_solveit_course(
+            course_title="Guided List Basics",
+            course_description="Guided fill-in-the-blank practice.",
+            narrative_arc="Scaffolded learning.",
+            lessons=raw_lessons,
+        )
+        assert len(curated.lessons) == 1
+        assert "____" in curated.lessons[0].starter_code
 
 
 class TestAgenticWorkflowExecution:

@@ -47,6 +47,7 @@ The questionnaire provides a simplified, zero-jargon diagnostic framework ground
    - **Thorough & comprehensive (`thorough`)**: In-depth explanations with conceptual background, why it matters, and detailed analogies.
 
 3. **Practice Structure ("How do you prefer practice challenges to be structured?")**
+   - **Guided Fill-in-the-Blanks (`guided_completion`)**: Pre-structured code templates with fill-in-the-blank placeholders (`____`) — eliminates blank-page anxiety for beginners.
    - **Bite-sized micro-steps (`micro_steps`)**: 4 to 6 small verified checkpoints where each step is confirmed before moving forward.
    - **Fewer bigger challenges (`macro_challenges`)**: 1 to 2 larger end-to-end problems with minimal intermediate handholding.
 
@@ -80,6 +81,7 @@ When responses are submitted:
 3. **Pedagogical & Anti-AI Directives**:
    - For `short` explanations: "Keep explanations concise (under 3 sentences); transition rapidly to practice."
    - For `thorough` explanations: "Provide thorough explanations with real-world analogies and conceptual context."
+   - For `guided_completion`: "Provide pre-structured code templates with fill-in-the-blank placeholders (`____`) to eliminate syntax friction."
    - For `micro_steps`: "Structure practice into 4-6 small micro-steps with immediate automated assertions."
    - For `macro_challenges`: "Structure practice into 1-2 larger macro challenges with minimal intermediate scaffolding."
    - For `tone`: Pragmatic, direct, or concise voice rules.

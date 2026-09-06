@@ -62,7 +62,8 @@ export default function CoursesPage() {
               data.parsed.signals.length <= 1 &&
               !data.markdown.includes('intake_preference') &&
               !data.markdown.includes('explanation_length: thorough') &&
-              !data.markdown.includes('exercise_format: macro_challenges');
+              !data.markdown.includes('exercise_format: macro_challenges') &&
+              !data.markdown.includes('exercise_format: guided_completion');
             if (isDefault) {
               setProfileInitialMode('customize');
               setIsProfileModalOpen(true);
