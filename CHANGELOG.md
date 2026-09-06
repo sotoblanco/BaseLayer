@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.20](https://github.com/sotoblanco/BaseLayer/compare/v0.1.19...v0.1.20) (2026-09-06)
+
+
+### Bug Fixes
+
+* proxy /me in vite, auto-prompt diagnostic on startup, and polish form design ([#58](https://github.com/sotoblanco/BaseLayer/issues/58)) ([62d2240](https://github.com/sotoblanco/BaseLayer/commit/62d2240a86cfd1db4627228a7315bcdaea394ae9)), closes [#56](https://github.com/sotoblanco/BaseLayer/issues/56)
+
 ### [0.1.19](https://github.com/sotoblanco/BaseLayer/compare/v0.1.18...v0.1.19) (2026-09-06)
 
 
