@@ -194,3 +194,31 @@ class TestRunEndpoint:
         assert body["stderr"] == "Execution timed out"
         assert len(killed_containers) == 1
         assert killed_containers[0].startswith("baselayer-run-")
+
+    def test_run_timeout_force_removes_container_when_kill_fails(
+        self, client: TestClient, auth_headers, monkeypatch
+    ):
+        cleanup_calls = []
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[0] == "docker" and cmd[1] == "kill":
+                cleanup_calls.append(("kill", cmd[2]))
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=5)
+            if cmd[0] == "docker" and cmd[1] == "rm":
+                cleanup_calls.append(("rm", cmd[-1]))
+                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=5)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        response = client.post(
+            "/run",
+            json={"code": "while True: pass", "language": "python"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["exit_code"] == 124
+        assert body["stderr"] == "Execution timed out"
+        assert [kind for kind, _ in cleanup_calls] == ["kill", "rm"]
+        assert cleanup_calls[0][1] == cleanup_calls[1][1]
+        assert cleanup_calls[0][1].startswith("baselayer-run-")
