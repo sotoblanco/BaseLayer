@@ -31,28 +31,36 @@ class ProviderSpec:
     blurb: str
     group: str
     dummy_key: str = "not-needed"
+    suggested_models: tuple[str, ...] = ()
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
     "gemini": ProviderSpec(
         id="gemini",
         name="Google Gemini",
-        default_model="gemini-2.0-flash",
+        default_model="gemini-3.5-flash-lite",
         default_base="https://generativelanguage.googleapis.com/v1beta/openai/",
         needs_key=True,
         docs_url="https://aistudio.google.com/app/apikey",
         blurb="Free key from Google AI Studio",
         group="free",
+        suggested_models=("gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-flash-lite"),
     ),
     "groq": ProviderSpec(
         id="groq",
         name="Groq",
-        default_model="llama-3.1-8b-instant",
+        default_model="openai/gpt-oss-20b",
         default_base="https://api.groq.com/openai/v1",
         needs_key=True,
         docs_url="https://console.groq.com/keys",
         blurb="Fast cloud models, free tier",
         group="free",
+        suggested_models=(
+            "openai/gpt-oss-20b",
+            "llama-3.3-70b-versatile",
+            "qwen/qwen3.8-27b",
+            "llama-3.1-8b-instant",
+        ),
     ),
     "ollama": ProviderSpec(
         id="ollama",
@@ -64,6 +72,7 @@ PROVIDERS: dict[str, ProviderSpec] = {
         blurb="Local models, no API key",
         group="free",
         dummy_key="ollama",
+        suggested_models=("llama3.2", "qwen2.5-coder:7b", "llama3.3"),
     ),
     "lmstudio": ProviderSpec(
         id="lmstudio",
@@ -75,37 +84,46 @@ PROVIDERS: dict[str, ProviderSpec] = {
         blurb="Local desktop app, no API key",
         group="free",
         dummy_key="lmstudio",
+        suggested_models=("local-model",),
     ),
     "openai": ProviderSpec(
         id="openai",
         name="OpenAI",
-        default_model="gpt-4o-mini",
+        default_model="gpt-5.6-luna",
         default_base="https://api.openai.com/v1",
         needs_key=True,
         docs_url="https://platform.openai.com/api-keys",
         blurb="GPT models",
         group="key",
+        suggested_models=("gpt-5.6-luna", "gpt-5-mini", "gpt-5.6-terra", "gpt-6-astra"),
     ),
     "openrouter": ProviderSpec(
         id="openrouter",
         name="OpenRouter",
-        default_model="openai/gpt-4o-mini",
+        default_model="openai/gpt-5.6-luna",
         default_base="https://openrouter.ai/api/v1",
         needs_key=True,
         docs_url="https://openrouter.ai/keys",
         blurb="One key, many models",
         group="key",
+        suggested_models=(
+            "openai/gpt-5.6-luna",
+            "google/gemini-3.5-flash-lite",
+            "meta-llama/llama-4-scout",
+            "deepseek/deepseek-v4-flash-latest",
+        ),
     ),
     "custom": ProviderSpec(
         id="custom",
         name="Custom endpoint",
-        default_model="gpt-4o-mini",
+        default_model="gpt-5.6-luna",
         default_base=None,
         needs_key=False,
         docs_url="",
         blurb="Any OpenAI-compatible URL",
         group="key",
         dummy_key="custom",
+        suggested_models=("gpt-5.6-luna",),
     ),
 }
 
@@ -251,6 +269,7 @@ def providers_public() -> list[dict[str, object]]:
             "docs_url": PROVIDERS[pid].docs_url,
             "blurb": PROVIDERS[pid].blurb,
             "group": PROVIDERS[pid].group,
+            "suggested_models": list(PROVIDERS[pid].suggested_models),
         }
         for pid in PROVIDER_ORDER
     ]

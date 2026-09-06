@@ -44,3 +44,15 @@ def test_validate_openai_requires_key():
         raise AssertionError("expected ValueError")
     except ValueError as exc:
         assert "API key" in str(exc)
+
+
+def test_default_models_and_suggested_options():
+    from llm import PROVIDERS
+
+    assert PROVIDERS["gemini"].default_model == "gemini-3.5-flash-lite"
+    assert "gemini-3.5-flash-lite" in PROVIDERS["gemini"].suggested_models
+    assert PROVIDERS["openai"].default_model == "gpt-5.6-luna"
+    assert "gpt-5.6-luna" in PROVIDERS["openai"].suggested_models
+    assert PROVIDERS["groq"].default_model == "openai/gpt-oss-20b"
+    assert "openai/gpt-oss-20b" in PROVIDERS["groq"].suggested_models
+    assert PROVIDERS["openrouter"].default_model == "openai/gpt-5.6-luna"

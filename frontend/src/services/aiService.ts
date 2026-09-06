@@ -56,6 +56,7 @@ export interface AIProviderInfo {
     docs_url: string;
     blurb: string;
     group: 'free' | 'key' | string;
+    suggested_models?: string[];
 }
 
 export interface AIStatus {

@@ -55,7 +55,7 @@ Sensitive keys like `LLM_API_KEY` (or a legacy `GEMINI_API_KEY`) are stored in a
 
 To update or create secrets:
 ```bash
-modal secret create code-app-secrets LLM_PROVIDER=gemini LLM_API_KEY=YOUR_KEY LLM_MODEL=gemini-2.0-flash
+modal secret create code-app-secrets LLM_PROVIDER=gemini LLM_API_KEY=YOUR_KEY LLM_MODEL=gemini-3.5-flash-lite
 ```
 
 ### Volumes
