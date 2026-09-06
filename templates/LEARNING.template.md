@@ -20,6 +20,8 @@ preferred_modalities:
   - drawing                       # Interactive diagramming & canvas visual tracing
 
 pace: unhurried                   # Options: unhurried (step-by-step deep dive), sprint (rapid execution), mixed
+explanation_length: short         # Options: short (concise essentials), thorough (detailed with analogies)
+exercise_format: micro_steps      # Options: micro_steps (bite-sized verified steps), macro_challenges (larger puzzles)
 ---
 
 # Learning profile — learner

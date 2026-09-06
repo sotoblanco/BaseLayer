@@ -316,3 +316,82 @@ Advanced test runner.
         assert data["parsed"]["frontmatter"]["tutor_style"] == "socratic"
         assert data["parsed"]["frontmatter"]["preferred_modalities"] == ["code", "spreadsheet"]
         assert "Understand transformers from zero" in data["markdown"]
+
+    def test_simplified_diagnostic_inference_modalities_and_tutor(self):
+        # Case 1: diagram + guiding question -> drawing+code, socratic
+        q1 = LearnerQuestionnaire(
+            intake_preference="diagram",
+            hint_preference="guiding_question",
+            explanation_length="short",
+            exercise_format="micro_steps",
+            pace="unhurried",
+        )
+        md1 = aggregate_questionnaire_to_markdown("diag_user", q1)
+        fm1, body1 = parse_frontmatter(md1)
+        assert fm1["tutor_style"] == "socratic"
+        assert fm1["preferred_modalities"] == ["drawing", "code"]
+        assert fm1["explanation_length"] == "short"
+        assert fm1["exercise_format"] == "micro_steps"
+        assert "concise essentials" in body1
+        assert "bite-sized micro-steps" in body1
+
+        # Case 2: table + direct explanation -> spreadsheet+code, direct
+        q2 = LearnerQuestionnaire(
+            intake_preference="table",
+            hint_preference="direct_explanation",
+            explanation_length="thorough",
+            exercise_format="macro_challenges",
+            pace="sprint",
+        )
+        md2 = aggregate_questionnaire_to_markdown("table_user", q2)
+        fm2, body2 = parse_frontmatter(md2)
+        assert fm2["tutor_style"] == "direct"
+        assert fm2["preferred_modalities"] == ["spreadsheet", "code"]
+        assert fm2["explanation_length"] == "thorough"
+        assert fm2["exercise_format"] == "macro_challenges"
+        assert "in-depth explanations" in body2
+        assert "comprehensive challenges" in body2
+
+        # Case 3: hands_on + toy example -> code, solveit
+        q3 = LearnerQuestionnaire(
+            intake_preference="hands_on",
+            hint_preference="toy_example",
+        )
+        md3 = aggregate_questionnaire_to_markdown("code_user", q3)
+        fm3, _ = parse_frontmatter(md3)
+        assert fm3["tutor_style"] == "solveit"
+        assert fm3["preferred_modalities"] == ["code"]
+
+        # Case 4: story -> text+code
+        q4 = LearnerQuestionnaire(
+            intake_preference="story",
+        )
+        md4 = aggregate_questionnaire_to_markdown("story_user", q4)
+        fm4, _ = parse_frontmatter(md4)
+        assert fm4["preferred_modalities"] == ["text", "code"]
+
+    def test_submit_questionnaire_with_simplified_diagnostic(
+        self, client, auth_headers, tmp_path: Path
+    ):
+        payload = {
+            "intake_preference": "diagram",
+            "hint_preference": "guiding_question",
+            "explanation_length": "short",
+            "exercise_format": "micro_steps",
+            "pace": "unhurried",
+            "preferred_ui": "light",
+        }
+        with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
+            response = client.post(
+                "/me/learning-profile/questionnaire",
+                json=payload,
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        fm = data["parsed"]["frontmatter"]
+        assert fm["tutor_style"] == "socratic"
+        assert fm["preferred_modalities"] == ["drawing", "code"]
+        assert fm["explanation_length"] == "short"
+        assert fm["exercise_format"] == "micro_steps"

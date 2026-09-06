@@ -9,6 +9,8 @@ export interface ProfileFrontMatter {
   understanding_level: 'beginner' | 'intermediate' | 'advanced';
   preferred_modalities: string[];
   pace: 'unhurried' | 'sprint' | 'mixed';
+  explanation_length?: 'short' | 'thorough';
+  exercise_format?: 'micro_steps' | 'macro_challenges';
 }
 
 export interface LearningProfileData {
@@ -92,12 +94,16 @@ export const emitLearnerEvent = async (
 };
 
 export interface LearnerQuestionnaire {
-  goal: string;
-  preferred_modalities: string[];
-  understanding_level: 'beginner' | 'intermediate' | 'advanced';
-  tutor_style: 'solveit' | 'socratic' | 'direct' | 'blooms';
-  pace: 'unhurried' | 'sprint' | 'mixed';
-  preferred_ui: 'classic' | 'light';
+  intake_preference?: 'diagram' | 'table' | 'hands_on' | 'story';
+  explanation_length?: 'short' | 'thorough';
+  exercise_format?: 'micro_steps' | 'macro_challenges';
+  hint_preference?: 'toy_example' | 'guiding_question' | 'direct_explanation';
+  goal?: string;
+  preferred_modalities?: string[];
+  understanding_level?: 'beginner' | 'intermediate' | 'advanced';
+  tutor_style?: 'solveit' | 'socratic' | 'direct' | 'blooms';
+  pace?: 'unhurried' | 'sprint' | 'mixed';
+  preferred_ui?: 'classic' | 'light';
   custom_notes?: string;
 }
 
