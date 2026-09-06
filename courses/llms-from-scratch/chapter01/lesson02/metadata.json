@@ -1,5 +1,9 @@
 {
   "exercise_type": "drawing",
   "stroke_color": "#2563eb",
-  "stroke_width": 4
+  "stroke_width": 4,
+  "skills": [
+    "Pre-Norm",
+    "Residuals"
+  ]
 }

@@ -9,7 +9,12 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from routers.file_courses import (
+    _heading_from_readme,
     _is_safe_subpath,
+    _lesson_display_title,
+    _normalize_skills,
+    _optional_str,
+    _unique_lesson_skills,
     _validate_lesson_slug,
     _validate_slug,
     get_course_title,
@@ -139,7 +144,7 @@ class TestParseLesson:
         lesson = parse_lesson(tmp_path, "lesson01", 1, chapter_slug="chapter1")
         assert lesson is not None
         assert lesson.slug == "chapter1--lesson01"
-        assert lesson.title == "Lesson 1: Lesson01"
+        assert lesson.title == "Lesson 1 Instructions"
         assert lesson.description == "# Lesson 1 Instructions"
         assert lesson.initial_code == "def solve(): pass"
         assert lesson.test_code == "def test_solve(): pass"
@@ -169,8 +174,23 @@ class TestParseLesson:
         assert lesson.copy_on_open is True
         assert lesson.stroke_color == "#00ff00"
         assert lesson.stroke_width == 6
+        assert lesson.skills == []
 
-    def test_parse_lesson_with_invalid_metadata_json(self, tmp_path: Path):
+    def test_parse_lesson_skills_and_custom_title(self, tmp_path: Path):
+        lesson_dir = tmp_path / "lesson_skills"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# README heading\n\nBody")
+        metadata = {
+            "exercise_type": "code",
+            "title": "Tensor initialization",
+            "skills": ["Tensors", "NumPy", "Tensors", "  ", 12],
+        }
+        (lesson_dir / "metadata.json").write_text(json.dumps(metadata))
+
+        lesson = parse_lesson(tmp_path, "lesson_skills", 1)
+        assert lesson is not None
+        assert lesson.title == "Tensor initialization"
+        assert lesson.skills == ["Tensors", "NumPy"]
         lesson_dir = tmp_path / "lesson_broken_meta"
         lesson_dir.mkdir()
         (lesson_dir / "README.md").write_text("# Broken Meta")
@@ -257,6 +277,102 @@ class TestParseCourse:
         assert course is not None
         assert len(course.lessons) == 1
         assert course.lessons[0].chapter is None
+        assert course.skills == []
+
+    def test_parse_course_metadata_title_and_skills(self, tmp_path: Path, monkeypatch):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        course_dir = courses_dir / "skill_course"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Ignored heading\nCourse desc")
+        (course_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "title": "TinyTorch",
+                    "description": "Build a tiny neural net.",
+                    "skills": ["Tensors", "NumPy"],
+                }
+            )
+        )
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# Tensor init")
+        (l1 / "main.py").write_text("x = 1")
+        (l1 / "metadata.json").write_text(json.dumps({"skills": ["Tensor init"]}))
+
+        course = parse_course("skill_course")
+        assert course is not None
+        assert course.title == "TinyTorch"
+        assert course.description == "Build a tiny neural net."
+        assert course.skills == ["Tensors", "NumPy"]
+        assert course.lessons[0].skills == ["Tensor init"]
+        assert course.lessons[0].title == "Tensor init"
+
+    def test_parse_course_unions_lesson_skills_when_course_omits_them(
+        self, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        course_dir = courses_dir / "union_course"
+        course_dir.mkdir()
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# One")
+        (l1 / "main.py").write_text("x = 1")
+        (l1 / "metadata.json").write_text(json.dumps({"skills": ["Alpha", "Beta"]}))
+        l2 = course_dir / "lesson02"
+        l2.mkdir()
+        (l2 / "README.md").write_text("# Two")
+        (l2 / "main.py").write_text("x = 2")
+        (l2 / "metadata.json").write_text(json.dumps({"skills": ["Beta", "Gamma"]}))
+
+        course = parse_course("union_course")
+        assert course is not None
+        assert course.skills == ["Alpha", "Beta", "Gamma"]
+
+
+class TestSkillHelpers:
+    def test_normalize_skills(self):
+        assert _normalize_skills(None) == []
+        assert _normalize_skills("Tensors") == []
+        assert _normalize_skills(["Tensors", " ", "NumPy", "Tensors", 3]) == ["Tensors", "NumPy"]
+        assert _normalize_skills([f"s{i}" for i in range(20)]) == [f"s{i}" for i in range(12)]
+
+    def test_heading_and_display_title(self):
+        assert _heading_from_readme("no heading\n## sub") is None
+        assert _heading_from_readme("#  Tensor init  ") == "Tensor init"
+        assert _optional_str("  ") is None
+        assert _optional_str(12) is None
+        assert _lesson_display_title("Custom", "# Heading", "lesson01", 1) == "Custom"
+        assert _lesson_display_title(None, "# Heading", "lesson01", 1) == "Heading"
+        assert _lesson_display_title(None, "no heading", "lesson01", 1) == "Lesson 1: Lesson01"
+
+    def test_unique_lesson_skills(self, tmp_path: Path):
+        lesson_dir = tmp_path / "lesson01"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# L")
+        (lesson_dir / "main.py").write_text("x = 1")
+        (lesson_dir / "metadata.json").write_text(json.dumps({"skills": ["A", "B"]}))
+        lesson = parse_lesson(tmp_path, "lesson01", 1)
+        assert lesson is not None
+        assert _unique_lesson_skills([lesson, lesson]) == ["A", "B"]
+
+        from routers.file_courses import FileLesson
+
+        wide = FileLesson(
+            slug="wide",
+            title="t",
+            description="d",
+            initial_code="",
+            test_code="",
+            order=1,
+            skills=[f"s{i}" for i in range(15)],
+        )
+        assert _unique_lesson_skills([wide]) == [f"s{i}" for i in range(12)]
 
 
 class TestFileCoursesEndpoints:
@@ -271,6 +387,7 @@ class TestFileCoursesEndpoints:
             assert "slug" in courses[0]
             assert "title" in courses[0]
             assert "lesson_count" in courses[0]
+            assert "skills" in courses[0]
 
     def test_get_existing_file_course(self, client: TestClient, auth_headers):
         # List courses to find an existing one

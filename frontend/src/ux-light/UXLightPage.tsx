@@ -13,6 +13,7 @@ import { EmbedModal } from './components/EmbedModal';
 import { FlagReportModal } from './components/FlagReportModal';
 import { DrawingPane } from './components/DrawingPane';
 import { SpreadsheetPane } from './components/SpreadsheetPane';
+import { ShareAchievement } from './components/ShareAchievement';
 import { groupLessonsIntoChapters, flattenLessons } from './courseLoader';
 import { emitLearnerEvent } from '../services/profileService';
 import type {
@@ -25,6 +26,7 @@ import type {
   OutputMessage,
   GradingResult,
 } from './types';
+import type { ShareKind, SharePayload } from './shareCard';
 import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
 import { testsToRun } from '../testsToRun';
@@ -64,6 +66,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   const [isStudioOpen, setIsStudioOpen] = useState(false);
   const [isEmbedOpen, setIsEmbedOpen] = useState(false);
   const [isFlagOpen, setIsFlagOpen] = useState(false);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
 
   const [userSheetUrl, setUserSheetUrl] = useState('');
   const [drawingOutput, setDrawingOutput] = useState('');
@@ -270,15 +273,33 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   };
 
   const triggerSuccess = (message: string) => {
-    if (!lesson) return;
+    if (!lesson || !course) return;
     const earned = Math.max(5, 35 - xpPenalty);
-    if (!completedIds.has(lesson.slug)) {
-      setCompletedIds((prev) => new Set([...prev, lesson.slug]));
+    const firstTime = !completedIds.has(lesson.slug);
+    const nextCompleted = firstTime ? new Set([...completedIds, lesson.slug]) : completedIds;
+    if (firstTime) {
+      setCompletedIds(nextCompleted);
       setTotalXp((prev) => prev + earned);
     }
     setGradingResult({ passed: true, xpEarned: earned, message });
     setActiveConsoleTab('feedback');
     confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#03ef62', '#05192d', '#ffb800'] });
+    if (firstTime) {
+      const courseDone = nextCompleted.size >= allLessons.length && allLessons.length > 0;
+      openShare(courseDone ? 'course' : 'lesson');
+    }
+  };
+
+  const openShare = (kind: ShareKind) => {
+    if (!course || !lesson) return;
+    const lessonSkills = lesson.skills || [];
+    const courseSkills = course.skills || [];
+    setSharePayload({
+      kind,
+      courseTitle: course.title,
+      lessonTitle: lesson.title,
+      skills: kind === 'course' ? courseSkills : lessonSkills.length ? lessonSkills : courseSkills,
+    });
   };
 
   const triggerFailure = (errorDetail: string) => {
@@ -409,7 +430,13 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         feedback={drawingOutput}
       />
     ) : exerciseType === 'spreadsheet' && lesson.google_sheet_id ? (
-      <SpreadsheetPane lesson={lesson} userSheetUrl={userSheetUrl} onChangeUrl={setUserSheetUrl} />
+      <SpreadsheetPane
+        lesson={lesson}
+        userSheetUrl={userSheetUrl}
+        onChangeUrl={setUserSheetUrl}
+        onMarkComplete={() => triggerSuccess('Spreadsheet lesson marked complete.')}
+        isComplete={completedIds.has(lesson.slug)}
+      />
     ) : (
       <CodeEditorPane
         code={code}
@@ -442,6 +469,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       onExecuteReplCommand={(cmd) => handleRunCode(cmd)}
       onNextLesson={handleNext}
       isNextDisabled={currentGlobalIndex === allLessons.length - 1}
+      onShare={() => openShare('lesson')}
     />
   );
 
@@ -464,6 +492,8 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         onOpenStudio={() => setIsStudioOpen(true)}
         onOpenFlag={() => setIsFlagOpen(true)}
         onSwitchUi={onSwitchUi}
+        onShare={() => openShare(completedIds.size >= allLessons.length ? 'course' : 'lesson')}
+        canShare={completedIds.has(displayLesson.slug)}
       />
 
       <main className="flex-1 overflow-hidden min-h-0">
@@ -528,6 +558,26 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         <EmbedModal lesson={lesson} currentCode={code} solutionCode={loadedSolution} onClose={() => setIsEmbedOpen(false)} />
       )}
       {isFlagOpen && <FlagReportModal lesson={lesson} onClose={() => setIsFlagOpen(false)} />}
+      {sharePayload && (
+        <ShareAchievement
+          payload={sharePayload}
+          onClose={() => setSharePayload(null)}
+          onNext={
+            sharePayload.kind === 'course'
+              ? () => {
+                  setSharePayload(null);
+                  navigate('/');
+                }
+              : currentGlobalIndex < allLessons.length - 1
+                ? () => {
+                    setSharePayload(null);
+                    handleNext();
+                  }
+                : undefined
+          }
+          nextLabel={sharePayload.kind === 'course' ? 'Back to courses' : 'Next Exercise'}
+        />
+      )}
       <WelcomeGate isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
     </div>
   );

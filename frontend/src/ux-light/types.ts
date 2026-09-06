@@ -17,6 +17,7 @@ export interface FileLesson {
   image_url?: string;
   stroke_color?: string;
   stroke_width?: number;
+  skills?: string[];
 }
 
 export interface FileCourse {
@@ -24,6 +25,7 @@ export interface FileCourse {
   title: string;
   description: string;
   lessons: FileLesson[];
+  skills?: string[];
 }
 
 export interface FileCourseSummary {
@@ -31,6 +33,7 @@ export interface FileCourseSummary {
   title: string;
   description: string;
   lesson_count: number;
+  skills?: string[];
 }
 
 export interface UXLightChapter {

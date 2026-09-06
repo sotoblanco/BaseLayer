@@ -61,6 +61,18 @@ export function InstructionsPane({
           <h1 className="text-xl sm:text-2xl font-extrabold text-[#05192d] tracking-tight">
             {lesson.title}
           </h1>
+          {lesson.skills && lesson.skills.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 -mt-2">
+              {lesson.skills.map((skill) => (
+                <span
+                  key={skill}
+                  className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#03ef62]/15 text-[#05192d] border border-[#03ef62]/40"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          )}
 
           <div className="prose prose-slate max-w-none text-sm text-[#1a2733] leading-relaxed">
             <ReactMarkdown

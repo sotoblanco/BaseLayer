@@ -15,11 +15,12 @@ import json
 import os
 import re
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ai_service import ai_service
 from auth import get_current_user, get_current_user_for_media
@@ -104,6 +105,7 @@ class FileLesson(BaseModel):
     image_url: str | None = None  # URL for question image (drawing exercises)
     stroke_color: str = "#e11d48"  # Default stroke color for drawing exercises
     stroke_width: int = 4  # Default stroke width for drawing exercises
+    skills: list[str] = Field(default_factory=list)
 
 
 class FileCourseSummary(BaseModel):
@@ -113,6 +115,7 @@ class FileCourseSummary(BaseModel):
     title: str
     description: str
     lesson_count: int
+    skills: list[str] = Field(default_factory=list)
 
 
 class FileCourse(BaseModel):
@@ -122,6 +125,7 @@ class FileCourse(BaseModel):
     title: str
     description: str
     lessons: list[FileLesson]
+    skills: list[str] = Field(default_factory=list)
 
 
 def get_course_title(slug: str) -> str:
@@ -151,33 +155,94 @@ def is_lesson_directory(dir_path: Path) -> bool:
     return readme_exists and (has_main or has_metadata)
 
 
-def _extract_metadata(lesson_path: Path) -> tuple[str, str | None, bool, str, int, str | None]:
+def _read_json_object(path: Path) -> dict:
+    """Load a JSON object from disk, or {} if missing/invalid."""
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _optional_str(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _push_skill(skills: list[str], skill: str | None) -> bool:
+    """Append a unique skill. Returns True once the list hits the cap."""
+    if skill and skill not in skills:
+        skills.append(skill)
+    return len(skills) >= 12
+
+
+def _normalize_skills(raw: object) -> list[str]:
+    """Keep unique, non-empty skill tags (max 12)."""
+    if not isinstance(raw, list):
+        return []
+    skills: list[str] = []
+    for item in raw:
+        if _push_skill(skills, _optional_str(item)):
+            break
+    return skills
+
+
+def _heading_from_readme(readme: str) -> str | None:
+    for line in readme.splitlines():
+        if line.startswith("# "):
+            return _optional_str(line[2:])
+    return None
+
+
+def _lesson_display_title(meta_title: str | None, readme: str, slug: str, order: int) -> str:
+    if meta_title:
+        return meta_title
+    heading = _heading_from_readme(readme)
+    if heading:
+        return heading
+    return get_lesson_title(slug, order)
+
+
+def _unique_lesson_skills(lessons: list[FileLesson]) -> list[str]:
+    skills: list[str] = []
+    for lesson in lessons:
+        for skill in lesson.skills:
+            if _push_skill(skills, skill):
+                return skills
+    return skills
+
+
+@dataclass
+class LessonMeta:
+    exercise_type: str = "code"
+    google_sheet_id: str | None = None
+    copy_on_open: bool = False
+    stroke_color: str = "#e11d48"
+    stroke_width: int = 4
+    image_url: str | None = None
+    skills: list[str] = field(default_factory=list)
+    title: str | None = None
+
+
+def _extract_metadata(lesson_path: Path) -> LessonMeta:
     """Extract metadata configuration for lesson."""
-    exercise_type = "code"
-    google_sheet_id = None
-    copy_on_open = False
-    stroke_color = "#e11d48"
-    stroke_width = 4
-    metadata_path = lesson_path / "metadata.json"
-
-    if metadata_path.exists():
-        try:
-            with open(metadata_path) as f:
-                metadata = json.load(f)
-                exercise_type = metadata.get("exercise_type", "code")
-                google_sheet_id = metadata.get("google_sheet_id")
-                copy_on_open = bool(metadata.get("copy_on_open", False))
-                stroke_color = metadata.get("stroke_color", "#e11d48")
-                stroke_width = int(metadata.get("stroke_width", 4))
-        except (OSError, json.JSONDecodeError):
-            pass
-
-    image_url = (
-        "__image__"
-        if exercise_type == "drawing" and (lesson_path / "question.png").exists()
-        else None
+    metadata = _read_json_object(lesson_path / "metadata.json")
+    exercise_type = metadata.get("exercise_type", "code")
+    image_url = None
+    if exercise_type == "drawing" and (lesson_path / "question.png").exists():
+        image_url = "__image__"
+    return LessonMeta(
+        exercise_type=exercise_type,
+        google_sheet_id=metadata.get("google_sheet_id"),
+        copy_on_open=bool(metadata.get("copy_on_open", False)),
+        stroke_color=metadata.get("stroke_color", "#e11d48"),
+        stroke_width=int(metadata.get("stroke_width", 4)),
+        image_url=image_url,
+        skills=_normalize_skills(metadata.get("skills")),
+        title=_optional_str(metadata.get("title")),
     )
-    return exercise_type, google_sheet_id, copy_on_open, stroke_color, stroke_width, image_url
 
 
 def _detect_language_and_files(lesson_path: Path) -> tuple[str, Path, Path, Path]:
@@ -197,16 +262,15 @@ def parse_lesson(
     if not lesson_path.is_dir() or not readme_path.exists():
         return None
 
-    exercise_type, sheet_id, copy_on_open, stroke_color, stroke_width, image_url = (
-        _extract_metadata(lesson_path)
-    )
+    meta = _extract_metadata(lesson_path)
     language, main_path, test_path, solution_path = _detect_language_and_files(lesson_path)
     final_slug = f"{chapter_slug}--{lesson_dir_name}" if chapter_slug else lesson_dir_name
+    description = read_file_content(readme_path)
 
     return FileLesson(
         slug=final_slug,
-        title=get_lesson_title(lesson_dir_name, order),
-        description=read_file_content(readme_path),
+        title=_lesson_display_title(meta.title, description, lesson_dir_name, order),
+        description=description,
         initial_code=read_file_content(main_path),
         test_code=read_file_content(test_path),
         solution_code="",
@@ -214,12 +278,13 @@ def parse_lesson(
         order=order,
         language=language,
         chapter=chapter_slug,
-        exercise_type=exercise_type,
-        google_sheet_id=sheet_id,
-        copy_on_open=copy_on_open,
-        image_url=image_url,
-        stroke_color=stroke_color,
-        stroke_width=stroke_width,
+        exercise_type=meta.exercise_type,
+        google_sheet_id=meta.google_sheet_id,
+        copy_on_open=meta.copy_on_open,
+        image_url=meta.image_url,
+        stroke_color=meta.stroke_color,
+        stroke_width=meta.stroke_width,
+        skills=meta.skills,
     )
 
 
@@ -291,22 +356,33 @@ def _get_course_description(course_path: Path, course_slug: str) -> str:
     return f"Learn {get_course_title(course_slug)}"
 
 
+def _course_title(meta: dict, course_slug: str) -> str:
+    return _optional_str(meta.get("title")) or get_course_title(course_slug)
+
+
+def _course_blurb(meta: dict, course_path: Path, course_slug: str) -> str:
+    return _optional_str(meta.get("description")) or _get_course_description(
+        course_path, course_slug
+    )
+
+
+def _course_skills(meta: dict, lessons: list[FileLesson]) -> list[str]:
+    return _normalize_skills(meta.get("skills")) or _unique_lesson_skills(lessons)
+
+
 def parse_course(course_slug: str) -> FileCourse | None:
     """Parse a course directory into a FileCourse object"""
-    if not _validate_slug(course_slug):
+    course_path = _get_safe_course_dir(course_slug)
+    if not course_path:
         return None
-    course_path = COURSES_DIR / course_slug
-    if not _is_safe_subpath(course_path, COURSES_DIR) or not course_path.is_dir():
-        return None
-
-    subdirs = _get_valid_subdirs(course_path)
-    lessons = _collect_course_lessons(course_path, subdirs)
-
+    lessons = _collect_course_lessons(course_path, _get_valid_subdirs(course_path))
+    meta = _read_json_object(course_path / "metadata.json")
     return FileCourse(
         slug=course_slug,
-        title=get_course_title(course_slug),
-        description=_get_course_description(course_path, course_slug),
+        title=_course_title(meta, course_slug),
+        description=_course_blurb(meta, course_path, course_slug),
         lessons=lessons,
+        skills=_course_skills(meta, lessons),
     )
 
 
@@ -322,6 +398,7 @@ def _course_summary_from_dir(course_dir: Path) -> FileCourseSummary | None:
         title=course.title,
         description=course.description,
         lesson_count=len(course.lessons),
+        skills=course.skills,
     )
 
 

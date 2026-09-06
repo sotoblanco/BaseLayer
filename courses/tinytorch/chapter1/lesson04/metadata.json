@@ -1,5 +1,9 @@
 {
   "exercise_type": "spreadsheet",
   "google_sheet_id": "1LShIwJ87CTSYrX7taGGRVvlmHJXjBJpQRxQ3V9o6YiE",
-  "copy_on_open": true
+  "copy_on_open": true,
+  "skills": [
+    "Dot product",
+    "MMULT"
+  ]
 }

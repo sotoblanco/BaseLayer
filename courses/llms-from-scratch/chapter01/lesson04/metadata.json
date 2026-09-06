@@ -1,5 +1,9 @@
 {
   "exercise_type": "drawing",
   "stroke_color": "#d946ef",
-  "stroke_width": 4
+  "stroke_width": 4,
+  "skills": [
+    "SwiGLU",
+    "Feed forward"
+  ]
 }

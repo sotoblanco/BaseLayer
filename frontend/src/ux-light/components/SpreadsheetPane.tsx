@@ -1,10 +1,12 @@
-import { Link, Trash2, ExternalLink } from 'lucide-react';
+import { Link, Trash2, ExternalLink, CheckCircle2 } from 'lucide-react';
 import type { FileLesson } from '../types';
 
 interface SpreadsheetPaneProps {
   lesson: FileLesson;
   userSheetUrl: string;
   onChangeUrl: (url: string) => void;
+  onMarkComplete?: () => void;
+  isComplete?: boolean;
 }
 
 function extractSheetId(url: string) {
@@ -12,7 +14,13 @@ function extractSheetId(url: string) {
   return match ? match[1] : null;
 }
 
-export function SpreadsheetPane({ lesson, userSheetUrl, onChangeUrl }: SpreadsheetPaneProps) {
+export function SpreadsheetPane({
+  lesson,
+  userSheetUrl,
+  onChangeUrl,
+  onMarkComplete,
+  isComplete,
+}: SpreadsheetPaneProps) {
   const displaySheetId = userSheetUrl ? extractSheetId(userSheetUrl) : lesson.google_sheet_id;
   const isUsingPersonalCopy = !!(userSheetUrl && extractSheetId(userSheetUrl));
   const iframeUrl = displaySheetId
@@ -49,6 +57,16 @@ export function SpreadsheetPane({ lesson, userSheetUrl, onChangeUrl }: Spreadshe
           >
             <ExternalLink size={14} />
             <span className="hidden sm:inline">Make a private copy</span>
+          </button>
+        )}
+        {onMarkComplete && (
+          <button
+            onClick={onMarkComplete}
+            disabled={isComplete}
+            className="flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold shrink-0 disabled:opacity-70 bg-[#0b3323] text-[#03ef62] border border-[#03ef62]/40 hover:bg-[#0e3d2a]"
+          >
+            <CheckCircle2 size={14} />
+            <span className="hidden sm:inline">{isComplete ? 'Complete' : 'Mark complete'}</span>
           </button>
         )}
       </div>
