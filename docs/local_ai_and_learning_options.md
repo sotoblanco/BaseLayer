@@ -1,67 +1,70 @@
-# Local AI Key Configuration and Learning Modalities
+# Local AI Configuration and Learning Modalities
 
-This document explains the local onboarding workflow, the AI key configuration system, and the learning modalities supported in BaseLayer.
+This document explains the local onboarding workflow, the provider-agnostic LLM setup, and the learning modalities supported in BaseLayer.
 
 ## 1. Overview
 
-When running BaseLayer in a local development environment, learners and educators need access to:
-1. All AI-powered features (SocratiQ coding tutor, multimodal hand-drawing grading, and automated lesson generation) via a valid Gemini API key.
-2. An interactive overview of the learning modalities and tools available in the studio.
-3. Guidance on how to customize and author their own curricula using the file-based course engine.
+When running BaseLayer locally, learners and educators need:
+1. Optional AI features (SocratiQ, drawing grades, course generation) via **any OpenAI-compatible provider**.
+2. An overview of the studio modalities.
+3. Guidance on authoring file-based courses.
 
-## 2. AI Key Setup: Dual Configuration Workflow
+Gemini is a convenient free cloud option (Google AI Studio). It is not required. Coding and spreadsheets work with no LLM at all.
 
-To streamline local setup without requiring manual file navigation or terminal interruptions, BaseLayer provides two complementary paths to configure `GEMINI_API_KEY`:
+## 2. AI Setup
 
-### A. Web Studio Interface (Local Welcome Modal)
-- On launching the web interface locally, the application checks `GET /ai/status`.
-- If `GEMINI_API_KEY` is not detected in the environment or `.env` file, the Local Studio modal displays a setup prompt.
-- Users can paste their Gemini API key directly into the input field and click "Save Key to .env".
-- The backend endpoint `POST /ai/configure-key`:
-  - Validates that the request originates from a local development environment (`localhost`, `127.0.0.1`, or `ALLOW_LOCAL_WELCOME=true`).
-  - Instantiates the Gemini client in memory so AI features immediately become active without restarting the process.
-  - Automatically creates or updates `GEMINI_API_KEY=<key>` in the root `.env` file for persistence across restarts.
-- Alternatively, the modal provides a copyable snippet (`GEMINI_API_KEY=your_key_here`) and a direct link to Google AI Studio for manual `.env` configuration.
-- Users may also skip AI key setup to continue using code execution and spreadsheet exercises without AI assistance.
+Supported providers: **Gemini** (free AI Studio key), **Groq** (free tier), **Ollama** (local, no key), **LM Studio** (local, no key), **OpenAI**, **OpenRouter**, and **custom** OpenAI-compatible endpoints.
 
-### B. Startup Script (`./dev.sh`)
-- When `./dev.sh` runs, it loads `.env` if present.
-- If `GEMINI_API_KEY` is empty or missing, `dev.sh` prints an informational notice explaining that an AI key enables SocratiQ, exercise generation, and drawing evaluation.
-- It provides a prompt allowing the user to paste their key directly into the terminal or press Enter to skip.
-- If a key is entered, a cross-platform Python helper updates or appends the key into `.env` automatically.
+### A. Web Studio (Local Welcome → AI Features)
+- `GET /ai/status` reports the current provider and the full provider list.
+- The modal shows provider cards. Gemini keeps the **Get a free key from Google AI Studio** link.
+- `POST /ai/configure-key` is local-only (`localhost` or `ALLOW_LOCAL_WELCOME=true`) and writes `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY` / `LLM_API_BASE` to `.env`. Gemini also writes `GEMINI_API_KEY` so older setups keep working.
+- Skip the tab to code without AI.
+
+### B. `./dev.sh`
+Prints that AI is optional if nothing is configured. It does not block on a Gemini key.
+
+### C. `.env` examples
+
+```bash
+# Free Gemini key from https://aistudio.google.com/app/apikey
+LLM_PROVIDER=gemini
+LLM_MODEL=gemini-2.0-flash
+LLM_API_KEY=your_gemini_key
+
+# Local, no key
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3.2
+```
+
+`GEMINI_API_KEY` and `OPENAI_API_KEY` remain valid aliases.
 
 ## 3. Backend Endpoints
 
 ### `GET /ai/status`
-Returns the operational status of the AI service.
 
-- Response Schema:
-  ```json
-  {
-    "configured": true,
-    "has_key": true,
-    "model": "gemini-3-flash-preview"
-  }
-  ```
+```json
+{
+  "configured": true,
+  "has_key": true,
+  "provider": "gemini",
+  "model": "gemini-2.0-flash",
+  "api_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
+  "providers": []
+}
+```
 
 ### `POST /ai/configure-key`
-Sets the Gemini API key for the running server and persists it to `.env`.
 
-- Security Guard: Only permitted when requests originate from `127.0.0.1`, `localhost`, `::1`, or when `ALLOW_LOCAL_WELCOME=true`.
-- Request Body:
-  ```json
-  {
-    "api_key": "your-gemini-api-key"
-  }
-  ```
-- Response Schema:
-  ```json
-  {
-    "success": true,
-    "message": "API key configured and saved to .env",
-    "saved_to_file": true
-  }
-  ```
+Local-only.
+
+```json
+{
+  "provider": "gemini",
+  "api_key": "your-gemini-api-key",
+  "model": "gemini-2.0-flash"
+}
+```
 
 ## 4. Learning Modalities in BaseLayer
 
@@ -83,8 +86,8 @@ BaseLayer supports three interactive modalities to accommodate different cogniti
 ### 3. Hand-Drawn Visual Verification
 - **Integration**: HTML5 canvas drawing toolbar overlaid onto architectural diagrams (`question.png`).
 - **Tools**: Pencil, eraser, stroke width slider, color picker, undo, and clear canvas.
-- **Multimodal AI Grading**: Submissions send the background diagram, the student sketch, and optional reference solution (`solution.png`) to Gemini.
-- **Evaluation**: Gemini evaluates visual intent, connections, and data flow pathways rather than pixel-perfect drawing accuracy.
+- **Multimodal AI Grading**: Submissions send the background diagram, the student sketch, and optional reference solution (`solution.png`) to the configured vision model.
+- **Evaluation**: The model evaluates visual intent, connections, and data flow pathways rather than pixel-perfect drawing accuracy.
 
 ## 5. Customizing Your Own Learning
 
