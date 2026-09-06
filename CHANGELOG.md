@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.30](https://github.com/sotoblanco/BaseLayer/compare/v0.1.29...v0.1.30) (2026-09-06)
+
+
+### Features
+
+* add tone preferences and anti-AI writing directives to learner profile ([#80](https://github.com/sotoblanco/BaseLayer/issues/80)) ([e09999b](https://github.com/sotoblanco/BaseLayer/commit/e09999b01a3713ab41bc072ad3f81687b0975a2f))
+
 ### [0.1.29](https://github.com/sotoblanco/BaseLayer/compare/v0.1.28...v0.1.29) (2026-09-06)
 
 
