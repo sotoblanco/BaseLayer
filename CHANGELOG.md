@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.32](https://github.com/sotoblanco/BaseLayer/compare/v0.1.31...v0.1.32) (2026-09-06)
+
+
+### Bug Fixes
+
+* **run:** force-remove timed-out containers so none leak ([#46](https://github.com/sotoblanco/BaseLayer/issues/46)) ([#81](https://github.com/sotoblanco/BaseLayer/issues/81)) ([f0b0776](https://github.com/sotoblanco/BaseLayer/commit/f0b0776533a71b84534500fb34dd51ba0a04be20))
+
 ### [0.1.31](https://github.com/sotoblanco/BaseLayer/compare/v0.1.30...v0.1.31) (2026-09-06)
 
 
