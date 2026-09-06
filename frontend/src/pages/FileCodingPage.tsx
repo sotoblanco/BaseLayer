@@ -547,7 +547,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                     <AIChatPanel
                                         variant="integrated"
                                         lessonId={lesson?.slug ?? ''}
-                                        context={buildTutorContext(lesson, code, output)}
+                                        context={buildTutorContext(lesson, code)}
                                     />
                                 </div>
                             </div>
