@@ -276,14 +276,23 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
                     "exit_code": result.returncode,
                 }
             except subprocess.TimeoutExpired:
-                try:
-                    subprocess.run(
-                        ["docker", "kill", container_name],
-                        capture_output=True,
-                        timeout=5,
-                    )
-                except Exception:
-                    pass
+                # SIGKILLing the `docker run` client does not stop the container it
+                # started, so stop it explicitly. Fall back to a force-remove so a
+                # timed-out or orphaned container is never left running on the daemon.
+                for cleanup_cmd in (
+                    ["docker", "kill", container_name],
+                    ["docker", "rm", "-f", container_name],
+                ):
+                    try:
+                        cleanup_result = subprocess.run(
+                            cleanup_cmd,
+                            capture_output=True,
+                            timeout=5,
+                        )
+                    except Exception:
+                        continue
+                    if cleanup_result.returncode == 0:
+                        break
                 return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
             except FileNotFoundError as e:
                 # Docker (or another required executable) not found on the host
@@ -292,8 +301,6 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
                 # Return structured JSON instead of raising HTTPException so the frontend
                 # can display a helpful message instead of 'undefined'
                 return {"stdout": "", "stderr": str(e), "exit_code": -1}
-    except subprocess.TimeoutExpired:
-        return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
     except Exception as e:
         # Catch-all for unexpected errors during setup/writing files
         return {"stdout": "", "stderr": str(e), "exit_code": -1}
