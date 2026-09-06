@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.31](https://github.com/sotoblanco/BaseLayer/compare/v0.1.30...v0.1.31) (2026-09-06)
+
+
+### Features
+
+* **file-courses:** close the pass loop for spreadsheet and drawing lessons ([#75](https://github.com/sotoblanco/BaseLayer/issues/75)) ([#82](https://github.com/sotoblanco/BaseLayer/issues/82)) ([24c0bee](https://github.com/sotoblanco/BaseLayer/commit/24c0bee5e03a6abeb5d3f77300dd500412aa0480))
+
 ### [0.1.30](https://github.com/sotoblanco/BaseLayer/compare/v0.1.29...v0.1.30) (2026-09-06)
 
 
