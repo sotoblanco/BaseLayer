@@ -29,7 +29,7 @@ Prints that AI is optional if nothing is configured. It does not block on a Gemi
 ```bash
 # Free Gemini key from https://aistudio.google.com/app/apikey
 LLM_PROVIDER=gemini
-LLM_MODEL=gemini-2.5-flash
+LLM_MODEL=gemini-3.5-flash-lite
 LLM_API_KEY=your_gemini_key
 
 # Local, no key
@@ -48,7 +48,7 @@ LLM_MODEL=llama3.2
   "configured": true,
   "has_key": true,
   "provider": "gemini",
-  "model": "gemini-2.5-flash",
+  "model": "gemini-3.5-flash-lite",
   "api_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
   "providers": []
 }
@@ -62,7 +62,7 @@ Local-only.
 {
   "provider": "gemini",
   "api_key": "your-gemini-api-key",
-  "model": "gemini-2.5-flash"
+  "model": "gemini-3.5-flash-lite"
 }
 ```
 

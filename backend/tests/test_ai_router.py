@@ -14,19 +14,19 @@ def test_ai_status_endpoint(client):
     gemini = next(p for p in data["providers"] if p["id"] == "gemini")
     assert gemini["docs_url"] == "https://aistudio.google.com/app/apikey"
     assert gemini["group"] == "free"
-    assert gemini["default_model"] == "gemini-2.5-flash"
-    assert "gemini-2.5-flash" in gemini["suggested_models"]
+    assert gemini["default_model"] == "gemini-3.5-flash-lite"
+    assert "gemini-3.5-flash-lite" in gemini["suggested_models"]
 
     openai_p = next(p for p in data["providers"] if p["id"] == "openai")
-    assert openai_p["default_model"] == "gpt-4.1-mini"
-    assert "gpt-4.1-mini" in openai_p["suggested_models"]
+    assert openai_p["default_model"] == "gpt-5.6-luna"
+    assert "gpt-5.6-luna" in openai_p["suggested_models"]
 
     groq_p = next(p for p in data["providers"] if p["id"] == "groq")
-    assert groq_p["default_model"] == "llama-3.3-70b-versatile"
-    assert "llama-3.3-70b-versatile" in groq_p["suggested_models"]
+    assert groq_p["default_model"] == "openai/gpt-oss-20b"
+    assert "openai/gpt-oss-20b" in groq_p["suggested_models"]
 
     openrouter_p = next(p for p in data["providers"] if p["id"] == "openrouter")
-    assert openrouter_p["default_model"] == "openai/gpt-4.1-mini"
+    assert openrouter_p["default_model"] == "openai/gpt-5.6-luna"
 
 
 def test_ai_configure_gemini_key(client, tmp_path, monkeypatch):
@@ -37,7 +37,7 @@ def test_ai_configure_gemini_key(client, tmp_path, monkeypatch):
 
     res = client.post(
         "/ai/configure-key",
-        json={"provider": "gemini", "api_key": "AIza-test-key", "model": "gemini-2.5-flash"},
+        json={"provider": "gemini", "api_key": "AIza-test-key", "model": "gemini-3.5-flash-lite"},
     )
     assert res.status_code == 200
     data = res.json()

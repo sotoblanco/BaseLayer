@@ -4,45 +4,48 @@
 
 BaseLayer provides interactive AI tutoring, structured course generation, mental model diagram evaluation, and iterative code feedback. Because these features rely on structured JSON outputs, strict instruction following, and accurate code synthesis, selecting the right default model for each provider directly impacts platform quality, latency, and cost.
 
-Previously, default configurations pointed to legacy baseline models (such as `gemini-2.0-flash` and `gpt-4o-mini`). While functional, these models have been superseded by more capable, cost-efficient, and instruction-resilient models.
+Default configurations have been updated to the latest generation models providing the lowest cost per token while maintaining high accuracy for coding and tutoring workflows.
 
-This document details the updated default model strategy and suggested alternatives across all supported providers.
+This document details the updated default model strategy and suggested alternatives across all supported providers based on verified official provider documentation and live API catalogs.
 
 ---
 
 ## Provider Defaults and Suggested Models
 
 ### 1. Google Gemini
-- **Default Model**: `gemini-2.5-flash`
+- **Default Model**: `gemini-3.5-flash-lite`
 - **Suggested Models**:
-  - `gemini-2.5-flash`: Recommended default workhorse. Provides state-of-the-art reasoning, code generation, and multimodal visual analysis while remaining fast and cost-effective (free tier on Google AI Studio).
-  - `gemini-2.5-flash-lite`: Ultra-fast and lightweight for high-throughput tutoring queries and budget-constrained environments.
-  - `gemini-2.5-pro`: Deep reasoning model for complex architectural design and intensive curriculum generation.
-- **Why it improves BaseLayer**: BaseLayer uses multimodal evaluation for visual architecture sketches (such as drawing neural network layers) and complex multi-step course authoring. `gemini-2.5-flash` significantly improves diagram grading fidelity and Python/Rust test generation compared to older iterations.
+  - `gemini-3.5-flash-lite`: Recommended default. The fastest and most cost-effective Gemini 3 generation model ($0.30/M prompt, $2.50/M completion, with free tier on Google AI Studio).
+  - `gemini-3.8-flash`: Google's most intelligent Flash model, engineered for long-horizon software engineering, autonomous agents, and complex enterprise workflows.
+  - `gemini-3.1-flash-lite`: Frontier-class performance at low cost for high-throughput execution.
+- **Why it improves BaseLayer**: Minimizes latency and costs on standard tutoring queries and code checks while offering seamless upgrade paths to `gemini-3.8-flash` for multi-step curriculum synthesis.
 
 ### 2. Groq
-- **Default Model**: `llama-3.3-70b-versatile`
+- **Default Model**: `openai/gpt-oss-20b`
 - **Suggested Models**:
-  - `llama-3.3-70b-versatile`: Recommended default. Delivers GPT-4-class reasoning and robust structured JSON compliance on Groq LPUs at hundreds of tokens per second within free/low-cost tiers.
-  - `llama-3.1-8b-instant`: Ultra-low latency 8B model for fast chat interactions where complex reasoning is not required.
-- **Why it improves BaseLayer**: The previous default (`llama-3.1-8b-instant`) often failed at strict JSON schema constraints for curriculum generation and complex Rust syntax. Upgrading to `llama-3.3-70b-versatile` provides high-tier reasoning and code synthesis while maintaining instantaneous response times.
+  - `openai/gpt-oss-20b`: Recommended default. Open weights model on Groq running at 1,000 tokens/second at only $0.075/M input and $0.30/M output.
+  - `llama-3.3-70b-versatile`: 70B parameter model delivering GPT-4-class reasoning on Groq LPUs at 280 tokens/second.
+  - `qwen/qwen3.8-27b`: High-capability 27B model running at 450 tokens/second.
+  - `llama-3.1-8b-instant`: Ultra-fast lightweight model running at 560 tokens/second.
+- **Why it improves BaseLayer**: Provides instantaneous code completion and exercise feedback at the lowest cost point on Groq's high-speed LPU infrastructure.
 
 ### 3. OpenAI
-- **Default Model**: `gpt-4.1-mini`
+- **Default Model**: `gpt-5.6-luna`
 - **Suggested Models**:
-  - `gpt-4.1-mini`: Recommended default. Succeeds `gpt-4o-mini` with improved coding benchmarks, higher instruction-following reliability, and strong tool-use performance at mini-tier pricing.
-  - `gpt-4.1-nano`: Fastest, lowest-cost model for lightweight completions.
-  - `gpt-4o-mini`: Legacy mini option for backward compatibility.
-  - `gpt-4.1`: Flagship reasoning model for advanced coding tasks.
-- **Why it improves BaseLayer**: Reduces JSON extraction errors in `agentic_workflow.py` and produces higher-quality unit test suites and starter code.
+  - `gpt-5.6-luna`: Recommended default. Official low-cost model in OpenAI's latest GPT-5.6 lineup ($0.20/M prompt, $1.20/M output), designed specifically for cost-sensitive, high-volume workloads with full vision and tool support.
+  - `gpt-5-mini`: Lightweight foundational model ($0.25/M prompt, $2.00/M completion).
+  - `gpt-5.6-terra`: Balanced model for higher reasoning depth.
+  - `gpt-6-astra`: Frontier flagship model for complex coding and architectural tasks.
+- **Why it improves BaseLayer**: Replaces outdated legacy mini models with OpenAI's latest architecture, cutting error rates on structured output and Python/Rust parsing while keeping operating costs low.
 
 ### 4. OpenRouter
-- **Default Model**: `openai/gpt-4.1-mini`
+- **Default Model**: `openai/gpt-5.6-luna`
 - **Suggested Models**:
-  - `openai/gpt-4.1-mini`: Recommended best balance of performance and pricing for general users.
-  - `google/gemini-2.5-flash`: High-speed multimodal analysis via OpenRouter routing.
-  - `deepseek/deepseek-chat`: Cost-effective open weights model with strong algorithmic capabilities.
-- **Why it improves BaseLayer**: Users using OpenRouter get a current, robust model default instead of an older iteration, with clear suggestions available directly in the user interface.
+  - `openai/gpt-5.6-luna`: Recommended default for consistent instruction following and low cost.
+  - `google/gemini-3.5-flash-lite`: High-speed multimodal analysis via OpenRouter routing.
+  - `meta-llama/llama-4-scout`: Highly efficient open weights model ($0.100/M prompt, $0.300/M completion).
+  - `deepseek/deepseek-v4-flash-latest`: Ultra-low cost inference ($0.045/M prompt, $0.090/M completion).
+- **Why it improves BaseLayer**: Gives OpenRouter users access to the latest frontier lightweight models with transparent pricing alternatives directly in the UI.
 
 ### 5. Ollama (Local)
 - **Default Model**: `llama3.2`
@@ -58,9 +61,9 @@ This document details the updated default model strategy and suggested alternati
   - `local-model`: Maps directly to whichever model is loaded in the LM Studio local server.
 
 ### 7. Custom Endpoints
-- **Default Model**: `gpt-4.1-mini`
+- **Default Model**: `gpt-5.6-luna`
 - **Suggested Models**:
-  - `gpt-4.1-mini`: Standard fallback identifier compatible with OpenAI-compatible proxies (vLLM, LiteLLM, FastChat).
+  - `gpt-5.6-luna`: Standard fallback identifier compatible with OpenAI-compatible proxies.
 
 ---
 
@@ -75,7 +78,7 @@ The Local Studio AI Settings panel (`LocalWelcome.tsx`) provides:
 
 ## Summary of Changes
 
-- `backend/llm.py`: Added `suggested_models` to `ProviderSpec` and updated default models to modern best-value options.
+- `backend/llm.py`: Added `suggested_models` to `ProviderSpec` and set default models to the latest lowest-cost options.
 - `backend/routers/ai.py`: Exposed `suggested_models` in `ProviderInfo` schema.
 - `backend/agentic_workflow.py`: Updated fallback model resolution to prioritize current provider defaults.
 - `frontend/src/services/aiService.ts`: Added `suggested_models` to frontend provider interface.

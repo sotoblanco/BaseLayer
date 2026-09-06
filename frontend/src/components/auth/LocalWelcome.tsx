@@ -26,23 +26,23 @@ const FALLBACK_PROVIDERS: AIProviderInfo[] = [
     id: 'gemini',
     name: 'Google Gemini',
     needs_key: true,
-    default_model: 'gemini-2.5-flash',
+    default_model: 'gemini-3.5-flash-lite',
     default_base: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     docs_url: 'https://aistudio.google.com/app/apikey',
     blurb: 'Free key from Google AI Studio',
     group: 'free',
-    suggested_models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'],
+    suggested_models: ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
   },
   {
     id: 'groq',
     name: 'Groq',
     needs_key: true,
-    default_model: 'llama-3.3-70b-versatile',
+    default_model: 'openai/gpt-oss-20b',
     default_base: 'https://api.groq.com/openai/v1',
     docs_url: 'https://console.groq.com/keys',
     blurb: 'Fast cloud models, free tier',
     group: 'free',
-    suggested_models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
+    suggested_models: ['openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'qwen/qwen3.8-27b', 'llama-3.1-8b-instant'],
   },
   {
     id: 'ollama',
@@ -70,34 +70,34 @@ const FALLBACK_PROVIDERS: AIProviderInfo[] = [
     id: 'openai',
     name: 'OpenAI',
     needs_key: true,
-    default_model: 'gpt-4.1-mini',
+    default_model: 'gpt-5.6-luna',
     default_base: 'https://api.openai.com/v1',
     docs_url: 'https://platform.openai.com/api-keys',
     blurb: 'GPT models',
     group: 'key',
-    suggested_models: ['gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o-mini', 'gpt-4.1'],
+    suggested_models: ['gpt-5.6-luna', 'gpt-5-mini', 'gpt-5.6-terra', 'gpt-6-astra'],
   },
   {
     id: 'openrouter',
     name: 'OpenRouter',
     needs_key: true,
-    default_model: 'openai/gpt-4.1-mini',
+    default_model: 'openai/gpt-5.6-luna',
     default_base: 'https://openrouter.ai/api/v1',
     docs_url: 'https://openrouter.ai/keys',
     blurb: 'One key, many models',
     group: 'key',
-    suggested_models: ['openai/gpt-4.1-mini', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat'],
+    suggested_models: ['openai/gpt-5.6-luna', 'google/gemini-3.5-flash-lite', 'meta-llama/llama-4-scout', 'deepseek/deepseek-v4-flash-latest'],
   },
   {
     id: 'custom',
     name: 'Custom endpoint',
     needs_key: false,
-    default_model: 'gpt-4.1-mini',
+    default_model: 'gpt-5.6-luna',
     default_base: null,
     docs_url: '',
     blurb: 'Any OpenAI-compatible URL',
     group: 'key',
-    suggested_models: ['gpt-4.1-mini'],
+    suggested_models: ['gpt-5.6-luna'],
   },
 ];
 
@@ -134,7 +134,7 @@ export function LocalWelcome({
   const [loadingAiStatus, setLoadingAiStatus] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('gemini');
-  const [modelInput, setModelInput] = useState('gemini-2.5-flash');
+  const [modelInput, setModelInput] = useState('gemini-3.5-flash-lite');
   const [apiBaseInput, setApiBaseInput] = useState('');
   const [savingKey, setSavingKey] = useState(false);
   const [keyFeedback, setKeyFeedback] = useState<{
