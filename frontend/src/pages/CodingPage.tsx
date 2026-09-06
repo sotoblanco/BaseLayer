@@ -10,6 +10,7 @@ import { API_BASE_URL, APP_VERSION } from "../config";
 import { messageForRunStatus } from '../runErrors';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
+import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
 
 interface Exercise {
     id: number;
@@ -37,7 +38,7 @@ export default function CodingPage() {
     const [code, setCode] = useState<string>("");
     const [output, setOutput] = useState<string>("");
     const [isRunning, setIsRunning] = useState(false);
-    const { token, isAuthenticated } = useAuth();
+    const { token, isAuthenticated, user } = useAuth();
     const instructionScrollRef = useRef<HTMLDivElement>(null);
 
 
@@ -161,6 +162,9 @@ export default function CodingPage() {
     const currentLang = exercise?.language || "python";
     const mainFilename = currentLang === "rust" ? "main.rs" : "main.py";
     const testsFilename = currentLang === "rust" ? "tests.rs" : "tests.py";
+    const testsEditorCode = isAuthorRole(user?.role)
+        ? (exercise?.test_code || "")
+        : studentTestsPlaceholder(currentLang);
 
     return (
         <div className="flex h-screen w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -316,7 +320,7 @@ export default function CodingPage() {
                                         <div className="absolute inset-0" style={{ display: editorTab === 'tests' ? 'block' : 'none' }}>
                                             <CodeEditor
                                                 key="editor-tests"
-                                                code={exercise?.test_code || ""}
+                                                code={testsEditorCode}
                                                 onChange={() => { }}
                                                 readOnly={true}
                                                 language={currentLang}

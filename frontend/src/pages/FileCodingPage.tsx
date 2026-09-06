@@ -17,6 +17,7 @@ import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 import { emitLearnerEvent } from '../services/profileService';
 import { ShareAchievement } from '../ux-light/components/ShareAchievement';
+import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
 import type { SharePayload } from '../ux-light/shareCard';
 interface Lesson {
     slug: string;
@@ -69,7 +70,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
     const [showDrawingSolution, setShowDrawingSolution] = useState(false);
     const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const { token, isAuthenticated, logout } = useAuth();
+    const { token, isAuthenticated, logout, user } = useAuth();
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
     const [courseError, setCourseError] = useState<string | null>(null);
@@ -376,6 +377,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const currentLang = lesson?.language || "python";
     const mainFilename = currentLang === "rust" ? "main.rs" : "main.py";
     const testsFilename = currentLang === "rust" ? "tests.rs" : "tests.py";
+    // Students never see the answer-key assertions; authors (admins) still can.
+    const testsEditorCode = isAuthorRole(user?.role)
+        ? (lesson?.test_code || "")
+        : studentTestsPlaceholder(currentLang);
 
     return (
         <div className="flex h-screen w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -798,7 +803,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                             <div className="absolute inset-0" style={{ display: editorTab === 'tests' ? 'block' : 'none' }}>
                                                 <CodeEditor
                                                     key="editor-tests"
-                                                    code={lesson?.test_code || ""}
+                                                    code={testsEditorCode}
                                                     onChange={() => { }}
                                                     readOnly={true}
                                                     language={currentLang}

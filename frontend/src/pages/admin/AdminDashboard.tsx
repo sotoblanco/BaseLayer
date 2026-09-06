@@ -249,7 +249,7 @@ export default function AdminDashboard() {
                                         setIsChatLoading(true);
 
                                         try {
-                                            const res = await discussImplementation(msg);
+                                            const res = await discussImplementation([{ role: 'user', content: msg }]);
                                             setChatHistory(prev => [...prev, { role: 'ai', text: res.response }]);
                                         } catch (err) {
                                             console.error(err);
