@@ -48,6 +48,7 @@ export function LearningProfileModal({
     'micro_steps' | 'macro_challenges' | 'guided_completion'
   >('micro_steps');
   const [hintPref, setHintPref] = useState<'toy_example' | 'guiding_question' | 'direct_explanation'>('toy_example');
+  const [tone, setTone] = useState<'direct' | 'pragmatic' | 'concise'>('pragmatic');
   const [pace, setPace] = useState<'unhurried' | 'sprint' | 'mixed'>('unhurried');
   const [understandingLevel, setUnderstandingLevel] = useState<
     'beginner' | 'intermediate' | 'advanced'
@@ -79,6 +80,9 @@ export function LearningProfileModal({
       }
       if (parsed.frontmatter.exercise_format) {
         setExerciseFormat(parsed.frontmatter.exercise_format);
+      }
+      if (parsed.frontmatter.tone) {
+        setTone(parsed.frontmatter.tone);
       }
       if (parsed.frontmatter.understanding_level) {
         setUnderstandingLevel(parsed.frontmatter.understanding_level);
@@ -114,6 +118,7 @@ export function LearningProfileModal({
         explanation_length: explanationLength,
         exercise_format: exerciseFormat,
         hint_preference: hintPref,
+        tone,
         pace,
         goal,
         custom_notes: customNotes,
@@ -593,6 +598,71 @@ export function LearningProfileModal({
                 </div>
               </div>
 
+              {/* Question 6: Explanation Voice & Tone */}
+              <div className="space-y-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                    6. Explanation Voice & Tone
+                  </label>
+                  <p className="text-xs text-slate-400">
+                    How should concepts and software edge cases be explained?
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {[
+                    {
+                      id: 'pragmatic',
+                      title: 'Pragmatic & Realistic',
+                      desc: 'Dry developer realism about bugs, edge cases, and computer literalism. No forced humor.',
+                    },
+                    {
+                      id: 'direct',
+                      title: 'Direct & Technical',
+                      desc: 'Neutral, technical manual documentation style without conversational filler.',
+                    },
+                    {
+                      id: 'concise',
+                      title: 'Ultra-Concise',
+                      desc: 'Minimal text — code-first, jump straight into runnable tasks with zero preamble.',
+                    },
+                  ].map((item) => {
+                    const active = tone === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setTone(item.id as 'direct' | 'pragmatic' | 'concise')}
+                        className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                          active
+                            ? 'border-blue-500/80 bg-blue-950/20'
+                            : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
+                        }`}
+                      >
+                        <div
+                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          }`}
+                        >
+                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`block text-xs font-semibold ${
+                              active ? 'text-white' : 'text-slate-200'
+                            }`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
+                            {item.desc}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Optional Advanced Settings */}
               <div className="pt-2 border-t border-slate-800">
                 <button
@@ -679,6 +749,8 @@ export function LearningProfileModal({
                       ? 'Micro-steps'
                       : 'Macro challenges'}
                   </span>
+                  {' '}&bull;{' '}
+                  <span className="text-slate-200 font-medium capitalize">{tone} tone</span>
                   {' '}&bull;{' '}
                   <span className="text-slate-200 font-medium">
                     {hintPref === 'guiding_question'
@@ -767,6 +839,14 @@ export function LearningProfileModal({
                     </span>
                     <p className="font-bold text-emerald-400 capitalize">
                       {parsed.frontmatter.understanding_level}
+                    </p>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+                    <span className="text-slate-500 text-[10px] uppercase tracking-wider font-semibold">
+                      Voice & Tone
+                    </span>
+                    <p className="font-bold text-amber-400 capitalize">
+                      {parsed.frontmatter.tone || 'pragmatic'}
                     </p>
                   </div>
                   <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">

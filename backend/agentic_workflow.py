@@ -479,6 +479,17 @@ Plan 3 to 5 micro-step lessons applying the Solveit methodology:
 4. Curiosity reflection prompt
 5. Python code lessons must import only {platform_tools.installed_sandbox_libraries}
 6. test_code must import from main (e.g. from main import ...) and assert results.{guided_directive}
+7. WRITING STYLE & TONE DIRECTIVES (STRICT ANTI-AI CONSTRAINTS):
+   Tone: {learner_ctx.tone.upper()}
+   - If PRAGMATIC: Understated, dry developer realism about software gotchas, bugs, and computer literalism. No forced comedy or puns.
+   - If DIRECT: Technical manual style — neutral, factual, and concise.
+   - If CONCISE: Minimal text — jump straight to code examples and runnable tasks with zero preamble.
+   - BAN LLM CLICHÉS:
+     * NEVER use "It is not X, but Y" or "This isn't about X, it's about Y" contrast framing.
+     * NEVER use rhetorical questions ("Why do we need this?", "What happens next?").
+     * NEVER use academic filler transitions ("Remember,", "Crucially,", "At its core,", "In essence,").
+     * NEVER use cheerleading, exclamation-mark hype, or corporate enthusiasm.
+     * State concrete behaviors directly: what the input is, what breaks, and the exact code line to handle it.
 
 Return a JSON object with this exact shape:
 {{

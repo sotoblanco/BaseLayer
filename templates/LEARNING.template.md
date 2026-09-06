@@ -11,6 +11,7 @@ version: 1
 # Interface & Experience Preferences
 preferred_ui: light               # Options: light, classic
 tutor_style: solveit              # Options: solveit (toy data & micro-steps), socratic (guided questions), direct, blooms
+tone: pragmatic                   # Options: pragmatic (dry developer realism), direct (neutral technical manual), concise (minimal text)
 understanding_level: intermediate # Options: beginner, intermediate, advanced
 
 # Active Modalities (used by the agentic curriculum generator)

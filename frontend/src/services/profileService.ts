@@ -6,6 +6,7 @@ export interface ProfileFrontMatter {
   version: number;
   preferred_ui: 'classic' | 'light';
   tutor_style: 'solveit' | 'socratic' | 'direct' | 'blooms';
+  tone?: 'direct' | 'pragmatic' | 'concise';
   understanding_level: 'beginner' | 'intermediate' | 'advanced';
   preferred_modalities: string[];
   pace: 'unhurried' | 'sprint' | 'mixed';
@@ -112,6 +113,7 @@ export interface LearnerQuestionnaire {
   preferred_modalities?: string[];
   understanding_level?: 'beginner' | 'intermediate' | 'advanced';
   tutor_style?: 'solveit' | 'socratic' | 'direct' | 'blooms';
+  tone?: 'direct' | 'pragmatic' | 'concise';
   pace?: 'unhurried' | 'sprint' | 'mixed';
   preferred_ui?: 'classic' | 'light';
   custom_notes?: string;

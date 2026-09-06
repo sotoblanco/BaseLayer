@@ -64,6 +64,7 @@ class LearnerContextResult(BaseModel):
     preferred_modalities: list[str]
     understanding_level: Literal["Beginner", "Intermediate", "Advanced"]
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"]
+    tone: Literal["direct", "pragmatic", "concise"] = "pragmatic"
     pace: Literal["unhurried", "sprint", "mixed"]
     exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] = "micro_steps"
     prior_courses: list[str] = Field(default_factory=list)
@@ -263,6 +264,7 @@ def get_context_learning(
             preferred_modalities: list[str] = []
             understanding_level = "Intermediate"
             tutor_style = "solveit"
+            tone = "pragmatic"
             pace = "unhurried"
             exercise_format = "micro_steps"
 
@@ -278,6 +280,10 @@ def get_context_learning(
                         val = line.split(":", 1)[1].strip().lower()
                         if val in ("solveit", "socratic", "direct", "blooms"):
                             tutor_style = val
+                    elif line.startswith("tone:"):
+                        val = line.split(":", 1)[1].strip().lower()
+                        if val in ("direct", "pragmatic", "concise"):
+                            tone = val
                     elif line.startswith("pace:"):
                         val = line.split(":", 1)[1].strip().lower()
                         if val in ("unhurried", "sprint", "mixed"):
@@ -305,6 +311,15 @@ def get_context_learning(
             # Parse courses taken if present
             courses_taken = re.findall(r"-\s+\*\*([a-zA-Z0-9_\-]+)\*\*", content)
 
+            if tone == "pragmatic":
+                tone_guidance = "Tone: Pragmatic developer realism — plain-spoken about bugs, dry wit on edge cases, no forced humor."
+            elif tone == "direct":
+                tone_guidance = (
+                    "Tone: Direct technical manual style — neutral, factual, and concise."
+                )
+            else:
+                tone_guidance = "Tone: Ultra-concise — minimal text, code-first with zero preamble."
+
             if exercise_format == "guided_completion":
                 format_guidance = (
                     "Use Guided Code Completion: provide pre-structured code templates with "
@@ -314,9 +329,9 @@ def get_context_learning(
                 format_guidance = "Structure lessons to build spatial/mechanical intuition before introducing code."
 
             guidance = (
-                f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace, {exercise_format} format). "
+                f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace, {exercise_format} format, {tone} tone). "
                 f"Preferred modalities: {', '.join(preferred_modalities)}. "
-                f"{format_guidance}"
+                f"{format_guidance} {tone_guidance} Ban AI tropes (no 'not X but Y', no rhetorical questions, no filler transitions)."
             )
 
             return LearnerContextResult(
@@ -325,6 +340,7 @@ def get_context_learning(
                 preferred_modalities=preferred_modalities,
                 understanding_level=understanding_level,
                 tutor_style=tutor_style,
+                tone=tone,
                 pace=pace,
                 exercise_format=exercise_format,
                 prior_courses=courses_taken,
@@ -344,6 +360,7 @@ def get_context_learning(
         preferred_modalities=["code", "spreadsheet", "drawing"],
         understanding_level="Intermediate",
         tutor_style="solveit",
+        tone="pragmatic",
         pace="unhurried",
         exercise_format="micro_steps",
         prior_courses=[],
