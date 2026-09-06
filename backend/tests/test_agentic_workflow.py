@@ -79,9 +79,30 @@ preferred_modalities:
         assert result.has_stored_profile is True
         assert result.understanding_level == "Advanced"
         assert result.pace == "unhurried"
+        assert result.tone == "pragmatic"
         assert "spreadsheet" in result.preferred_modalities
         assert "drawing" in result.preferred_modalities
         assert "tinytorch" in result.prior_courses
+
+    def test_parses_tone_and_anti_ai_guidance(self, tmp_path: Path):
+        data_dir = tmp_path / "data"
+        user_dir = data_dir / "learners" / "dev"
+        user_dir.mkdir(parents=True)
+
+        profile_content = """---
+understanding_level: Intermediate
+tutor_style: solveit
+tone: direct
+pace: sprint
+preferred_modalities:
+  - code
+---
+"""
+        (user_dir / "LEARNING.md").write_text(profile_content, encoding="utf-8")
+        result = get_context_learning(username="dev", data_dir=data_dir)
+        assert result.tone == "direct"
+        assert "Direct technical manual style" in result.personalization_guidance
+        assert "Ban AI tropes" in result.personalization_guidance
 
 
 class TestTool3PlatformContentTools:

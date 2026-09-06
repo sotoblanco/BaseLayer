@@ -32,6 +32,7 @@ interface UnifiedCourse {
   description: string;
   lesson_count: number;
   navigatePath: string;
+  skills?: string[];
 }
 
 export default function CoursesPage() {
@@ -96,6 +97,7 @@ export default function CoursesPage() {
               description: c.description,
               lesson_count: c.lesson_count,
               navigatePath: `/file-course/${c.slug}`,
+              skills: c.skills,
             }))
           );
         }

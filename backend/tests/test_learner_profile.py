@@ -365,10 +365,14 @@ Advanced test runner.
         # Case 4: story -> text+code
         q4 = LearnerQuestionnaire(
             intake_preference="story",
+            tone="direct",
         )
         md4 = aggregate_questionnaire_to_markdown("story_user", q4)
-        fm4, _ = parse_frontmatter(md4)
+        fm4, body4 = parse_frontmatter(md4)
         assert fm4["preferred_modalities"] == ["text", "code"]
+        assert fm4["tone"] == "direct"
+        assert "Direct technical manual style" in body4
+        assert "Anti-AI style" in body4
 
     def test_submit_questionnaire_with_simplified_diagnostic(
         self, client, auth_headers, tmp_path: Path
@@ -380,6 +384,7 @@ Advanced test runner.
             "exercise_format": "micro_steps",
             "pace": "unhurried",
             "preferred_ui": "light",
+            "tone": "pragmatic",
         }
         with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
             response = client.post(
@@ -395,3 +400,4 @@ Advanced test runner.
         assert fm["preferred_modalities"] == ["drawing", "code"]
         assert fm["explanation_length"] == "short"
         assert fm["exercise_format"] == "micro_steps"
+        assert fm["tone"] == "pragmatic"

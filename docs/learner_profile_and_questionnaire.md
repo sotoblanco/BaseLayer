@@ -59,7 +59,12 @@ The questionnaire provides a simplified, zero-jargon diagnostic framework ground
    - **Take my time (`unhurried`)**: Deliberate, step-by-step deep dive exploring nuances and edge cases.
    - **Fast & focused (`sprint`)**: High-velocity iteration with quick milestones and rapid feedback loops.
 
-6. **Optional Advanced Tuning**
+6. **Explanation Voice & Tone ("How should concepts and software edge cases be explained?")**
+   - **Pragmatic & Realistic (`pragmatic`)**: Understated developer realism about bugs, edge cases, and computer pedantry without forced comedy.
+   - **Direct & Technical (`direct`)**: Neutral, technical manual documentation style without conversational filler.
+   - **Ultra-Concise (`concise`)**: Minimal text — code-first, jump straight into runnable tasks with zero preamble.
+
+7. **Optional Advanced Tuning**
    - Personal goal: Custom objective in the learner's own words.
    - Special focus areas: Specific topics or keywords of personal interest.
 
@@ -71,12 +76,14 @@ When responses are submitted:
 1. **Pedagogical Inference**:
    - `_infer_tutor_style(answers)` resolves hint preferences to tutor personalities (`solveit`, `socratic`, `direct`).
    - `_infer_modalities(answers)` resolves intake preferences to modal tools (`drawing`, `spreadsheet`, `code`, `text`).
-2. **Frontmatter Serialization**: Standard YAML frontmatter is generated with validated keys, including `explanation_length` and `exercise_format`.
-3. **Pedagogical Directives**:
+2. **Frontmatter Serialization**: Standard YAML frontmatter is generated with validated keys, including `explanation_length`, `exercise_format`, and `tone`.
+3. **Pedagogical & Anti-AI Directives**:
    - For `short` explanations: "Keep explanations concise (under 3 sentences); transition rapidly to practice."
    - For `thorough` explanations: "Provide thorough explanations with real-world analogies and conceptual context."
    - For `micro_steps`: "Structure practice into 4-6 small micro-steps with immediate automated assertions."
    - For `macro_challenges`: "Structure practice into 1-2 larger macro challenges with minimal intermediate scaffolding."
+   - For `tone`: Pragmatic, direct, or concise voice rules.
+   - **Strict Anti-AI Constraints**: Ban synthetic tropes including *"it is not X, but Y"* contrast framing, rhetorical questions, and academic filler transitions (*"Crucially"*, *"In essence"*).
 4. **Snapshot Synthesis**: Synthesizes an updated summary paragraph detailing the learner's explanation brevity, exercise grain, primary tools, and guidance pace.
 5. **Course History Preservation**: Existing entries in `Courses taken` and `Courses built` are preserved across calibrations.
 6. **File Persistence**: Writes to `data/learners/{username}/LEARNING.md` and returns both raw markdown and parsed data.

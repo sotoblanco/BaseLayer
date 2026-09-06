@@ -32,6 +32,7 @@ class LearnerFrontMatter(BaseModel):
     version: int = 1
     preferred_ui: Literal["classic", "light"] = "light"
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"] = "solveit"
+    tone: Literal["direct", "pragmatic", "concise"] = "pragmatic"
     understanding_level: Literal["beginner", "intermediate", "advanced"] = "intermediate"
     preferred_modalities: list[str] = Field(
         default_factory=lambda: ["code", "spreadsheet", "drawing"]
@@ -70,6 +71,10 @@ class LearnerQuestionnaire(BaseModel):
             description="Support when stuck: toy_example (Solveit), guiding_question (Socratic), direct_explanation (Direct).",
         )
     )
+    tone: Literal["direct", "pragmatic", "concise"] = Field(
+        default="pragmatic",
+        description="Explanation tone: pragmatic (dry developer realism), direct (neutral technical manual), concise (minimal text).",
+    )
     # Core preferences (direct or inferred)
     goal: str = Field(
         default="Understand foundational AI and systems from first principles",
@@ -94,6 +99,7 @@ updated_at: {now_iso}
 version: 1
 preferred_ui: light
 tutor_style: solveit
+tone: pragmatic
 understanding_level: intermediate
 preferred_modalities:
   - code
@@ -197,6 +203,7 @@ updated_at: {fm.updated_at}
 version: {fm.version}
 preferred_ui: {fm.preferred_ui}
 tutor_style: {fm.tutor_style}
+tone: {fm.tone}
 understanding_level: {fm.understanding_level}
 preferred_modalities:
 {modalities_yaml}
@@ -442,7 +449,7 @@ def _build_snapshot(
     tools = ", ".join(modalities)
     return (
         f"Learner prefers {expl} and practicing through {grain}. "
-        f"Primary tools: {tools} with {inferred_style} guidance at an {answers.pace} pace."
+        f"Primary tools: {tools} with {answers.tone} {inferred_style} guidance at an {answers.pace} pace."
     )
 
 
@@ -492,11 +499,34 @@ def _build_tutor_recommendations(tutor_style: str) -> str:
     return style_map.get(tutor_style, "Guide using interactive micro-steps.")
 
 
+def _build_tone_recommendations(tone: str) -> list[str]:
+    recs: list[str] = []
+    if tone == "pragmatic":
+        recs.append(
+            "Tone: Pragmatic developer realism — plain-spoken about bugs and computer literalism, zero forced jokes."
+        )
+    elif tone == "direct":
+        recs.append(
+            "Tone: Direct technical manual style — neutral, factual, and concise without conversational filler."
+        )
+    elif tone == "concise":
+        recs.append(
+            "Tone: Ultra-concise — minimal prose, jump straight into code examples and runnable tasks."
+        )
+    recs.append(
+        "Anti-AI style: Ban 'it is not X, but Y' contrast framing, rhetorical questions, and academic filler ('Crucially', 'In essence')."
+    )
+    return recs
+
+
 def _build_all_recommendations(
-    tutor_rec: str, pedagogy_recs: list[str], modality_recs: list[str]
+    tutor_rec: str,
+    pedagogy_recs: list[str],
+    modality_recs: list[str],
+    tone_recs: list[str] | None = None,
 ) -> str:
     lines = [f"- {tutor_rec}"]
-    for item in pedagogy_recs + modality_recs:
+    for item in (tone_recs or []) + pedagogy_recs + modality_recs:
         lines.append(f"- {item}")
     return "\n".join(lines)
 
@@ -523,6 +553,7 @@ def aggregate_questionnaire_to_markdown(
         version=1,
         preferred_ui=answers.preferred_ui,
         tutor_style=inferred_style,
+        tone=answers.tone,
         understanding_level=answers.understanding_level,
         preferred_modalities=inferred_mods,
         pace=answers.pace,
@@ -534,7 +565,8 @@ def aggregate_questionnaire_to_markdown(
     tutor_rec = _build_tutor_recommendations(inferred_style)
     modality_recs = _build_modality_recommendations(inferred_mods)
     pedagogy_recs = _build_pedagogy_recommendations(answers)
-    customize_block = _build_all_recommendations(tutor_rec, pedagogy_recs, modality_recs)
+    tone_recs = _build_tone_recommendations(answers.tone)
+    customize_block = _build_all_recommendations(tutor_rec, pedagogy_recs, modality_recs, tone_recs)
 
     notes_bullet = (
         f"\n- Personal focus: {answers.custom_notes.strip()}"

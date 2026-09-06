@@ -64,6 +64,7 @@ class LearnerContextResult(BaseModel):
     preferred_modalities: list[str]
     understanding_level: Literal["Beginner", "Intermediate", "Advanced"]
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"]
+    tone: Literal["direct", "pragmatic", "concise"] = "pragmatic"
     pace: Literal["unhurried", "sprint", "mixed"]
     prior_courses: list[str] = Field(default_factory=list)
     personalization_guidance: str
@@ -262,6 +263,7 @@ def get_context_learning(
             preferred_modalities: list[str] = []
             understanding_level = "Intermediate"
             tutor_style = "solveit"
+            tone = "pragmatic"
             pace = "unhurried"
 
             front_matter_match = re.search(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
@@ -276,6 +278,10 @@ def get_context_learning(
                         val = line.split(":", 1)[1].strip().lower()
                         if val in ("solveit", "socratic", "direct", "blooms"):
                             tutor_style = val
+                    elif line.startswith("tone:"):
+                        val = line.split(":", 1)[1].strip().lower()
+                        if val in ("direct", "pragmatic", "concise"):
+                            tone = val
                     elif line.startswith("pace:"):
                         val = line.split(":", 1)[1].strip().lower()
                         if val in ("unhurried", "sprint", "mixed"):
@@ -295,10 +301,19 @@ def get_context_learning(
             # Parse courses taken if present
             courses_taken = re.findall(r"-\s+\*\*([a-zA-Z0-9_\-]+)\*\*", content)
 
+            if tone == "pragmatic":
+                tone_guidance = "Tone: Pragmatic developer realism — plain-spoken about bugs, dry wit on edge cases, no forced humor."
+            elif tone == "direct":
+                tone_guidance = (
+                    "Tone: Direct technical manual style — neutral, factual, and concise."
+                )
+            else:
+                tone_guidance = "Tone: Ultra-concise — minimal text, code-first with zero preamble."
+
             guidance = (
-                f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace). "
+                f"Learner '{clean_user}' profile active ({understanding_level}, {pace} pace, {tone} tone). "
                 f"Preferred modalities: {', '.join(preferred_modalities)}. "
-                "Structure lessons to build spatial/mechanical intuition before introducing code."
+                f"{tone_guidance} Ban AI tropes (no 'not X but Y', no rhetorical questions, no filler transitions)."
             )
 
             return LearnerContextResult(
@@ -307,6 +322,7 @@ def get_context_learning(
                 preferred_modalities=preferred_modalities,
                 understanding_level=understanding_level,
                 tutor_style=tutor_style,
+                tone=tone,
                 pace=pace,
                 prior_courses=courses_taken,
                 personalization_guidance=guidance,
@@ -325,6 +341,7 @@ def get_context_learning(
         preferred_modalities=["code", "spreadsheet", "drawing"],
         understanding_level="Intermediate",
         tutor_style="solveit",
+        tone="pragmatic",
         pace="unhurried",
         prior_courses=[],
         personalization_guidance=guidance,
