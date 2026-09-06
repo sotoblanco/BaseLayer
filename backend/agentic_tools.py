@@ -107,6 +107,7 @@ class CuratedLessonBlueprint(BaseModel):
     copy_on_open: bool = False
     question_image_desc: str = ""
     source_refs: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
 
 
 class CuratedCourseResult(BaseModel):
@@ -448,6 +449,8 @@ def curate_solveit_course(
         starter_code = raw_lesson.get("starter_code", "").strip()
         test_code = raw_lesson.get("test_code", "").strip()
         solution_code = raw_lesson.get("solution_code", "").strip()
+        raw_skills = raw_lesson.get("skills") or []
+        skills = [item.strip() for item in raw_skills if isinstance(item, str) and item.strip()][:8]
 
         if modality == "code":
             if not starter_code:
@@ -487,6 +490,7 @@ def curate_solveit_course(
                 copy_on_open=bool(raw_lesson.get("copy_on_open", False)),
                 question_image_desc=raw_lesson.get("question_image_desc", ""),
                 source_refs=raw_lesson.get("source_refs", ["Solveit pedagogy"]),
+                skills=skills,
             )
         )
 

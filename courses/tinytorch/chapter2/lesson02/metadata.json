@@ -1,5 +1,9 @@
 {
   "exercise_type": "drawing",
   "stroke_color": "#e11d48",
-  "stroke_width": 4
+  "stroke_width": 4,
+  "skills": [
+    "Dot product",
+    "Diagram tracing"
+  ]
 }

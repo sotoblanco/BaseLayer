@@ -57,7 +57,7 @@ def create_lesson():
     print(f"Created new lesson folder: {new_lesson_path}")
 
     # --- Template Generation ---
-    metadata = {"exercise_type": "code", "google_sheet_id": None}
+    metadata = {"exercise_type": "code", "google_sheet_id": None, "skills": []}
 
     readme_content = f"# Lesson {args.lesson_number}: New Lesson\n\nExplain the concept here.\n"
 

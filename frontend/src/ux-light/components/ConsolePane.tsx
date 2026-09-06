@@ -10,6 +10,7 @@ import {
   Download,
   ArrowRight,
   Sparkles,
+  Share2,
 } from 'lucide-react';
 import type { ConsoleTab, OutputMessage, GradingResult, PlotFigure } from '../types';
 
@@ -23,6 +24,7 @@ interface ConsolePaneProps {
   onExecuteReplCommand: (command: string) => void;
   onNextLesson: () => void;
   isNextDisabled: boolean;
+  onShare?: () => void;
 }
 
 export function ConsolePane({
@@ -35,6 +37,7 @@ export function ConsolePane({
   onExecuteReplCommand,
   onNextLesson,
   isNextDisabled,
+  onShare,
 }: ConsolePaneProps) {
   const [replInput, setReplInput] = useState('');
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
@@ -273,7 +276,16 @@ export function ConsolePane({
                 <p className="text-xs text-[#e6edf3] leading-relaxed bg-[#05192d]/50 p-3 rounded-lg border border-[#03ef62]/20 whitespace-pre-wrap">
                   {gradingResult.message}
                 </p>
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  {onShare && (
+                    <button
+                      onClick={onShare}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-[#03ef62]/50 text-[#03ef62] font-bold text-xs hover:bg-[#03ef62]/10"
+                    >
+                      <Share2 size={15} />
+                      <span>Share</span>
+                    </button>
+                  )}
                   <button
                     onClick={onNextLesson}
                     disabled={isNextDisabled}

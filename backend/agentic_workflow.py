@@ -101,6 +101,7 @@ def build_fallback_solveit_lessons(
             "test_code": f"from main import create_{c1}\n\nres = create_{c1}()\nassert len(res) == 3\nassert res[0] == 10\n",
             "solution_code": f"def create_{c1}():\n    return [10, 20, 30]\n",
             "source_refs": ["Platform Sandbox", intent.topic],
+            "skills": [c1.replace("-", " ").title(), "Toy data"],
         }
     )
 
@@ -121,6 +122,7 @@ def build_fallback_solveit_lessons(
             "test_code": "from main import scale_by_two\n\nassert scale_by_two([1, 2, 3]) == [2, 4, 6]\nassert scale_by_two([]) == []\n",
             "solution_code": "def scale_by_two(items):\n    return [x * 2 for x in items]\n",
             "source_refs": ["Solveit JRY-before-DRY", "Platform Python Sandbox"],
+            "skills": [c2.replace("-", " ").title(), "Transforms"],
         }
     )
 
@@ -139,6 +141,7 @@ def build_fallback_solveit_lessons(
                 "curiosity_prompt": "What edge-case could cause this pathway to block or bottleneck?",
                 "question_image_desc": "Architectural diagram of dataflow pipeline",
                 "source_refs": ["BaseLayer Drawing Modality"],
+                "skills": ["Architecture diagram"],
             }
         )
     elif "spreadsheet" in preferred:
@@ -156,6 +159,7 @@ def build_fallback_solveit_lessons(
                 "google_sheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "copy_on_open": True,
                 "source_refs": ["BaseLayer Spreadsheet Modality"],
+                "skills": ["Spreadsheets", "Broadcasting"],
             }
         )
 
@@ -176,6 +180,7 @@ def build_fallback_solveit_lessons(
             "test_code": f"from main import {c3.title()}Runner\n\nrunner = {c3.title()}Runner()\nassert runner.compute([5, 10]) == 30\n",
             "solution_code": f"class {c3.title()}Runner:\n    def compute(self, data):\n        return sum(x * 2 for x in data)\n",
             "source_refs": ["Solveit Directive 3: Ruthless Boilerplate Elimination"],
+            "skills": [c3.replace("-", " ").title(), "Composition"],
         }
     )
 
@@ -248,6 +253,7 @@ def materialize_curated_course(
         # Metadata configuration
         metadata: dict[str, Any] = {
             "exercise_type": lesson.modality,
+            "skills": list(lesson.skills),
         }
 
         if lesson.modality == "code":
@@ -271,6 +277,16 @@ def materialize_curated_course(
             (lesson_dir / "question.png").write_bytes(TRANSPARENT_PNG_BYTES)
 
         (lesson_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    course_skills: list[str] = []
+    for lesson in curated.lessons:
+        for skill in lesson.skills:
+            if skill and skill not in course_skills:
+                course_skills.append(skill)
+    (course_path / "metadata.json").write_text(
+        json.dumps({"title": curated.title, "skills": course_skills}, indent=2),
+        encoding="utf-8",
+    )
 
     return course_path
 

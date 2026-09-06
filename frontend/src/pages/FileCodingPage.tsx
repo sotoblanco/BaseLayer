@@ -16,6 +16,8 @@ import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 import { emitLearnerEvent } from '../services/profileService';
+import { ShareAchievement } from '../ux-light/components/ShareAchievement';
+import type { SharePayload } from '../ux-light/shareCard';
 interface Lesson {
     slug: string;
     title: string;
@@ -33,6 +35,7 @@ interface Lesson {
     image_url?: string;
     stroke_color?: string;
     stroke_width?: number;
+    skills?: string[];
 }
 
 interface Chapter {
@@ -45,6 +48,7 @@ interface FileCourse {
     title: string;
     description: string;
     lessons: Lesson[];
+    skills?: string[];
 }
 
 export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
@@ -70,6 +74,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
     const [courseError, setCourseError] = useState<string | null>(null);
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
+    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
     const instructionScrollRef = useRef<HTMLDivElement>(null);
 
 
@@ -265,6 +270,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                         spread: 70,
                         origin: { y: 0.6 }
                     });
+                    if (course && lesson) {
+                        setSharePayload({
+                            kind: 'lesson',
+                            courseTitle: course.title,
+                            lessonTitle: lesson.title,
+                            skills: lesson.skills?.length ? lesson.skills : course.skills || [],
+                        });
+                    }
                 }
             } else {
                 const errorMsg = data.stderr ? `Error:\n${data.stderr}` : "";
@@ -305,6 +318,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             setDrawingOutput(data.message);
             if (data.passed) {
                 confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                if (course && lesson) {
+                    setSharePayload({
+                        kind: 'lesson',
+                        courseTitle: course.title,
+                        lessonTitle: lesson.title,
+                        skills: lesson.skills?.length ? lesson.skills : course.skills || [],
+                    });
+                }
             }
         } catch {
             setDrawingOutput('Failed to submit drawing.');
@@ -849,6 +870,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                 onClose={() => setIsLearningGuideOpen(false)}
                 initialTab="modalities"
             />
+            {sharePayload && (
+                <ShareAchievement payload={sharePayload} onClose={() => setSharePayload(null)} />
+            )}
         </div>
     );
 }

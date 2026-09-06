@@ -1,4 +1,8 @@
 {
   "exercise_type": "code",
-  "google_sheet_id": null
+  "google_sheet_id": null,
+  "skills": [
+    "Tensor init",
+    "NumPy arrays"
+  ]
 }

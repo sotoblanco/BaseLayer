@@ -7,6 +7,7 @@ Tests for the 4-step Agentic Course Workflow and Tool Calls:
 And end-to-end materialization into BaseLayer.
 """
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -175,6 +176,15 @@ class TestAgenticWorkflowExecution:
         assert (course_dir / "README.md").is_file()
         assert (course_dir / "chapter1" / "lesson01" / "README.md").is_file()
         assert (course_dir / "chapter1" / "lesson01" / "metadata.json").is_file()
+        assert (course_dir / "metadata.json").is_file()
+
+        lesson_meta = json.loads(
+            (course_dir / "chapter1" / "lesson01" / "metadata.json").read_text()
+        )
+        course_meta = json.loads((course_dir / "metadata.json").read_text())
+        assert "skills" in lesson_meta
+        assert course_meta.get("title")
+        assert isinstance(course_meta.get("skills"), list)
 
         # Check that parse_course in file_courses router parses it successfully!
         parsed = parse_course(result.slug)

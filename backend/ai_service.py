@@ -196,7 +196,8 @@ JSON shape:
     "starter_code": "...",
     "test_code": "...",
     "solution_code": "...",
-    "source_refs": ["..."]
+    "source_refs": ["..."],
+    "skills": ["short skill tag"]
   }}]
 }}
 

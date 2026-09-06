@@ -15,6 +15,7 @@ interface FileCourse {
   title: string;
   description: string;
   lesson_count: number;
+  skills?: string[];
 }
 
 export default function CoursesPage() {
@@ -202,6 +203,19 @@ export default function CoursesPage() {
 
                     {course.description && (
                       <p className="text-slate-400 text-sm mb-4 line-clamp-2">{course.description}</p>
+                    )}
+
+                    {course.skills && course.skills.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {course.skills.slice(0, 4).map((skill) => (
+                          <span
+                            key={skill}
+                            className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
                     )}
 
                     <div className="mt-auto pt-4 flex items-center justify-between text-sm text-slate-400">

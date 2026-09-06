@@ -12,6 +12,7 @@ import {
   Circle,
   Layers,
   ArrowLeft,
+  Share2,
 } from 'lucide-react';
 import type { FileCourse, FileLesson, UXLightChapter } from '../types';
 import { UserMenu } from '../../components/UserMenu';
@@ -33,6 +34,8 @@ interface HeaderProps {
   onOpenStudio: () => void;
   onOpenFlag: () => void;
   onSwitchUi?: () => void;
+  onShare?: () => void;
+  canShare?: boolean;
 }
 
 export function Header({
@@ -52,6 +55,8 @@ export function Header({
   onOpenStudio,
   onOpenFlag,
   onSwitchUi,
+  onShare,
+  canShare,
 }: HeaderProps) {
   const [isOutlineOpen, setIsOutlineOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -214,6 +219,16 @@ export function Header({
           <span>{totalXp} XP</span>
         </div>
         <div className="w-px h-5 bg-[#e2e8ee] mx-1 hidden sm:block" />
+        {canShare && onShare && (
+          <button
+            onClick={onShare}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-[#05192d] bg-[#03ef62]/15 hover:bg-[#03ef62]/25 border border-[#03ef62]/40 transition-colors"
+            title="Share this lesson"
+          >
+            <Share2 size={15} />
+            <span className="hidden md:inline">Share</span>
+          </button>
+        )}
         {onSwitchUi && (
           <button
             onClick={onSwitchUi}

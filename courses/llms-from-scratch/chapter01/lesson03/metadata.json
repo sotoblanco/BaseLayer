@@ -1,5 +1,9 @@
 {
   "exercise_type": "drawing",
   "stroke_color": "#16a34a",
-  "stroke_width": 4
+  "stroke_width": 4,
+  "skills": [
+    "Grouped-query attention",
+    "RoPE"
+  ]
 }
