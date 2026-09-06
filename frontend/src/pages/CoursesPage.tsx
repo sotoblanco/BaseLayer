@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Terminal, ChevronRight, FolderCode, Compass, Sliders } from 'lucide-react';
+import { Terminal, ChevronRight, FolderCode, Database, Compass, Sliders } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { UserMenu } from '../components/UserMenu';
@@ -18,8 +18,24 @@ interface FileCourse {
   skills?: string[];
 }
 
+interface DbCourse {
+  id: number;
+  title: string;
+  description: string;
+  exercises?: { id: number }[];
+}
+
+interface UnifiedCourse {
+  id: string;
+  type: 'file' | 'db';
+  title: string;
+  description: string;
+  lesson_count: number;
+  navigatePath: string;
+}
+
 export default function CoursesPage() {
-  const [fileCourses, setFileCourses] = useState<FileCourse[]>([]);
+  const [courses, setCourses] = useState<UnifiedCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
@@ -63,11 +79,42 @@ export default function CoursesPage() {
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/file-courses/`);
-        if (res.ok) {
-          const data = await res.json();
-          setFileCourses(data);
+        const [fileRes, dbRes] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/file-courses/`),
+          fetch(`${API_BASE_URL}/courses/`),
+        ]);
+
+        const unified: UnifiedCourse[] = [];
+
+        if (fileRes.status === 'fulfilled' && fileRes.value.ok) {
+          const files: FileCourse[] = await fileRes.value.json();
+          unified.push(
+            ...files.map((c) => ({
+              id: `file-${c.slug}`,
+              type: 'file' as const,
+              title: c.title,
+              description: c.description,
+              lesson_count: c.lesson_count,
+              navigatePath: `/file-course/${c.slug}`,
+            }))
+          );
         }
+
+        if (dbRes.status === 'fulfilled' && dbRes.value.ok) {
+          const dbs: DbCourse[] = await dbRes.value.json();
+          unified.push(
+            ...dbs.map((c) => ({
+              id: `db-${c.id}`,
+              type: 'db' as const,
+              title: c.title,
+              description: c.description,
+              lesson_count: c.exercises?.length ?? 0,
+              navigatePath: `/course/${c.id}`,
+            }))
+          );
+        }
+
+        setCourses(unified);
       } catch (err) {
         console.error('Failed to fetch courses', err);
       } finally {
@@ -78,7 +125,7 @@ export default function CoursesPage() {
     fetchCourses();
   }, []);
 
-  const hasNoCourses = fileCourses.length === 0;
+  const hasNoCourses = courses.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
@@ -174,30 +221,58 @@ export default function CoursesPage() {
                 <p>No courses available right now.</p>
               </div>
             ) : (
-              fileCourses.map((course) => (
+              courses.map((course) => (
                 <div
-                  key={`file-${course.slug}`}
-                  className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-emerald-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10 group cursor-pointer flex flex-col"
+                  key={course.id}
+                  className={`bg-slate-900 border border-slate-800 rounded-xl overflow-hidden transition-all duration-300 group cursor-pointer flex flex-col ${
+                    course.type === 'file'
+                      ? 'hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/10'
+                      : 'hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10'
+                  }`}
                   onClick={() => {
                     if (isAuthenticated) {
-                      navigate(`/file-course/${course.slug}`);
+                      navigate(course.navigatePath);
                     } else {
                       setIsAuthModalOpen(true);
                     }
                   }}
                 >
-                  <div className="h-2 bg-gradient-to-r from-emerald-600 to-teal-600" />
+                  <div
+                    className={`h-2 bg-gradient-to-r ${
+                      course.type === 'file'
+                        ? 'from-emerald-600 to-teal-600'
+                        : 'from-blue-600 to-indigo-600'
+                    }`}
+                  />
                   <div className="p-6 flex-1 flex flex-col">
                     <div className="flex items-start justify-between mb-4">
-                      <div className="p-3 bg-slate-800 rounded-lg group-hover:bg-emerald-500/10 group-hover:text-emerald-400 transition-colors">
-                        <FolderCode size={24} />
+                      <div
+                        className={`p-3 bg-slate-800 rounded-lg transition-colors ${
+                          course.type === 'file'
+                            ? 'group-hover:bg-emerald-500/10 group-hover:text-emerald-400'
+                            : 'group-hover:bg-blue-500/10 group-hover:text-blue-400'
+                        }`}
+                      >
+                        {course.type === 'file' ? <FolderCode size={24} /> : <Database size={24} />}
                       </div>
-                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                        File
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium border ${
+                          course.type === 'file'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        }`}
+                      >
+                        {course.type === 'file' ? 'File' : 'Database'}
                       </span>
                     </div>
 
-                    <h3 className="text-xl font-bold mb-2 group-hover:text-emerald-400 transition-colors">
+                    <h3
+                      className={`text-xl font-bold mb-2 transition-colors ${
+                        course.type === 'file'
+                          ? 'group-hover:text-emerald-400'
+                          : 'group-hover:text-blue-400'
+                      }`}
+                    >
                       {course.title}
                     </h3>
 
@@ -219,8 +294,14 @@ export default function CoursesPage() {
                     )}
 
                     <div className="mt-auto pt-4 flex items-center justify-between text-sm text-slate-400">
-                      <span>{course.lesson_count} Lessons</span>
-                      <span className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-emerald-400 opacity-0 group-hover:opacity-100 font-medium">
+                      <span>
+                        {course.lesson_count} {course.type === 'file' ? 'Lessons' : 'Exercises'}
+                      </span>
+                      <span
+                        className={`flex items-center gap-1 group-hover:translate-x-1 transition-transform opacity-0 group-hover:opacity-100 font-medium ${
+                          course.type === 'file' ? 'text-emerald-400' : 'text-blue-400'
+                        }`}
+                      >
                         Start <ChevronRight size={16} />
                       </span>
                     </div>

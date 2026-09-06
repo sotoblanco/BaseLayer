@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.26](https://github.com/sotoblanco/BaseLayer/compare/v0.1.25...v0.1.26) (2026-09-06)
+
+### [0.1.25](https://github.com/sotoblanco/BaseLayer/compare/v0.1.24...v0.1.25) (2026-09-06)
+
+
+### Bug Fixes
+
+* **frontend:** prevent duplicate execution, arg crash, and support class tests in testsToRun ([#49](https://github.com/sotoblanco/BaseLayer/issues/49)) ([#61](https://github.com/sotoblanco/BaseLayer/issues/61)) ([2164745](https://github.com/sotoblanco/BaseLayer/commit/21647453cabd374096b5d6318fe1d109cdc65d36))
+
+### [0.1.24](https://github.com/sotoblanco/BaseLayer/compare/v0.1.23...v0.1.24) (2026-09-06)
+
+
+### Features
+
+* **editor:** persist code drafts in localStorage and add reset confirmation ([#47](https://github.com/sotoblanco/BaseLayer/issues/47)) ([#63](https://github.com/sotoblanco/BaseLayer/issues/63)) ([77698c0](https://github.com/sotoblanco/BaseLayer/commit/77698c07bc625a256196105c7512e9256cd8c462)), closes [#30](https://github.com/sotoblanco/BaseLayer/issues/30)
+
+### [0.1.23](https://github.com/sotoblanco/BaseLayer/compare/v0.1.22...v0.1.23) (2026-09-06)
+
+
+### Bug Fixes
+
+* **docker:** remove --reload from Dockerfile and configure in compose ([#29](https://github.com/sotoblanco/BaseLayer/issues/29)) ([#60](https://github.com/sotoblanco/BaseLayer/issues/60)) ([64cc3bc](https://github.com/sotoblanco/BaseLayer/commit/64cc3bc4fe37c1b8cb52ecdb85d8c9610e318c8d))
+* **sandbox:** add resource limits, network isolation, and kill timed-out containers ([#42](https://github.com/sotoblanco/BaseLayer/issues/42), [#46](https://github.com/sotoblanco/BaseLayer/issues/46)) ([#59](https://github.com/sotoblanco/BaseLayer/issues/59)) ([f72d2c0](https://github.com/sotoblanco/BaseLayer/commit/f72d2c0cecb94adb33a1104877a20b6f39bd1842))
+
+### [0.1.22](https://github.com/sotoblanco/BaseLayer/compare/v0.1.21...v0.1.22) (2026-09-06)
+
+
+### Bug Fixes
+
+* **tutor:** summarize verification objectives instead of leaking test code ([#30](https://github.com/sotoblanco/BaseLayer/issues/30)) ([#62](https://github.com/sotoblanco/BaseLayer/issues/62)) ([fe4e14d](https://github.com/sotoblanco/BaseLayer/commit/fe4e14d69fb5ef816dcf5d77fbf3c8b6135b67cf))
+
+### [0.1.21](https://github.com/sotoblanco/BaseLayer/compare/v0.1.20...v0.1.21) (2026-09-06)
+
+
+### Features
+
+* **courses:** display both database and file courses on homepage ([#48](https://github.com/sotoblanco/BaseLayer/issues/48)) ([#64](https://github.com/sotoblanco/BaseLayer/issues/64)) ([ec6452e](https://github.com/sotoblanco/BaseLayer/commit/ec6452e3c2158931c1e032d573d3d4b611ac79ed))
+
 ### [0.1.20](https://github.com/sotoblanco/BaseLayer/compare/v0.1.19...v0.1.20) (2026-09-06)
 
 
