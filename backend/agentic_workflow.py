@@ -13,6 +13,7 @@ And materializes the curated course into the filesystem for immediate execution.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -282,8 +283,10 @@ class AgenticCourseWorkflow:
         ai_client: Any = None,
         courses_dir: Path | None = None,
         data_dir: Path | None = None,
+        generate_text: Any = None,
     ):
         self.client = ai_client
+        self.generate_text = generate_text
         self.courses_dir = courses_dir or Path(__file__).parent.parent / "courses"
         self.data_dir = data_dir or Path(__file__).parent.parent / "data"
 
@@ -391,7 +394,7 @@ class AgenticCourseWorkflow:
         raw_lessons: list[dict[str, Any]] = []
 
         # Attempt to consult LLM with the outputs of Tools 1, 2, and 3
-        if self.client is not None:
+        if self.generate_text is not None or self.client is not None:
             try:
                 system_solveit_prompt = f"""
 You are an expert Solveit Curriculum Designer (Fast.ai / Answer.AI principles).
@@ -443,21 +446,18 @@ Return a JSON object with this exact shape:
   ]
 }}
 """
-                # Use gemini-2.5-flash or gemini-3-flash-preview
-                llm_response = None
-                for model_candidate in ["gemini-2.5-flash", "gemini-3-flash-preview"]:
-                    try:
-                        llm_response = self.client.models.generate_content(
-                            model=model_candidate,
-                            contents=system_solveit_prompt,
-                        )
-                        if llm_response and llm_response.text:
-                            break
-                    except Exception:
-                        continue
+                llm_text = None
+                if self.generate_text is not None:
+                    llm_text = self.generate_text(system_solveit_prompt)
+                elif self.client is not None and hasattr(self.client, "chat"):
+                    completion = self.client.chat.completions.create(
+                        model=os.environ.get("LLM_MODEL", "gpt-4o-mini"),
+                        messages=[{"role": "user", "content": system_solveit_prompt}],
+                    )
+                    llm_text = (completion.choices[0].message.content or "").strip()
 
-                if llm_response and llm_response.text:
-                    parsed_plan = _extract_json_from_llm(llm_response.text)
+                if llm_text:
+                    parsed_plan = _extract_json_from_llm(llm_text)
                     course_title = parsed_plan.get("title", course_title)
                     course_desc = parsed_plan.get("description", course_desc)
                     narrative_arc = parsed_plan.get("narrative_arc", narrative_arc)

@@ -11,7 +11,7 @@ An open-source studio for **learning by doing**. You take (or write) file-based 
 
 ## What it does
 
-BaseLayer is not a video platform and not a blank notebook. Each lesson is a folder on disk. Opening a course loads instructions on the left and the matching workspace on the right (editor, sheet, or canvas). You run, inspect, and submit. Tests grade code; Gemini grades drawings when a key is configured.
+BaseLayer is not a video platform and not a blank notebook. Each lesson is a folder on disk. Opening a course loads instructions on the left and the matching workspace on the right (editor, sheet, or canvas). You run, inspect, and submit. Tests grade code; a connected LLM grades drawings when one is configured.
 
 | You want to… | What BaseLayer does |
 |---|---|
@@ -52,14 +52,16 @@ The runner already has **NumPy**, **PyTorch**, and **Matplotlib** (see `research
 
 ### AI & SocratiQ Tutoring (optional)
 
-With a Gemini key:
+Pick a provider. Gemini is the fastest free cloud path (AI Studio key). Ollama and LM Studio run locally with no key. Groq, OpenAI, OpenRouter, and any OpenAI-compatible endpoint also work.
+
+With a provider configured:
 
 - **SocratiQ** — chat tutor (Solveit / Beginner / Intermediate / Advanced / Bloom’s)
 - **Agentic Course Builder** — 4-step tool-calling workflow generating micro-step courses from any topic
-- **Drawing grades** — intent, not pixel-perfect match
+- **Drawing grades** — intent, not pixel-perfect match (needs a vision-capable model)
 - **Exercise generation** — admin `POST /ai/generate/exercise`
 
-Without a key, code execution and spreadsheets still work; tutoring and sketch grading pause.
+Without a provider, code execution and spreadsheets still work. Configure in the Local Studio **AI Features** tab or `.env`. `GEMINI_API_KEY` still works.
 
 ### Living Learner Profile (`LEARNING.md`)
 
@@ -78,7 +80,7 @@ Each learner has a personal profile file at `data/learners/{username}/LEARNING.m
 - Frontend: http://localhost:5173  
 - Backend: http://localhost:8000  
 
-`./dev.sh` creates the venv, offers a Gemini key if missing, and starts API + UI. Copy `.env.example` → `.env` if you prefer to set `GEMINI_API_KEY` and `SECRET_KEY` yourself (`SECRET_KEY` is generated for you in local/Docker dev if empty).
+`./dev.sh` creates the venv and starts API + UI. Copy `.env.example` → `.env` to set a provider (`LLM_PROVIDER` / `LLM_API_KEY`, optional) and `SECRET_KEY` (`SECRET_KEY` is generated for you in local/Docker dev if empty).
 
 **Stuck**
 
@@ -158,7 +160,7 @@ courses/my-course/chapter1/my-lesson/
 }
 ```
 
-Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). Gemini grades using instructions, `question.png`, optional `solution.png`, and the sketch. Toolbar: pencil, eraser, color, width, undo, clear.
+Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). A vision-capable LLM grades using instructions, `question.png`, optional `solution.png`, and the sketch. Toolbar: pencil, eraser, color, width, undo, clear.
 
 ---
 

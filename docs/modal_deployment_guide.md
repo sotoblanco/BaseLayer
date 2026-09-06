@@ -51,11 +51,11 @@ modal serve modal_app.py
 ## 3. Persistent Resources (Secrets & Volumes)
 
 ### Secrets
-Sensitive keys like `GEMINI_API_KEY` are stored in a Modal Secret named `code-app-secrets`.
+Sensitive keys like `LLM_API_KEY` (or a legacy `GEMINI_API_KEY`) are stored in a Modal Secret named `code-app-secrets`.
 
 To update or create secrets:
 ```bash
-modal secret create code-app-secrets GEMINI_API_KEY=YOUR_KEY
+modal secret create code-app-secrets LLM_PROVIDER=gemini LLM_API_KEY=YOUR_KEY LLM_MODEL=gemini-2.0-flash
 ```
 
 ### Volumes

@@ -359,14 +359,14 @@ def get_platform_content_tools() -> PlatformToolsResult:
         ),
         "drawing": ModalitySpec(
             name="Hand Drawing Canvas",
-            description="HTML5 canvas drawing overlaid on architectural diagrams with Gemini multimodal AI grading.",
+            description="HTML5 canvas drawing overlaid on architectural diagrams with multimodal AI grading.",
             strengths="System architecture, data flow pathways, neural network layer connections, token routing.",
             file_requirements=["README.md", "metadata.json", "question.png"],
             supported_languages_or_tools=[
                 "HTML5 Canvas",
                 "Pencil",
                 "Eraser",
-                "Gemini 3 Visual Grader",
+                "Vision-capable LLM grader",
             ],
         ),
     }

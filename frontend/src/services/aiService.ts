@@ -47,16 +47,39 @@ export const discussImplementation = async (message: string, context?: string, u
     return response.json();
 };
 
+export interface AIProviderInfo {
+    id: string;
+    name: string;
+    needs_key: boolean;
+    default_model: string;
+    default_base: string | null;
+    docs_url: string;
+    blurb: string;
+    group: 'free' | 'key' | string;
+}
+
 export interface AIStatus {
     configured: boolean;
     has_key: boolean;
+    provider?: string;
     model: string;
+    api_base?: string | null;
+    providers?: AIProviderInfo[];
 }
 
 export interface ConfigureKeyResult {
     success: boolean;
     message: string;
     saved_to_file: boolean;
+    provider?: string;
+    model?: string;
+}
+
+export interface ConfigureAiRequest {
+    provider: string;
+    api_key?: string;
+    model?: string;
+    api_base?: string;
 }
 
 export const getAiStatus = async (): Promise<AIStatus> => {
@@ -67,7 +90,9 @@ export const getAiStatus = async (): Promise<AIStatus> => {
     return response.json();
 };
 
-export const configureAiKey = async (apiKey: string): Promise<ConfigureKeyResult> => {
+export const configureAiKey = async (
+    body: ConfigureAiRequest | string,
+): Promise<ConfigureKeyResult> => {
     const token = localStorage.getItem('token');
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
@@ -76,10 +101,20 @@ export const configureAiKey = async (apiKey: string): Promise<ConfigureKeyResult
         headers['Authorization'] = `Bearer ${token}`;
     }
 
+    const payload =
+        typeof body === 'string'
+            ? { provider: 'gemini', api_key: body }
+            : {
+                  provider: body.provider,
+                  api_key: body.api_key || '',
+                  model: body.model || undefined,
+                  api_base: body.api_base || undefined,
+              };
+
     const response = await fetch(`${API_BASE_URL}/ai/configure-key`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ api_key: apiKey }),
+        body: JSON.stringify(payload),
     });
 
     if (!response.ok) {

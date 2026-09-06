@@ -3,36 +3,94 @@ import os
 import re
 from typing import Any
 
-from google import genai
-
 from learning_paths import LearningPath, parse_json_response
+from llm import (
+    LLMSettings,
+    apply_settings_to_env,
+    build_client,
+    load_settings,
+    validate_settings,
+)
 
 
 class AIService:
     def __init__(self):
         self.client = None
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            print("Warning: GEMINI_API_KEY not found in environment variables.")
+        self.settings: LLMSettings = load_settings()
+        if self.settings.is_configured:
+            self._connect(self.settings)
         else:
-            self.configure_key(api_key)
+            print("AI is optional: no LLM provider configured.")
+
+    def _connect(self, settings: LLMSettings) -> None:
+        self.settings = settings
+        apply_settings_to_env(settings)
+        try:
+            self.client = build_client(settings)
+        except Exception as exc:
+            print(f"Warning: could not create LLM client: {exc}")
+            self.client = None
+
+    def configure(
+        self,
+        provider: str,
+        api_key: str = "",
+        model: str | None = None,
+        api_base: str | None = None,
+    ) -> LLMSettings:
+        settings = validate_settings(provider, api_key=api_key, model=model, api_base=api_base)
+        self._connect(settings)
+        return settings
 
     def configure_key(self, api_key: str):
-        if api_key:
-            self.client = genai.Client(api_key=api_key)
-            os.environ["GEMINI_API_KEY"] = api_key
-        else:
-            self.client = None
+        """Backward-compatible helper: treat a bare key as Gemini (AI Studio)."""
+        provider = self.settings.provider or "gemini"
+        self.configure(provider=provider, api_key=api_key, model=self.settings.model or None)
 
     @property
     def is_configured(self) -> bool:
-        return self.client is not None
+        return self.client is not None and self.settings.is_configured
+
+    @property
+    def has_key(self) -> bool:
+        return self.settings.has_key or bool(
+            os.environ.get("LLM_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("GEMINI_API_KEY")
+        )
+
+    def complete(self, prompt: str) -> str:
+        if not self.is_configured:
+            raise RuntimeError("AI service not configured")
+        response = self.client.chat.completions.create(
+            model=self.settings.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    def _complete_multimodal(self, prompt: str, images: list[tuple[bytes, str]]) -> str:
+        import base64 as b64
+
+        if not self.is_configured:
+            raise RuntimeError("AI service not configured")
+
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for data, mime in images:
+            encoded = b64.b64encode(data).decode("utf-8")
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{encoded}"},
+                }
+            )
+
+        response = self.client.chat.completions.create(
+            model=self.settings.model,
+            messages=[{"role": "user", "content": content}],
+        )
+        return (response.choices[0].message.content or "").strip()
 
     def generate_exercise(self, prompt: str, language: str = "python") -> dict[str, Any]:
-        """
-        Generates a coding exercise based on a prompt.
-        Returns a dictionary with title, lesson, assignment, starting_code, and test_cases.
-        """
         if not self.is_configured:
             return {"error": "AI service not configured"}
 
@@ -73,28 +131,20 @@ class AIService:
         }}
         """
         try:
-            interaction = self.client.interactions.create(
-                model="gemini-3-flash-preview", input=full_prompt
-            )
-            text = interaction.outputs[-1].text.strip()
-
-            # Try to find JSON within code blocks first
+            text = self.complete(full_prompt)
             json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
             else:
-                # Fallback: try to find the first '{' and last '}'
                 first_brace = text.find("{")
                 last_brace = text.rfind("}")
                 if first_brace != -1 and last_brace != -1:
                     json_str = text[first_brace : last_brace + 1]
                 else:
                     json_str = text
-
             return json.loads(json_str)
         except Exception as e:
             print(f"Error parsing AI response: {e}")
-            # print(f"Raw response: {response.text}") # response might not exist if generation failed
             return {"error": f"Failed to generate valid exercise data: {str(e)}"}
 
     def run_agentic_course_builder(
@@ -104,17 +154,15 @@ class AIService:
         username: str = "",
         courses_dir: Any = None,
     ) -> Any:
-        """Executes the 4-step agentic course creation workflow using BaseLayer tool calls."""
         from agentic_workflow import AgenticCourseWorkflow
 
         workflow = AgenticCourseWorkflow(
-            ai_client=self.client if self.is_configured else None,
+            generate_text=self.complete if self.is_configured else None,
             courses_dir=courses_dir,
         )
         return workflow.execute(topic=topic, materials=materials, username=username)
 
     def plan_learning_path(self, topic: str, context: str) -> LearningPath:
-        """Create a small, runnable Solveit course from a learner request."""
         if not self.is_configured:
             raise RuntimeError("AI service not configured")
 
@@ -138,8 +186,8 @@ JSON shape:
 {{
   "title": "...",
   "description": "...",
-  "lessons": [{
-            "title": "...",
+  "lessons": [{{
+    "title": "...",
     "objective": "...",
     "toy_data": "...",
     "expected_result": "...",
@@ -149,17 +197,14 @@ JSON shape:
     "test_code": "...",
     "solution_code": "...",
     "source_refs": ["..."]
-  }]
+  }}]
 }}
 
 GROUNDING CONTEXT:
 {context}
 """
         try:
-            interaction = self.client.interactions.create(
-                model="gemini-3-flash-preview", input=prompt
-            )
-            path = LearningPath.model_validate(parse_json_response(interaction.outputs[-1].text))
+            path = LearningPath.model_validate(parse_json_response(self.complete(prompt)))
             return path
         except Exception as exc:
             raise RuntimeError(f"Failed to create a valid learning path: {exc}") from exc
@@ -167,9 +212,6 @@ GROUNDING CONTEXT:
     def chat(
         self, message: str, context: str = "", understanding_level: str = "Intermediate"
     ) -> str:
-        """
-        Chat with the AI about implementation details.
-        """
         if not self.is_configured:
             return "AI service not configured."
 
@@ -194,14 +236,12 @@ GROUNDING CONTEXT:
         }
 
         level_instruction = level_prompts.get(understanding_level, level_prompts["Intermediate"])
-
-        full_prompt = f"{system_prompt}\n\nUnderstanding Level Context:\n{level_instruction}\n\nContext: {context}\n\nUser: {message}"
+        full_prompt = (
+            f"{system_prompt}\n\nUnderstanding Level Context:\n{level_instruction}"
+            f"\n\nContext: {context}\n\nUser: {message}"
+        )
         try:
-            # Using the new Interactions API for chat
-            interaction = self.client.interactions.create(
-                model="gemini-3-flash-preview", input=full_prompt
-            )
-            return interaction.outputs[-1].text
+            return self.complete(full_prompt)
         except Exception as e:
             return f"Error communicating with AI: {str(e)}"
 
@@ -212,9 +252,6 @@ GROUNDING CONTEXT:
         sketch_img_bytes: bytes,
         solution_img_bytes: bytes | None = None,
     ) -> dict[str, Any]:
-        """
-        Evaluates a drawing submission using Gemini 3.
-        """
         if not self.is_configured:
             return {"error": "AI service not configured"}
 
@@ -248,43 +285,18 @@ GROUNDING CONTEXT:
         """
 
         try:
-            import base64 as b64
-
-            # Interactions API requires plain dicts with explicit "type" keys
-            parts = [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image",
-                    "data": b64.b64encode(question_img_bytes).decode("utf-8"),
-                    "mime_type": "image/png",
-                },
-                {
-                    "type": "image",
-                    "data": b64.b64encode(sketch_img_bytes).decode("utf-8"),
-                    "mime_type": "image/png",
-                },
+            images = [
+                (question_img_bytes, "image/png"),
+                (sketch_img_bytes, "image/png"),
             ]
-
             if solution_img_bytes:
-                parts.append(
-                    {
-                        "type": "image",
-                        "data": b64.b64encode(solution_img_bytes).decode("utf-8"),
-                        "mime_type": "image/png",
-                    }
-                )
+                images.append((solution_img_bytes, "image/png"))
 
-            interaction = self.client.interactions.create(
-                model="gemini-3.1-flash-lite-preview", input=parts
-            )
-
-            # Find JSON block in the output
-            text = interaction.outputs[-1].text
+            text = self._complete_multimodal(prompt, images)
             json_match = re.search(r"(\{.*?\})", text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(1))
 
-            # Fallback if AI didn't return valid JSON
             return {
                 "passed": "pass" in text.lower() or "correct" in text.lower(),
                 "score": 1.0 if "pass" in text.lower() else 0.0,

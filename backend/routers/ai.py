@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from ai_service import ai_service
 from auth import User, get_current_admin, get_current_user
 from learning_paths import LearningResource
+from llm import providers_public
 from routers.file_courses import COURSES_DIR
 from run_limits import MAX_AI_CONTEXT_CHARS, MAX_AI_MESSAGE_CHARS, enforce_ai_limits
 
@@ -60,19 +61,38 @@ class ChatRequest(BaseModel):
 
 
 class ConfigureKeyRequest(BaseModel):
-    api_key: str
+    provider: str = "gemini"
+    api_key: str = ""
+    model: str | None = None
+    api_base: str | None = None
 
 
 class ConfigureKeyResponse(BaseModel):
     success: bool
     message: str
     saved_to_file: bool
+    provider: str = ""
+    model: str = ""
+
+
+class ProviderInfo(BaseModel):
+    id: str
+    name: str
+    needs_key: bool
+    default_model: str
+    default_base: str | None = None
+    docs_url: str = ""
+    blurb: str = ""
+    group: str = "key"
 
 
 class AIStatusResponse(BaseModel):
     configured: bool
     has_key: bool
+    provider: str
     model: str
+    api_base: str | None = None
+    providers: list[ProviderInfo] = Field(default_factory=list)
 
 
 class BuildCourseRequest(BaseModel):
@@ -101,10 +121,14 @@ class BuildCourseResponse(BaseModel):
 
 @router.get("/status", response_model=AIStatusResponse)
 def get_ai_status():
+    settings = ai_service.settings
     return AIStatusResponse(
         configured=ai_service.is_configured,
-        has_key=bool(os.environ.get("GEMINI_API_KEY")),
-        model="gemini-3-flash-preview",
+        has_key=ai_service.has_key,
+        provider=settings.provider,
+        model=settings.model,
+        api_base=settings.effective_base() if settings.provider else None,
+        providers=[ProviderInfo(**p) for p in providers_public()],
     )
 
 
@@ -118,28 +142,44 @@ def configure_key(request: Request, body: ConfigureKeyRequest):
     if not is_local:
         raise HTTPException(
             status_code=403,
-            detail="Configuring the API key via this endpoint is only permitted in local development.",
+            detail="Configuring the LLM provider via this endpoint is only permitted in local development.",
         )
 
-    key = body.api_key.strip()
-    if not key:
-        raise HTTPException(status_code=400, detail="API key cannot be empty.")
+    try:
+        settings = ai_service.configure(
+            provider=body.provider,
+            api_key=body.api_key,
+            model=body.model,
+            api_base=body.api_base,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    ai_service.configure_key(key)
     env_path = _find_root_env()
     try:
-        _update_env_file(env_path, "GEMINI_API_KEY", key)
+        _update_env_file(env_path, "LLM_PROVIDER", settings.provider)
+        _update_env_file(env_path, "LLM_MODEL", settings.model)
+        if settings.api_key:
+            _update_env_file(env_path, "LLM_API_KEY", settings.api_key)
+            if settings.provider == "gemini":
+                _update_env_file(env_path, "GEMINI_API_KEY", settings.api_key)
+        if settings.api_base:
+            _update_env_file(env_path, "LLM_API_BASE", settings.api_base)
     except Exception as e:
         return ConfigureKeyResponse(
             success=True,
-            message=f"API key configured in memory, but could not write to .env: {str(e)}",
+            message=f"Provider configured in memory, but could not write to .env: {str(e)}",
             saved_to_file=False,
+            provider=settings.provider,
+            model=settings.model,
         )
 
     return ConfigureKeyResponse(
         success=True,
-        message="API key configured and saved to .env",
+        message=f"{settings.provider} configured and saved to .env",
         saved_to_file=True,
+        provider=settings.provider,
+        model=settings.model,
     )
 
 
