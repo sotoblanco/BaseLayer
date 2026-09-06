@@ -78,3 +78,8 @@ class TestDatabase:
             next(gen)
         except StopIteration:
             pass
+
+    def test_get_courses_endpoint(self, client):
+        response = client.get("/courses/")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
