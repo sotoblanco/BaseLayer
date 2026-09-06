@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.19](https://github.com/sotoblanco/BaseLayer/compare/v0.1.18...v0.1.19) (2026-09-06)
+
+
+### Features
+
+* simplified zero-jargon learner diagnostic framework ([#55](https://github.com/sotoblanco/BaseLayer/issues/55)) ([69971d7](https://github.com/sotoblanco/BaseLayer/commit/69971d71066bcff6e24ef78b373f4bd5ef42d803))
+
 ### [0.1.18](https://github.com/sotoblanco/BaseLayer/compare/v0.1.17...v0.1.18) (2026-09-06)
 
 
