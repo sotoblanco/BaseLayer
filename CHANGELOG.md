@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.43](https://github.com/sotoblanco/BaseLayer/compare/v0.1.42...v0.1.43) (2026-09-07)
+
+
+### Features
+
+* in-browser Pyodide execution and zero-friction local auth ([#100](https://github.com/sotoblanco/BaseLayer/issues/100)) ([801db59](https://github.com/sotoblanco/BaseLayer/commit/801db5934c05e0c4ca2514dab3befead44b2f76e))
+
 ### [0.1.42](https://github.com/sotoblanco/BaseLayer/compare/v0.1.41...v0.1.42) (2026-09-07)
 
 
