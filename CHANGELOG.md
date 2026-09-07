@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.44](https://github.com/sotoblanco/BaseLayer/compare/v0.1.43...v0.1.44) (2026-09-07)
+
+
+### Features
+
+* catalog cards with real titles, modalities, and curated vs generated badges ([#71](https://github.com/sotoblanco/BaseLayer/issues/71)) ([#102](https://github.com/sotoblanco/BaseLayer/issues/102)) ([fba4b61](https://github.com/sotoblanco/BaseLayer/commit/fba4b61a6544a8d369f03dd54b55d1d65ca3a5cd))
+* multi-modal unblocking diagnostic and course tailoring mini-form ([#101](https://github.com/sotoblanco/BaseLayer/issues/101)) ([8f72a86](https://github.com/sotoblanco/BaseLayer/commit/8f72a868e4b5cab4994c89dbe94d372e97c8311a))
+
 ### [0.1.43](https://github.com/sotoblanco/BaseLayer/compare/v0.1.42...v0.1.43) (2026-09-07)
 
 
