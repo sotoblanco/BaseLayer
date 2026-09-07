@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.52](https://github.com/sotoblanco/BaseLayer/compare/v0.1.51...v0.1.52) (2026-09-07)
+
+
+### Features
+
+* classic player hydrates completion dots from server progress ([#2](https://github.com/sotoblanco/BaseLayer/issues/2)) ([#111](https://github.com/sotoblanco/BaseLayer/issues/111)) ([5b4c430](https://github.com/sotoblanco/BaseLayer/commit/5b4c4300ee93fd1b8bd184879e3b07d5d2b4c6ed))
+
 ### [0.1.51](https://github.com/sotoblanco/BaseLayer/compare/v0.1.50...v0.1.51) (2026-09-07)
 
 ### [0.1.50](https://github.com/sotoblanco/BaseLayer/compare/v0.1.49...v0.1.50) (2026-09-07)
