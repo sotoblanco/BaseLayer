@@ -66,6 +66,11 @@ class CodeSubmission(BaseModel):
     code: str
     language: str = "python"
     test_code: str | None = None
+    # Explicit submit intent + lesson address. The server never infers
+    # "is_submit" from test_code presence: a preliminary Run also sends tests.
+    is_submit: bool = False
+    course_slug: str = ""
+    lesson_slug: str = ""
 
 
 @app.get("/")
@@ -215,8 +220,10 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
             event_type="run_result",
             payload={
                 "success": result.get("exit_code") == 0,
-                "is_submit": bool(submission.test_code and submission.test_code.strip()),
+                "is_submit": submission.is_submit,
                 "language": submission.language,
+                "course_slug": submission.course_slug,
+                "lesson_slug": submission.lesson_slug,
             },
         )
     except Exception:

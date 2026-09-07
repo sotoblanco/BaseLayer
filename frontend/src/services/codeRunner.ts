@@ -25,6 +25,11 @@ export interface RunOptions {
   token?: string | null;
   onStatusUpdate?: (status: string) => void;
   forceServer?: boolean;
+  // Explicit submit intent + lesson address for LEARNING.md telemetry.
+  // Never inferred from test_code presence: a preliminary Run sends tests too.
+  isSubmit?: boolean;
+  courseSlug?: string;
+  lessonSlug?: string;
 }
 
 // Check whether the code requires native server modules (like PyTorch or complex native libs)
@@ -157,7 +162,7 @@ async function runWithPyodide(
  * Transparently runs in browser or server.
  */
 export async function executeCode(options: RunOptions): Promise<RunResult> {
-  const { code, test_code, language = 'python', token, onStatusUpdate, forceServer } = options;
+  const { code, test_code, language = 'python', token, onStatusUpdate, forceServer, isSubmit = false, courseSlug = '', lessonSlug = '' } = options;
 
   const mustUseServer = forceServer || requiresServerExecution(code, test_code, language);
 
@@ -186,6 +191,9 @@ export async function executeCode(options: RunOptions): Promise<RunResult> {
       code,
       test_code,
       language,
+      is_submit: isSubmit,
+      course_slug: courseSlug,
+      lesson_slug: lessonSlug,
     }),
   });
 

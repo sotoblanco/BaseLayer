@@ -182,11 +182,12 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
     setUserSheetUrl(savedUrl || '');
 
-    // Record lesson opened in learner profile
+    // Record lesson opened in learner profile. No `ui` field here:
+    // preferred_ui is only set by the explicit player switch
+    // (FileCourseRouter), never by whichever player opened a lesson.
     emitLearnerEvent('lesson_opened', {
       course_slug: slug,
       lesson_slug: lesson.slug,
-      ui: 'light',
     });
   }, [lesson?.slug, slug]);
 
@@ -286,6 +287,9 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         language,
         token,
         onStatusUpdate: (msg) => pushOutput({ type: 'stdout', text: msg }),
+        isSubmit,
+        courseSlug: slug,
+        lessonSlug: lesson.slug,
       });
 
       if (data.stdout) pushOutput({ type: 'stdout', text: data.stdout });

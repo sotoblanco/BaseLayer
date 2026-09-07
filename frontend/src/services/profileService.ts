@@ -12,6 +12,7 @@ export interface ProfileFrontMatter {
   pace: 'unhurried' | 'sprint' | 'mixed';
   explanation_length?: 'short' | 'thorough';
   exercise_format?: 'micro_steps' | 'macro_challenges' | 'guided_completion';
+  diagnostic_completed?: boolean;
 }
 
 export interface LearningProfileData {

@@ -187,11 +187,12 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
             setUserSheetUrl(savedUrl || "");
 
-            // Record lesson opened in learner profile
+            // Record lesson opened in learner profile. No `ui` field here:
+            // preferred_ui is only set by the explicit player switch
+            // (FileCourseRouter), never by whichever player opened a lesson.
             emitLearnerEvent('lesson_opened', {
                 course_slug: slug,
                 lesson_slug: lesson.slug,
-                ui: 'classic',
             });
 
             // Reset scroll position to top
@@ -265,6 +266,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                 language: lesson.language || "python",
                 token,
                 onStatusUpdate: (msg) => setOutput(msg),
+                isSubmit,
+                courseSlug: slug,
+                lessonSlug: lesson.slug,
             });
 
             if (data.exit_code === 0) {
