@@ -32,6 +32,8 @@ interface FileCourse {
   description: string;
   lesson_count: number;
   skills?: string[];
+  modalities?: string[];
+  is_generated?: boolean;
 }
 
 interface DbCourse {
@@ -49,6 +51,8 @@ interface UnifiedCourse {
   lesson_count: number;
   navigatePath: string;
   skills?: string[];
+  modalities?: string[];
+  is_generated?: boolean;
   progress?: CourseProgressSummary | null;
 }
 
@@ -169,12 +173,14 @@ export default function CoursesPage() {
                 id: `file-${c.slug}`,
                 type: 'file' as const,
                 title: c.title,
-                description: c.description,
+                description: c.description.replace(/^#\s+[^\n]+\n*/, '').trim() || c.description,
                 lesson_count: c.lesson_count,
                 navigatePath: resume
                   ? `/file-course/${c.slug}/${progress!.resume_lesson}`
                   : `/file-course/${c.slug}`,
                 skills: c.skills,
+                modalities: c.modalities || ['code'],
+                is_generated: c.is_generated ?? (c.slug.startsWith('generated-') || c.slug.startsWith('learn-')),
                 progress: progress ?? null,
               };
             })
@@ -315,7 +321,7 @@ export default function CoursesPage() {
           <div className="mt-8 flex items-end justify-between">
             <div>
               <h3 className="text-2xl font-bold">Available Courses</h3>
-              <p className="text-slate-400">Select a course to start coding.</p>
+              <p className="text-slate-400">Select a course to start learning and building.</p>
             </div>
           </div>
         </div>
@@ -402,13 +408,19 @@ export default function CoursesPage() {
                           </>
                         )}
                         <span
-                          className={`text-xs px-2 py-1 rounded-full font-medium border ${
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
                             course.type === 'file'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              ? course.is_generated
+                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                               : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                           }`}
                         >
-                          {course.type === 'file' ? 'File' : 'Database'}
+                          {course.type === 'file'
+                            ? course.is_generated
+                              ? 'Generated'
+                              : 'Curated'
+                            : 'Database'}
                         </span>
                       </div>
                     </div>
@@ -422,6 +434,19 @@ export default function CoursesPage() {
                     >
                       {course.title}
                     </h3>
+
+                    {course.modalities && course.modalities.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2.5">
+                        {course.modalities.map((mod) => (
+                          <span
+                            key={mod}
+                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700 capitalize"
+                          >
+                            {mod === 'drawing' ? 'Hand-drawn' : mod}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {course.description && (
                       <p className="text-slate-400 text-sm mb-4 line-clamp-2">{course.description}</p>

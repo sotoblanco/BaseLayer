@@ -132,6 +132,8 @@ class FileCourseSummary(BaseModel):
     description: str
     lesson_count: int
     skills: list[str] = Field(default_factory=list)
+    modalities: list[str] = Field(default_factory=list)
+    is_generated: bool = False
 
 
 class FileCourse(BaseModel):
@@ -142,6 +144,8 @@ class FileCourse(BaseModel):
     description: str
     lessons: list[FileLesson]
     skills: list[str] = Field(default_factory=list)
+    modalities: list[str] = Field(default_factory=list)
+    is_generated: bool = False
 
 
 class ExportLessonBundle(BaseModel):
@@ -223,12 +227,16 @@ def read_file_content(path: Path) -> str:
         return ""
 
 
+def _has_lesson_files(dir_path: Path) -> bool:
+    for name in ("main.py", "main.rs", "test.py", "solution.py", "metadata.json", "question.png"):
+        if (dir_path / name).exists():
+            return True
+    return False
+
+
 def is_lesson_directory(dir_path: Path) -> bool:
     """Check if a directory is a lesson (contains README.md, main.py/main.rs, etc)"""
-    readme_exists = (dir_path / "README.md").exists()
-    has_main = (dir_path / "main.py").exists() or (dir_path / "main.rs").exists()
-    has_metadata = (dir_path / "metadata.json").exists()
-    return readme_exists and (has_main or has_metadata)
+    return (dir_path / "README.md").exists() and _has_lesson_files(dir_path)
 
 
 def _read_json_object(path: Path) -> dict:
@@ -270,6 +278,59 @@ def _heading_from_readme(readme: str) -> str | None:
         if line.startswith("# "):
             return _optional_str(line[2:])
     return None
+
+
+def _find_first_non_empty(lines: list[str]) -> str | None:
+    for line in lines:
+        s = line.strip()
+        if s:
+            return s
+    return None
+
+
+def _find_readme_heading_and_idx(lines: list[str]) -> tuple[str | None, int | None]:
+    for idx, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("# "):
+            return _optional_str(s[2:]), idx
+    return None, None
+
+
+def _find_desc_after_heading(lines: list[str], h1_idx: int) -> str | None:
+    for line in lines[h1_idx + 1 :]:
+        s = line.strip()
+        if s and not s.startswith("#"):
+            return s
+    return None
+
+
+def _find_readme_desc(
+    lines: list[str], first_non_empty: str | None, h1_idx: int | None
+) -> str | None:
+    if first_non_empty and not first_non_empty.startswith("#"):
+        return first_non_empty
+    if h1_idx is not None:
+        return _find_desc_after_heading(lines, h1_idx)
+    return None
+
+
+def _extract_readme_info(readme_path: Path) -> tuple[str | None, str | None]:
+    """Extract course title and description from course root README.md.
+
+    Title: first H1 line `# ...`
+    Description: first non-empty text line before heading (if any) or first non-empty line after heading.
+    """
+    if not readme_path.is_file():
+        return None, None
+    content = read_file_content(readme_path)
+    if not content:
+        return None, None
+
+    lines = content.splitlines()
+    first_non_empty = _find_first_non_empty(lines)
+    title, h1_idx = _find_readme_heading_and_idx(lines)
+    desc = _find_readme_desc(lines, first_non_empty, h1_idx)
+    return title, desc
 
 
 def _lesson_display_title(meta_title: str | None, readme: str, slug: str, order: int) -> str:
@@ -429,17 +490,16 @@ def _collect_course_lessons(course_path: Path, subdirs: list[Path]) -> list[File
 
 
 def _get_course_description(course_path: Path, course_slug: str) -> str:
-    """Extract first line of course README or fallback description."""
-    course_readme = course_path / "README.md"
-    if course_readme.exists():
-        desc = read_file_content(course_readme)
-        if desc:
-            return desc.split("\n")[0]
-    return f"Learn {get_course_title(course_slug)}"
+    """Extract course description from README or fallback description."""
+    _title, desc = _extract_readme_info(course_path / "README.md")
+    return desc or f"Learn {get_course_title(course_slug)}"
 
 
-def _course_title(meta: dict, course_slug: str) -> str:
-    return _optional_str(meta.get("title")) or get_course_title(course_slug)
+def _course_title(meta: dict, course_path: Path, course_slug: str) -> str:
+    if _optional_str(meta.get("title")):
+        return _optional_str(meta.get("title"))  # type: ignore[return-value]
+    readme_title, _desc = _extract_readme_info(course_path / "README.md")
+    return readme_title or get_course_title(course_slug)
 
 
 def _course_blurb(meta: dict, course_path: Path, course_slug: str) -> str:
@@ -452,6 +512,54 @@ def _course_skills(meta: dict, lessons: list[FileLesson]) -> list[str]:
     return _normalize_skills(meta.get("skills")) or _unique_lesson_skills(lessons)
 
 
+def _is_sheet_or_drawing_metadata(path: Path) -> str | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+        if '"spreadsheet"' in text or '"google_sheet_id"' in text:
+            return "spreadsheet"
+        if '"drawing"' in text:
+            return "drawing"
+    except OSError:
+        pass
+    return None
+
+
+def _check_file_modality(path: Path) -> str | None:
+    name = path.name
+    if name in ("main.py", "main.rs"):
+        return "code"
+    if name == "question.png":
+        return "drawing"
+    if name == "metadata.json":
+        return _is_sheet_or_drawing_metadata(path)
+    return None
+
+
+def _scan_dir_modalities(course_dir: Path) -> set[str]:
+    mods: set[str] = set()
+    for p in course_dir.rglob("*"):
+        m = _check_file_modality(p)
+        if m:
+            mods.add(m)
+    return mods
+
+
+def _detect_course_modalities(course_dir: Path) -> list[str]:
+    """Detect which modalities (code, spreadsheet, drawing) are present in the course."""
+    try:
+        mods = _scan_dir_modalities(course_dir)
+    except OSError:
+        return ["code"]
+    return [m for m in ("code", "spreadsheet", "drawing") if m in mods] or ["code"]
+
+
+def _is_course_generated(course_slug: str) -> bool:
+    curated = {"tinytorch", "llms-from-scratch", "data-modeling", "pytorch"}
+    return course_slug not in curated and (
+        course_slug.startswith("generated-") or course_slug.startswith("learn-")
+    )
+
+
 def parse_course(course_slug: str) -> FileCourse | None:
     """Parse a course directory into a FileCourse object"""
     course_path = _get_safe_course_dir(course_slug)
@@ -459,29 +567,154 @@ def parse_course(course_slug: str) -> FileCourse | None:
         return None
     lessons = _collect_course_lessons(course_path, _get_valid_subdirs(course_path))
     meta = _read_json_object(course_path / "metadata.json")
+    modalities = _detect_course_modalities(course_path)
+    is_generated = _is_course_generated(course_slug)
     return FileCourse(
         slug=course_slug,
-        title=_course_title(meta, course_slug),
+        title=_course_title(meta, course_path, course_slug),
         description=_course_blurb(meta, course_path, course_slug),
         lessons=lessons,
         skills=_course_skills(meta, lessons),
+        modalities=modalities,
+        is_generated=is_generated,
     )
+
+
+# In-process cache for course summaries: course_slug -> (course_dir, mtime, FileCourseSummary | None)
+_COURSE_SUMMARY_CACHE: dict[str, tuple[Path, float, FileCourseSummary | None]] = {}
+
+
+def clear_course_summary_cache() -> None:
+    """Clear the in-process course summary cache."""
+    _COURSE_SUMMARY_CACHE.clear()
+
+
+def _entry_tree_mtime(entry: Path) -> float:
+    try:
+        mtime = entry.stat().st_mtime
+        if entry.is_dir():
+            for sub in entry.iterdir():
+                if not sub.name.startswith("."):
+                    mtime = max(mtime, sub.stat().st_mtime)
+        return mtime
+    except OSError:
+        return 0.0
+
+
+def _get_course_mtime(course_dir: Path) -> float:
+    """Compute latest modification time for course_dir and its immediate/chapter entries."""
+    try:
+        max_mtime = course_dir.stat().st_mtime
+        for entry in course_dir.iterdir():
+            if not entry.name.startswith("."):
+                max_mtime = max(max_mtime, _entry_tree_mtime(entry))
+        return max_mtime
+    except OSError:
+        return 0.0
+
+
+def _count_chapter_lessons(chapter_dir: Path) -> int:
+    if not _is_chapter_dir(chapter_dir):
+        return 0
+    return sum(1 for d in _get_valid_subdirs(chapter_dir) if is_lesson_directory(d))
+
+
+def _count_all_chapter_lessons(subdirs: list[Path]) -> int:
+    count = 0
+    for ch in subdirs:
+        count += _count_chapter_lessons(ch)
+    return count
+
+
+def _count_flat_lessons(subdirs: list[Path]) -> int:
+    count = 0
+    for d in subdirs:
+        if is_lesson_directory(d):
+            count += 1
+    return count
+
+
+def _fast_lesson_count(course_dir: Path) -> int:
+    """Cheaply count valid lesson directories without parsing files."""
+    try:
+        subdirs = _get_valid_subdirs(course_dir)
+        if not subdirs:
+            return 0
+        if _has_chapters(subdirs):
+            return _count_all_chapter_lessons(subdirs)
+        return _count_flat_lessons(subdirs)
+    except OSError:
+        return 0
+
+
+def _resolve_course_meta_and_readme(
+    course_dir: Path, course_slug: str
+) -> tuple[str, str, list[str]]:
+    meta = _read_json_object(course_dir / "metadata.json")
+    readme_title, readme_desc = _extract_readme_info(course_dir / "README.md")
+    title = _optional_str(meta.get("title")) or readme_title or get_course_title(course_slug)
+    description = _optional_str(meta.get("description")) or readme_desc or f"Learn {title}"
+    skills = _normalize_skills(meta.get("skills"))
+    return title, description, skills
+
+
+def _get_cached_summary(
+    course_slug: str, course_dir: Path, current_mtime: float
+) -> tuple[bool, FileCourseSummary | None]:
+    cached = _COURSE_SUMMARY_CACHE.get(course_slug)
+    if cached is not None and cached[0] == course_dir and cached[1] == current_mtime:
+        return True, cached[2]
+    return False, None
+
+
+def _build_course_summary(
+    course_slug: str, course_dir: Path, lesson_count: int
+) -> FileCourseSummary:
+    title, description, skills = _resolve_course_meta_and_readme(course_dir, course_slug)
+    return FileCourseSummary(
+        slug=course_slug,
+        title=title,
+        description=description,
+        lesson_count=lesson_count,
+        skills=skills,
+        modalities=_detect_course_modalities(course_dir),
+        is_generated=_is_course_generated(course_slug),
+    )
+
+
+def _is_valid_course_dir(course_dir: Path) -> bool:
+    if not course_dir.is_dir() or course_dir.name.startswith("."):
+        return False
+    return _validate_slug(course_dir.name)
+
+
+def _fast_course_summary(course_dir: Path) -> FileCourseSummary | None:
+    """Build FileCourseSummary quickly using root metadata/README and fast lesson counting.
+
+    Utilizes an in-process mtime cache to avoid filesystem reads when directories are unchanged.
+    """
+    if not _is_valid_course_dir(course_dir):
+        return None
+
+    course_slug = course_dir.name
+    current_mtime = _get_course_mtime(course_dir)
+    is_cached, cached_summary = _get_cached_summary(course_slug, course_dir, current_mtime)
+    if is_cached:
+        return cached_summary
+
+    lesson_count = _fast_lesson_count(course_dir)
+    if lesson_count == 0:
+        _COURSE_SUMMARY_CACHE[course_slug] = (course_dir, current_mtime, None)
+        return None
+
+    summary = _build_course_summary(course_slug, course_dir, lesson_count)
+    _COURSE_SUMMARY_CACHE[course_slug] = (course_dir, current_mtime, summary)
+    return summary
 
 
 def _course_summary_from_dir(course_dir: Path) -> FileCourseSummary | None:
     """Build FileCourseSummary from a course directory if valid."""
-    if not course_dir.is_dir() or course_dir.name.startswith("."):
-        return None
-    course = parse_course(course_dir.name)
-    if not course or not course.lessons:
-        return None
-    return FileCourseSummary(
-        slug=course.slug,
-        title=course.title,
-        description=course.description,
-        lesson_count=len(course.lessons),
-        skills=course.skills,
-    )
+    return _fast_course_summary(course_dir)
 
 
 @router.get("/", response_model=list[FileCourseSummary])
@@ -490,7 +723,7 @@ def list_file_courses():
     if not COURSES_DIR.exists():
         return []
 
-    summaries = [_course_summary_from_dir(d) for d in sorted(COURSES_DIR.iterdir())]
+    summaries = [_fast_course_summary(d) for d in sorted(COURSES_DIR.iterdir())]
     return [s for s in summaries if s is not None]
 
 
@@ -720,6 +953,7 @@ def _import_course_bundle(bundle: ImportBundleRequest) -> ImportBundleResponse:
     _write_course_root_metadata(target_dir, title, desc, bundle.skills)
 
     first_slug = _materialize_course_lessons(target_dir, bundle.lessons)
+    _COURSE_SUMMARY_CACHE.pop(course_slug, None)
     return ImportBundleResponse(
         status="success",
         kind="course",
@@ -742,6 +976,7 @@ def _import_lesson_into_existing_course(
     clean_ch = _sanitize_slug(lesson.chapter or "chapter1", "chapter1")
     clean_l = _sanitize_slug(lesson.slug or "lesson-imported", "lesson-imported")
     _write_lesson_bundle_files(course_dir / clean_ch / clean_l, lesson)
+    _COURSE_SUMMARY_CACHE.pop(target_course_slug, None)
     return ImportBundleResponse(
         status="success",
         kind="lesson",
@@ -769,6 +1004,7 @@ def _import_lesson_as_new_course(lesson: ExportLessonBundle) -> ImportBundleResp
 
     clean_l = _sanitize_slug(lesson.slug or "lesson01", "lesson01")
     _write_lesson_bundle_files(course_dir / "chapter1" / clean_l, lesson)
+    _COURSE_SUMMARY_CACHE.pop(course_slug, None)
     return ImportBundleResponse(
         status="success",
         kind="lesson",
@@ -897,6 +1133,7 @@ def delete_file_course(course_slug: str, user: User = Depends(get_current_user))
     course_path = _get_safe_course_dir(course_slug)
     _delete_course_tree(course_path, course_slug)
     _clean_learner_profile_references(course_slug)
+    _COURSE_SUMMARY_CACHE.pop(course_slug, None)
 
     return DeleteCourseResponse(
         status="success",
@@ -919,6 +1156,8 @@ def delete_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(
         shutil.rmtree(lesson_dir)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"Failed to delete lesson: {exc}") from exc
+
+    _COURSE_SUMMARY_CACHE.pop(course_slug, None)
 
     return DeleteLessonResponse(
         status="success",

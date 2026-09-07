@@ -3,12 +3,16 @@ Unit tests for file_courses router and helpers.
 """
 
 import json
+import os
+import time
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from routers.file_courses import (
+    _COURSE_SUMMARY_CACHE,
+    _extract_readme_info,
     _heading_from_readme,
     _is_safe_subpath,
     _lesson_display_title,
@@ -17,6 +21,7 @@ from routers.file_courses import (
     _unique_lesson_skills,
     _validate_lesson_slug,
     _validate_slug,
+    clear_course_summary_cache,
     get_course_title,
     get_lesson_path,
     get_lesson_title,
@@ -68,6 +73,12 @@ class TestFileCoursesHelpers:
         (meta_dir / "README.md").write_text("# Meta")
         (meta_dir / "metadata.json").write_text('{"exercise_type": "spreadsheet"}')
         assert is_lesson_directory(meta_dir)
+
+        draw_dir = tmp_path / "draw_lesson"
+        draw_dir.mkdir()
+        (draw_dir / "README.md").write_text("# Draw")
+        (draw_dir / "question.png").write_bytes(b"png")
+        assert is_lesson_directory(draw_dir)
 
     def test_validate_slug(self):
         assert _validate_slug("python-basics") is True
@@ -1411,3 +1422,289 @@ username: testuser
             "/file-courses/custom-path/chapter1--ghost_lesson", headers=auth_headers
         )
         assert res_ghost_lesson.status_code == 404
+
+
+class TestFastCourseSummaryAndCaching:
+    """Tests for Issue #67: fast course summary on homepage and in-process mtime caching."""
+
+    def test_list_file_courses_without_full_lesson_parsing(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "fast_course"
+        course_dir.mkdir()
+        (course_dir / "metadata.json").write_text(
+            json.dumps({"title": "Fast Course", "skills": ["Speed", "Optimization"]})
+        )
+        (course_dir / "README.md").write_text("# Fast Course\n\nA fast summary description.")
+
+        # Add two valid lessons
+        l1 = course_dir / "chapter1" / "lesson01"
+        l1.mkdir(parents=True)
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("x = 1")
+        (l1 / "test.py").write_text("assert True")
+        (l1 / "solution.py").write_text("x = 1")
+
+        l2 = course_dir / "chapter1" / "lesson02"
+        l2.mkdir(parents=True)
+        (l2 / "README.md").write_text("# L2")
+        (l2 / "main.py").write_text("x = 2")
+
+        with (
+            patch("routers.file_courses.parse_course") as mock_parse_course,
+            patch("routers.file_courses.parse_lesson") as mock_parse_lesson,
+        ):
+            res = client.get("/file-courses/")
+            assert res.status_code == 200
+            data = res.json()
+
+            # Ensure parse_course and parse_lesson are NEVER called on homepage listing!
+            mock_parse_course.assert_not_called()
+            mock_parse_lesson.assert_not_called()
+
+        assert len(data) == 1
+        summary = data[0]
+        assert summary["slug"] == "fast_course"
+        assert summary["title"] == "Fast Course"
+        assert summary["description"] == "A fast summary description."
+        assert summary["lesson_count"] == 2
+        assert summary["skills"] == ["Speed", "Optimization"]
+
+    def test_detail_endpoint_calls_parse_course(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "detail_course"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Detail Course")
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+
+        # Listing doesn't call parse_course
+        with patch("routers.file_courses.parse_course", wraps=parse_course) as spy_parse:
+            list_res = client.get("/file-courses/")
+            assert list_res.status_code == 200
+            spy_parse.assert_not_called()
+
+            # But detail endpoint does call parse_course
+            detail_res = client.get("/file-courses/detail_course", headers=auth_headers)
+            assert detail_res.status_code == 200
+            spy_parse.assert_called_once_with("detail_course")
+
+    def test_fast_summary_readme_fallback_when_metadata_missing(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "readme_course"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text(
+            "# Readme Heading Course\n\nThis is the first non-empty text line description."
+        )
+
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+
+        res = client.get("/file-courses/")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data) == 1
+        assert data[0]["title"] == "Readme Heading Course"
+        assert data[0]["description"] == "This is the first non-empty text line description."
+        assert data[0]["skills"] == []
+        assert data[0]["lesson_count"] == 1
+
+    def test_fast_summary_skips_zero_lesson_course(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "empty_course"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Empty Course\n\nNo lessons here.")
+
+        res = client.get("/file-courses/")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data) == 0
+
+    def test_in_process_mtime_cache_hits_on_repeated_calls(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "cached_course"
+        course_dir.mkdir()
+        (course_dir / "metadata.json").write_text(json.dumps({"title": "Cached Course"}))
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+
+        # First call populates the cache
+        res1 = client.get("/file-courses/")
+        assert res1.status_code == 200
+        assert "cached_course" in _COURSE_SUMMARY_CACHE
+
+        # Second call should hit the cache without calling _fast_lesson_count or reading metadata
+        with (
+            patch("routers.file_courses._fast_lesson_count") as mock_count,
+            patch("routers.file_courses._read_json_object") as mock_read_json,
+        ):
+            res2 = client.get("/file-courses/")
+            assert res2.status_code == 200
+            assert res2.json() == res1.json()
+            mock_count.assert_not_called()
+            mock_read_json.assert_not_called()
+
+    def test_mtime_cache_invalidates_when_mtime_changes(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "dynamic_course"
+        course_dir.mkdir()
+        meta_file = course_dir / "metadata.json"
+        meta_file.write_text(json.dumps({"title": "Original Title"}))
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+
+        # Initial call
+        res1 = client.get("/file-courses/")
+        assert res1.status_code == 200
+        assert res1.json()[0]["title"] == "Original Title"
+        assert res1.json()[0]["lesson_count"] == 1
+
+        # Add a second lesson and advance mtime
+        time.sleep(0.01)
+        l2 = course_dir / "lesson02"
+        l2.mkdir()
+        (l2 / "README.md").write_text("# L2")
+        (l2 / "main.py").write_text("pass")
+        meta_file.write_text(json.dumps({"title": "Updated Title"}))
+
+        # Update directory mtime to simulate file change
+        new_mtime = course_dir.stat().st_mtime + 50
+        os.utime(course_dir, (new_mtime, new_mtime))
+
+        res2 = client.get("/file-courses/")
+        assert res2.status_code == 200
+        assert res2.json()[0]["title"] == "Updated Title"
+        assert res2.json()[0]["lesson_count"] == 2
+
+    def test_cache_cleared_on_course_delete(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "deletable_course"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Deletable")
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+
+        # Populate cache
+        res = client.get("/file-courses/")
+        assert res.status_code == 200
+        assert "deletable_course" in _COURSE_SUMMARY_CACHE
+
+        # Delete course
+        del_res = client.delete("/file-courses/deletable_course", headers=auth_headers)
+        assert del_res.status_code == 200
+        assert "deletable_course" not in _COURSE_SUMMARY_CACHE
+
+    def test_extract_readme_info_edge_cases(self, tmp_path: Path):
+        # 1. Non-existent file
+        assert _extract_readme_info(tmp_path / "ghost.md") == (None, None)
+
+        # 2. Empty file
+        empty = tmp_path / "empty.md"
+        empty.write_text("")
+        assert _extract_readme_info(empty) == (None, None)
+
+        # 3. Only H1 heading
+        only_h1 = tmp_path / "h1.md"
+        only_h1.write_text("# Heading Only\n")
+        assert _extract_readme_info(only_h1) == ("Heading Only", None)
+
+        # 4. Heading followed by subheadings then text
+        subhead = tmp_path / "subhead.md"
+        subhead.write_text("# Main\n\n## Sub\n\nBody text\n")
+        assert _extract_readme_info(subhead) == ("Main", "Body text")
+
+        # 5. Text before H1 heading (like data-modeling)
+        tagline_first = tmp_path / "tagline.md"
+        tagline_first.write_text("Tagline before heading\n\n# Main Heading\n")
+        assert _extract_readme_info(tagline_first) == ("Main Heading", "Tagline before heading")
+
+    def test_course_summary_includes_modalities_and_curated_vs_generated_flag(
+        self, client, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        # 1. Curated multimodal course (drawing + code)
+        curated_dir = courses_dir / "tinytorch"
+        curated_dir.mkdir()
+        (curated_dir / "README.md").write_text("# TinyTorch\nNeural networks from scratch.\n")
+        l1 = curated_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+        (l1 / "question.png").write_bytes(b"PNG")
+
+        # 2. Generated code-only course
+        gen_dir = courses_dir / "generated-numpy-basics"
+        gen_dir.mkdir()
+        (gen_dir / "README.md").write_text("# NumPy Basics\nArrays and broadcasting.\n")
+        g1 = gen_dir / "lesson01"
+        g1.mkdir()
+        (g1 / "README.md").write_text("# G1")
+        (g1 / "main.py").write_text("import numpy as np")
+
+        res = client.get("/file-courses/")
+        assert res.status_code == 200
+        courses = {c["slug"]: c for c in res.json()}
+
+        assert "tinytorch" in courses
+        assert courses["tinytorch"]["is_generated"] is False
+        assert "code" in courses["tinytorch"]["modalities"]
+        assert "drawing" in courses["tinytorch"]["modalities"]
+
+        assert "generated-numpy-basics" in courses
+        assert courses["generated-numpy-basics"]["is_generated"] is True
+        assert courses["generated-numpy-basics"]["modalities"] == ["code"]
