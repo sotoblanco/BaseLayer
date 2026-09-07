@@ -21,6 +21,7 @@ Task:
 - [ ] Calculate the dot product of the two vectors using `SUMPRODUCT` function
 - [ ] Calculate the dot product of the two vectors using `SUM` and `*` operator
 - [ ] Compare the results
+- [ ] Paste your copy link and press **Check my work**: the check cells `K8`, `K18`, and `L29` flip from ❌ to ✅ when each dot product is right
 
 
 

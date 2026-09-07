@@ -2,6 +2,11 @@
   "exercise_type": "spreadsheet",
   "google_sheet_id": "1LShIwJ87CTSYrX7taGGRVvlmHJXjBJpQRxQ3V9o6YiE",
   "copy_on_open": true,
+  "success_cells": [
+    { "cell": "K8", "expected": "✅" },
+    { "cell": "K18", "expected": "✅" },
+    { "cell": "L29", "expected": "✅" }
+  ],
   "skills": [
     "Dot product",
     "MMULT"

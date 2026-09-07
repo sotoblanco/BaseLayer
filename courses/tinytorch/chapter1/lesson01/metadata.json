@@ -2,6 +2,12 @@
   "exercise_type": "spreadsheet",
   "google_sheet_id": "1a0kOZAS1e7ynOgvKTzcuoH-7yRkZVM29zGGNo4Air5o",
   "copy_on_open": true,
+  "success_cells": [
+    { "cell": "F7", "expected": "TRUE" },
+    { "cell": "G7", "expected": "TRUE" },
+    { "cell": "F8", "expected": "TRUE" },
+    { "cell": "G8", "expected": "TRUE" }
+  ],
   "skills": [
     "Tensor shape",
     "Google Sheets"

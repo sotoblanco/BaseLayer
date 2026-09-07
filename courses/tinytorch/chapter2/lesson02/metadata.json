@@ -5,5 +5,10 @@
   "skills": [
     "Dot product",
     "Diagram tracing"
+  ],
+  "hints": [
+    "Use the toy values on screen: A = [2], B = [5], so C = [10] — both inputs must flow into the result.",
+    "Predict the two arrows first: A points right into C, B points down into C, matching the bottom pattern diagram.",
+    "Inspect before submitting: exactly two arrows ending at C, no extra lines crossing the boxes."
   ]
 }

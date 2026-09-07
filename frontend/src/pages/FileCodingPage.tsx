@@ -39,6 +39,8 @@ interface Lesson {
     stroke_color?: string;
     stroke_width?: number;
     skills?: string[];
+    success_cells?: { cell: string; expected: string }[];
+    hints?: string[];
 }
 
 interface Chapter {
@@ -69,6 +71,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [output, setOutput] = useState<string>("");
     const [isRunning, setIsRunning] = useState(false);
     const [drawingOutput, setDrawingOutput] = useState<string>("");
+    const [drawingChecks, setDrawingChecks] = useState<{ label: string; passed: boolean; feedback?: string }[]>([]);
     const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
     const [showDrawingSolution, setShowDrawingSolution] = useState(false);
     const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -77,7 +80,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
     const [courseError, setCourseError] = useState<string | null>(null);
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
-    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+    const [sheetVerification, setSheetVerification] = useState<{ passed: boolean; message: string; checks: { cell: string; expected: string; actual: string | null; ok: boolean }[] } | null>(null);
+    const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
+    const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
     const instructionScrollRef = useRef<HTMLDivElement>(null);
 
 
@@ -170,6 +175,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             const saved = localStorage.getItem(draftKey) ?? localStorage.getItem(uxKey);
             setCode(saved !== null ? saved : (lesson.initial_code || ""));
             setOutput("");
+            setDrawingOutput("");
+            setDrawingChecks([]);
+            setSheetVerification(null);
+            setSheetVerifyError(null);
             setEditorTab('main');
             setShowSolution(false);
             setLoadedSolution('');
@@ -235,6 +244,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
 
     const displaySheetId = userSheetUrl ? extractSheetId(userSheetUrl) : lesson?.google_sheet_id;
     const isUsingPersonalCopy = !!(userSheetUrl && extractSheetId(userSheetUrl));
+    const hasSheetChecks = (lesson?.success_cells ?? []).length > 0;
+    const hasSheetCopyLink = !!(userSheetUrl && extractSheetId(userSheetUrl));
+    const sheetPassed = sheetVerification?.passed ?? false;
     const sheetMode = 'edit';
     const iframeUrl = displaySheetId
         ? `https://docs.google.com/spreadsheets/d/${displaySheetId}/${sheetMode}?usp=sharing`
@@ -300,6 +312,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         if (!lesson || !drawingCanvasRef.current) return;
         setIsSubmittingDrawing(true);
         setDrawingOutput('Evaluating your drawing...');
+        setDrawingChecks([]);
         try {
             const imageData = drawingCanvasRef.current.toDataURL('image/png');
             const response = await fetch(
@@ -321,6 +334,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             }
             const data = await response.json();
             setDrawingOutput(data.message);
+            setDrawingChecks(Array.isArray(data.checks) ? data.checks : []);
             if (data.passed) {
                 confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
                 if (course && lesson) {
@@ -336,6 +350,53 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             setDrawingOutput('Failed to submit drawing.');
         } finally {
             setIsSubmittingDrawing(false);
+        }
+    };
+
+    const handleSheetVerify = async (sheetUrl: string) => {
+        if (!lesson) return;
+        setSheetVerification(null);
+        setSheetVerifyError(null);
+        setIsVerifyingSheet(true);
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/verify-sheet`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ sheet_id: sheetUrl, xp: 35 }),
+                }
+            );
+            if (response.status === 401) {
+                logout();
+                setIsAuthModalOpen(true);
+                setSheetVerifyError('Your session has expired. Please sign in again.');
+                return;
+            }
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                setSheetVerifyError(data.detail || 'Could not verify your sheet. Please try again.');
+                return;
+            }
+            setSheetVerification(data);
+            if (data.passed) {
+                confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                if (course && lesson) {
+                    setSharePayload({
+                        kind: 'lesson',
+                        courseTitle: course.title,
+                        lessonTitle: lesson.title,
+                        skills: lesson.skills?.length ? lesson.skills : course.skills || [],
+                    });
+                }
+            }
+        } catch {
+            setSheetVerifyError('Failed to reach the verification service.');
+        } finally {
+            setIsVerifyingSheet(false);
         }
     };
 
@@ -658,15 +719,36 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 )}
                                             </div>
                                             {drawingOutput ? (
-                                                <p className={`text-xs whitespace-pre-wrap leading-relaxed ${
-                                                    drawingOutput.toLowerCase().includes('pass') || drawingOutput.toLowerCase().includes('great job') || drawingOutput.toLowerCase().includes('correct')
-                                                        ? 'text-emerald-400'
-                                                        : drawingOutput.includes('empty')
-                                                            ? 'text-yellow-400'
-                                                            : 'text-slate-300'
-                                                }`}>{drawingOutput}</p>
+                                                <>
+                                                    <p className={`text-xs whitespace-pre-wrap leading-relaxed ${
+                                                        drawingOutput.toLowerCase().includes('pass') || drawingOutput.toLowerCase().includes('great job') || drawingOutput.toLowerCase().includes('correct')
+                                                            ? 'text-emerald-400'
+                                                            : drawingOutput.includes('empty')
+                                                                ? 'text-yellow-400'
+                                                                : 'text-slate-300'
+                                                    }`}>{drawingOutput}</p>
+                                                    {drawingChecks.length > 0 && (
+                                                        <ul className="mt-2 space-y-1.5">
+                                                            {drawingChecks.map((check, idx) => (
+                                                                <li key={`${check.label}-${idx}`} className="flex items-start gap-2 text-xs">
+                                                                    <span className={check.passed ? 'text-emerald-400' : 'text-rose-400'}>
+                                                                        {check.passed ? '✓' : '✗'}
+                                                                    </span>
+                                                                    <div className="min-w-0">
+                                                                        <span className={check.passed ? 'text-slate-200' : 'text-amber-300'}>
+                                                                            {check.label}
+                                                                        </span>
+                                                                        {check.feedback && (
+                                                                            <span className="block text-slate-400">{check.feedback}</span>
+                                                                        )}
+                                                                    </div>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </>
                                             ) : (
-                                                <p className="text-xs text-slate-600 italic">Submit your drawing to receive feedback...</p>
+                                                <p className="text-xs text-slate-600 italic">Submit your drawing to receive rubric feedback (intent / missing elements / extra marks)...</p>
                                             )}
                                         </div>
                                         {/* Action bar: Show Solution + Submit */}
@@ -731,6 +813,16 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                     <ExternalLink size={14} /> Make a private copy
                                                 </button>
                                             )}
+                                            {hasSheetChecks && (
+                                                <button
+                                                    onClick={() => handleSheetVerify(userSheetUrl)}
+                                                    disabled={isVerifyingSheet || !hasSheetCopyLink || sheetPassed}
+                                                    title={hasSheetCopyLink ? 'Verify the target cells in your copy' : 'Paste your copy link first'}
+                                                    className="flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                                                >
+                                                    {isVerifyingSheet ? 'Checking...' : sheetPassed ? 'Checked ✓' : 'Check my work'}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
@@ -754,6 +846,38 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                             </div>
                                         )}
                                     </div>
+
+                                    {(isVerifyingSheet || sheetVerification || sheetVerifyError) && (
+                                        <div className="shrink-0 max-h-40 overflow-y-auto custom-scrollbar border-t border-[#333] bg-[#1a1a2e] px-4 py-2.5 font-mono">
+                                            {isVerifyingSheet ? (
+                                                <p className="text-xs text-slate-400 italic">Checking the target cells in your copy...</p>
+                                            ) : sheetVerification ? (
+                                                <div className="space-y-1.5">
+                                                    <p className={`text-xs font-bold ${sheetPassed ? 'text-emerald-400' : 'text-amber-300'}`}>
+                                                        {sheetPassed ? '✓ ' : '✗ '}{sheetVerification.message}
+                                                    </p>
+                                                    {sheetVerification.checks.length > 0 && (
+                                                        <ul className="space-y-1">
+                                                            {sheetVerification.checks.map((check) => (
+                                                                <li key={check.cell} className="flex items-start gap-2 text-xs">
+                                                                    <span className={check.ok ? 'text-emerald-400' : 'text-rose-400'}>
+                                                                        {check.ok ? '✓' : '✗'}
+                                                                    </span>
+                                                                    <span className={check.ok ? 'text-slate-300' : 'text-slate-100'}>
+                                                                        {check.cell}: {check.ok
+                                                                            ? check.actual
+                                                                            : `expected ${check.expected}${check.actual !== null ? `, found ${check.actual}` : ' (empty)'}`}
+                                                                    </span>
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                </div>
+                                            ) : sheetVerifyError ? (
+                                                <p className="text-xs text-amber-300">{sheetVerifyError}</p>
+                                            ) : null}
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 // Code Exercise

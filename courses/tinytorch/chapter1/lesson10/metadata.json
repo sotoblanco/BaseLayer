@@ -4,5 +4,10 @@
   "skills": [
     "DL stack",
     "Architecture"
+  ],
+  "hints": [
+    "Start with the toy trace: one call like model.forward(x) — list the 4 layers it passes through top to bottom before you draw anything.",
+    "Predict each layer's one-line responsibility (user interface, manages tensors, crunches numbers, physical hardware) and use those as your box labels.",
+    "Inspect your sketch against the rubric: every layer needs a name, a responsibility, and one concrete example."
   ]
 }
