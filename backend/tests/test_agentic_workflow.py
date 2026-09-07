@@ -549,3 +549,57 @@ class TestAgenticWorkflowExecution:
         assert "NumPy broadcasting" in detail
         # Nothing may be published as a fake course on the homepage.
         assert list(courses_dir.iterdir()) == []
+
+    def test_workflow_execute_respects_course_preferences_override(self, tmp_path: Path):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        def fake_llm(prompt: str) -> str:
+            assert "GUIDED CODE COMPLETION DIRECTIVE" in prompt
+            assert "['code', 'spreadsheet']" in prompt or "code, spreadsheet" in prompt
+            return json.dumps({
+                "title": "Custom Tailored Course",
+                "description": "Tailored desc",
+                "narrative_arc": "Arc",
+                "lessons": [
+                    {
+                        "title": "Lesson 1",
+                        "modality": "code",
+                        "objective": "Guided task",
+                        "toy_data": "x = [1, 2]",
+                        "expected_result": "[1, 2]",
+                        "micro_task": "Fill in ____",
+                        "inspect_prompt": "Inspect x",
+                        "curiosity_prompt": "Why?",
+                        "starter_code": "x = ____\n",
+                        "test_code": "from main import x\nassert x == [1, 2]\n",
+                        "solution_code": "x = [1, 2]\n",
+                    }
+                ]
+            })
+
+        workflow = AgenticCourseWorkflow(
+            generate_text=fake_llm,
+            courses_dir=courses_dir,
+            data_dir=data_dir,
+        )
+
+        result = workflow.execute(
+            topic="Array math",
+            username="custom_user",
+            course_preferences={
+                "preferred_modalities": ["code", "spreadsheet"],
+                "exercise_format": "guided_completion",
+                "tutor_style": "solveit",
+                "understanding_level": "beginner",
+            }
+        )
+
+        assert result.title == "Custom Tailored Course"
+        # Check that tool trace shows overridden modalities
+        context_trace = next(t for t in result.tool_traces if t.tool_name == "get_context_learning")
+        assert context_trace.details["preferred_modalities"] == ["code", "spreadsheet"]
+        assert context_trace.details["understanding_level"] == "Beginner"
+

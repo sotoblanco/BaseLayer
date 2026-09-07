@@ -19,7 +19,9 @@ import {
   getAiStatus,
   type BuildCourseResult,
 } from '../services/aiService';
+import { getLearningProfile } from '../services/profileService';
 import ChatCourseImport from './ChatCourseImport';
+import CourseStyleMiniForm, { type CourseStylePreferences } from './CourseStyleMiniForm';
 
 interface CourseBuilderProps {
   isOpen: boolean;
@@ -66,6 +68,13 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
   const [completedResult, setCompletedResult] = useState<BuildCourseResult | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [stylePreferences, setStylePreferences] = useState<CourseStylePreferences>({
+    modalities: ['code', 'spreadsheet', 'drawing'],
+    scaffold: 'micro_steps',
+    explanationLength: 'short',
+    tutorStyle: 'solveit',
+    level: 'intermediate',
+  });
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -77,8 +86,8 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     return () => clearInterval(timer);
   }, [isBuilding, completedResult]);
 
-  // On every open: refresh AI status and pick the tab that actually works for
-  // this learner (no key configured -> default to the copy-paste chat path).
+  // On every open: refresh AI status, load learner profile preferences,
+  // and pick the tab that actually works for this learner.
   useEffect(() => {
     if (!isOpen) return;
     setError('');
@@ -86,6 +95,31 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     setIsBuilding(false);
     setActiveStepIndex(0);
     setAiLoading(true);
+
+    getLearningProfile()
+      .then((profileData) => {
+        const fm = profileData?.parsed?.frontmatter;
+        if (fm) {
+          setStylePreferences({
+            modalities:
+              fm.preferred_modalities && fm.preferred_modalities.length > 0
+                ? fm.preferred_modalities
+                : ['code', 'spreadsheet', 'drawing'],
+            scaffold:
+              (fm.exercise_format as 'micro_steps' | 'guided_completion' | 'macro_challenges') ||
+              'micro_steps',
+            explanationLength:
+              (fm.explanation_length as 'short' | 'thorough') || 'short',
+            tutorStyle:
+              (fm.tutor_style as 'solveit' | 'socratic' | 'direct' | 'blooms') || 'solveit',
+            level:
+              (fm.understanding_level as 'beginner' | 'intermediate' | 'advanced') ||
+              'intermediate',
+          });
+        }
+      })
+      .catch(() => {});
+
     getAiStatus()
       .then((status) => {
         setAiConfigured(status.configured);
@@ -122,7 +156,13 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     setCompletedResult(null);
 
     try {
-      const result = await buildLearningCourse(topic, referenceText);
+      const result = await buildLearningCourse(topic, referenceText, {
+        preferred_modalities: stylePreferences.modalities,
+        exercise_format: stylePreferences.scaffold,
+        explanation_length: stylePreferences.explanationLength,
+        tutor_style: stylePreferences.tutorStyle,
+        understanding_level: stylePreferences.level,
+      });
       setCompletedResult(result);
       setActiveStepIndex(4);
     } catch (buildError) {
@@ -205,6 +245,8 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
             <ChatCourseImport
               topic={topic}
               referenceText={referenceText}
+              preferences={stylePreferences}
+              onPreferencesChange={setStylePreferences}
               onTopicChange={setTopic}
               onReferenceChange={setReferenceText}
               onImported={onBuilt}
@@ -273,6 +315,13 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                       className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-xs text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 font-mono"
                     />
                   </div>
+
+                  {/* Tailor course mini-form */}
+                  <CourseStyleMiniForm
+                    preferences={stylePreferences}
+                    onChange={setStylePreferences}
+                    defaultExpanded={true}
+                  />
 
                   {/* Agentic workflow step preview */}
                   <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2.5 text-xs text-slate-400">

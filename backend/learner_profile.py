@@ -58,6 +58,12 @@ class LearnerQuestionnaire(BaseModel):
         default=None,
         description="What makes a new concept click: diagram (visual), table (spreadsheet), hands_on (code), story (text).",
     )
+    unblock_strategies: list[
+        Literal["breakdown_code", "visual_numbers", "hand_written", "analogy_story"]
+    ] = Field(
+        default_factory=list,
+        description="Realistic strategies used to unblock: breakdown_code (code), visual_numbers (spreadsheet), hand_written (drawing), analogy_story (text/concept).",
+    )
     explanation_length: Literal["short", "thorough"] = Field(
         default="short",
         description="Explanation length: short (concise essentials) or thorough (detailed with analogies).",
@@ -641,7 +647,26 @@ def _infer_tutor_style(
     return answers.tutor_style
 
 
+UNBLOCK_STRATEGY_MAP = {
+    "breakdown_code": "code",
+    "visual_numbers": "spreadsheet",
+    "hand_written": "drawing",
+    "analogy_story": "text",
+}
+
+
 def _infer_modalities(answers: LearnerQuestionnaire) -> list[str]:
+    if answers.unblock_strategies:
+        inferred: list[str] = []
+        for strategy in answers.unblock_strategies:
+            mod = UNBLOCK_STRATEGY_MAP.get(strategy)
+            if mod and mod not in inferred:
+                inferred.append(mod)
+        if inferred:
+            if inferred == ["text"]:
+                inferred.append("code")
+            return inferred
+
     mapping = {
         "diagram": ["drawing", "code"],
         "table": ["spreadsheet", "code"],
@@ -869,6 +894,100 @@ def apply_questionnaire_profile(
     )
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_text(markdown, encoding="utf-8")
+    return get_or_create_profile(username, base_dir)
+
+
+def apply_course_builder_preferences(
+    username: str,
+    topic: str,
+    preferences: dict[str, Any],
+    base_dir: Path | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Blends course-level mini-form preferences into the learner's profile and records an evolution signal.
+
+    Updates frontmatter preferences (modalities, exercise format, explanation length, tutor style, level),
+    re-syncs the Snapshot and recommendations, and appends a signal to track how the learner's style evolves
+    as they build courses.
+    """
+    file_path = get_profile_path(username, base_dir)
+    if not file_path.is_file():
+        get_or_create_profile(username, base_dir)
+
+    raw_text = file_path.read_text(encoding="utf-8")
+    fm_raw, body = parse_frontmatter(raw_text)
+    fm = LearnerFrontMatter.model_validate(fm_raw)
+    fm.updated_at = datetime.now(timezone.utc).isoformat()
+    sections = parse_markdown_sections(body)
+
+    # 1. Update preferred modalities if specified
+    if "preferred_modalities" in preferences and preferences["preferred_modalities"]:
+        raw_mods = preferences["preferred_modalities"]
+        valid_mods = [m for m in raw_mods if m in ("code", "spreadsheet", "drawing", "text")]
+        if valid_mods:
+            fm.preferred_modalities = list(dict.fromkeys(valid_mods))
+
+    # 2. Update exercise format
+    if "exercise_format" in preferences and preferences["exercise_format"]:
+        fmt = str(preferences["exercise_format"]).lower()
+        if fmt in ("micro_steps", "macro_challenges", "guided_completion"):
+            fm.exercise_format = fmt
+
+    # 3. Update explanation length
+    if "explanation_length" in preferences and preferences["explanation_length"]:
+        expl = str(preferences["explanation_length"]).lower()
+        if expl in ("short", "thorough"):
+            fm.explanation_length = expl
+
+    # 4. Update tutor style
+    if "tutor_style" in preferences and preferences["tutor_style"]:
+        style = str(preferences["tutor_style"]).lower()
+        if style in ("solveit", "socratic", "direct", "blooms"):
+            fm.tutor_style = style
+
+    # 5. Update understanding level
+    if "understanding_level" in preferences and preferences["understanding_level"]:
+        lvl = str(preferences["understanding_level"]).lower()
+        if lvl in ("beginner", "intermediate", "advanced"):
+            fm.understanding_level = lvl
+
+    # 6. Append evolution signal
+    topic_clean = topic.strip() or "Untitled Course"
+    mods_str = ", ".join(fm.preferred_modalities)
+    signal_line = (
+        f"- Tailored course style for '{topic_clean}': "
+        f"modalities=[{mods_str}], format={fm.exercise_format}, tutor={fm.tutor_style}."
+    )
+    signals = sections.get("Signals", [])
+    if signal_line not in signals:
+        signals.append(signal_line)
+    sections["Signals"] = signals
+
+    # 7. Update Snapshot & recommendations to reflect blended preferences
+    q_stub = LearnerQuestionnaire(
+        explanation_length=fm.explanation_length,
+        exercise_format=fm.exercise_format,
+        tone=fm.tone,
+        preferred_modalities=fm.preferred_modalities,
+        understanding_level=fm.understanding_level,
+        tutor_style=fm.tutor_style,
+        pace=fm.pace,
+    )
+    sections["Snapshot"] = [
+        _build_snapshot(q_stub, fm.tutor_style, fm.preferred_modalities, fm.exercise_format)
+    ]
+    tutor_rec = _build_tutor_recommendations(fm.tutor_style)
+    modality_recs = _build_modality_recommendations(fm.preferred_modalities)
+    pedagogy_recs = _build_pedagogy_recommendations(q_stub, fm.exercise_format)
+    tone_recs = _build_tone_recommendations(fm.tone)
+    sections["Customize next"] = [
+        _build_all_recommendations(tutor_rec, pedagogy_recs, modality_recs, tone_recs)
+    ]
+
+    # 8. Reconstruct and save
+    new_body = _reconstruct_markdown_body(fm.username, sections)
+    new_content = f"{serialize_frontmatter(fm)}\n\n{new_body}\n"
+    file_path.write_text(new_content, encoding="utf-8")
+
     return get_or_create_profile(username, base_dir)
 
 

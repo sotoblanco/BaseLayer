@@ -190,3 +190,33 @@ def test_ai_test_connection_forbidden_non_local(monkeypatch):
         json={"provider": "ollama"},
     )
     assert res.status_code == 403
+
+
+def test_ai_learning_path_instructions_with_course_preferences(client, auth_headers, tmp_path):
+    from unittest.mock import patch
+
+    with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
+        res = client.post(
+            "/ai/learning-path/instructions",
+            json={
+                "topic": "NumPy Broadcasting from Zero",
+                "course_preferences": {
+                    "preferred_modalities": ["code", "spreadsheet"],
+                    "exercise_format": "guided_completion",
+                    "explanation_length": "thorough",
+                    "tutor_style": "solveit",
+                    "understanding_level": "intermediate",
+                },
+            },
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert "instructions" in data
+        assert "Broadcasting" in data["instructions"]
+        # Verify instructions reflected the course preferences
+        assert "spreadsheet" in data["instructions"].lower()
+        # Verify personalization in response
+        assert data["personalization"]["tutor_style"] == "solveit"
+        assert data["personalization"]["explanation_length"] == "thorough"
+

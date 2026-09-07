@@ -42,7 +42,10 @@ export function LearningProfileModal({
   const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'customize'>('customize');
 
   // Simplified Diagnostic state
-  const [intakePref, setIntakePref] = useState<'diagram' | 'table' | 'hands_on' | 'story'>('diagram');
+  const [unblockStrategies, setUnblockStrategies] = useState<string[]>([
+    'breakdown_code',
+    'visual_numbers',
+  ]);
   const [explanationLength, setExplanationLength] = useState<'short' | 'thorough'>('short');
   const [exerciseFormat, setExerciseFormat] = useState<
     'micro_steps' | 'macro_challenges' | 'guided_completion'
@@ -57,6 +60,25 @@ export function LearningProfileModal({
   const [goal, setGoal] = useState('Understand foundational AI and systems from first principles');
   const [customNotes, setCustomNotes] = useState('');
   const [submittingQuestionnaire, setSubmittingQuestionnaire] = useState(false);
+
+  const getInferredModalities = (strats: string[]): string[] => {
+    const mods: string[] = [];
+    if (strats.includes('breakdown_code')) mods.push('code');
+    if (strats.includes('visual_numbers')) mods.push('spreadsheet');
+    if (strats.includes('hand_written')) mods.push('drawing');
+    if (strats.includes('analogy_story')) mods.push('text');
+    return mods.length > 0 ? mods : ['code'];
+  };
+
+  const toggleUnblockStrategy = (id: string) => {
+    setUnblockStrategies((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length === 1) return prev; // Keep at least one
+        return prev.filter((s) => s !== id);
+      }
+      return [...prev, id];
+    });
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -96,14 +118,16 @@ export function LearningProfileModal({
           setHintPref('toy_example');
         }
       }
-      if (parsed.frontmatter.preferred_modalities?.includes('drawing')) {
-        setIntakePref('diagram');
-      } else if (parsed.frontmatter.preferred_modalities?.includes('spreadsheet')) {
-        setIntakePref('table');
-      } else if (parsed.frontmatter.preferred_modalities?.includes('text')) {
-        setIntakePref('story');
-      } else if (parsed.frontmatter.preferred_modalities?.includes('code')) {
-        setIntakePref('hands_on');
+      if (parsed.frontmatter.preferred_modalities && parsed.frontmatter.preferred_modalities.length > 0) {
+        const mods = parsed.frontmatter.preferred_modalities;
+        const strats: string[] = [];
+        if (mods.includes('code')) strats.push('breakdown_code');
+        if (mods.includes('spreadsheet')) strats.push('visual_numbers');
+        if (mods.includes('drawing')) strats.push('hand_written');
+        if (mods.includes('text')) strats.push('analogy_story');
+        if (strats.length > 0) {
+          setUnblockStrategies(strats);
+        }
       }
     }
   }, [parsed]);
@@ -112,9 +136,25 @@ export function LearningProfileModal({
     e.preventDefault();
     setSubmittingQuestionnaire(true);
     setError('');
+    const inferredMods = getInferredModalities(unblockStrategies);
+    const legacyIntake = unblockStrategies.includes('hand_written')
+      ? 'diagram'
+      : unblockStrategies.includes('visual_numbers')
+      ? 'table'
+      : unblockStrategies.includes('analogy_story')
+      ? 'story'
+      : 'hands_on';
+
     try {
       const response = await submitLearnerQuestionnaire({
-        intake_preference: intakePref,
+        unblock_strategies: unblockStrategies as (
+          | 'breakdown_code'
+          | 'visual_numbers'
+          | 'hand_written'
+          | 'analogy_story'
+        )[],
+        preferred_modalities: inferredMods,
+        intake_preference: legacyIntake,
         explanation_length: explanationLength,
         exercise_format: exerciseFormat,
         hint_preference: hintPref,
@@ -272,66 +312,78 @@ export function LearningProfileModal({
             </div>
           ) : viewMode === 'customize' ? (
             <form onSubmit={handleQuestionnaireSubmit} className="space-y-6">
-              {/* Question 1: Intake Modality */}
+              {/* Question 1: Realistic Problem Solving: How You Unblock */}
               <div className="space-y-2">
                 <div>
-                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
-                    1. Intake Modality
-                  </label>
-                  <p className="text-xs text-slate-400">What makes a new concept click for you first?</p>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider block">
+                      1. How You Unblock (Realistic Scenarios)
+                    </label>
+                    <span className="text-[10px] text-blue-400 font-medium">Multi-select enabled</span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Think about the last time you didn&apos;t understand a complex topic. What helped you unblock? (Pick all that help — you aren&apos;t locked into a single style)
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {[
                     {
-                      id: 'diagram',
-                      title: 'Diagram & Visual',
-                      desc: 'Flowcharts, architecture maps, and visual connections between components.',
+                      id: 'breakdown_code',
+                      title: 'Break down code in steps',
+                      desc: 'Isolate a minimal 1-3 line snippet, run it in isolation, and inspect the return value or failure.',
+                      modality: 'Code',
                     },
                     {
-                      id: 'table',
-                      title: 'Table & Spreadsheet',
-                      desc: 'Concrete input numbers, cell formulas, and row-by-row calculations.',
+                      id: 'visual_numbers',
+                      title: 'Calculate & visualize numbers',
+                      desc: 'Lay out concrete numbers in a sheet/table, evaluate cells step-by-step, and observe patterns.',
+                      modality: 'Spreadsheet',
                     },
                     {
-                      id: 'hands_on',
-                      title: 'Hands-on Code',
-                      desc: 'A minimal snippet of working code to edit, run, and break immediately.',
+                      id: 'hand_written',
+                      title: 'Hand-written sketches & diagrams',
+                      desc: 'Grab pen & paper or a whiteboard to sketch tensor shapes, architecture nodes, or flow paths.',
+                      modality: 'Hand-written / Drawing',
                     },
                     {
-                      id: 'story',
-                      title: 'Concept & Analogy',
-                      desc: 'Real-world analogies and clear plain-language conceptual explanations.',
+                      id: 'analogy_story',
+                      title: 'Analogies & conceptual walk-throughs',
+                      desc: 'Connect the abstract logic to concrete real-world systems and plain-English mental models.',
+                      modality: 'Conceptual',
                     },
                   ].map((item) => {
-                    const active = intakePref === item.id;
+                    const active = unblockStrategies.includes(item.id);
                     return (
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() =>
-                          setIntakePref(item.id as 'diagram' | 'table' | 'hands_on' | 'story')
-                        }
+                        onClick={() => toggleUnblockStrategy(item.id)}
                         className={`group flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
                           active
-                            ? 'border-blue-500/80 bg-blue-950/20'
+                            ? 'border-blue-500/80 bg-blue-950/25 shadow-sm'
                             : 'border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-850'
                         }`}
                       >
                         <div
-                          className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
-                            active ? 'border-blue-500 bg-blue-500' : 'border-slate-600'
+                          className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                            active ? 'border-blue-500 bg-blue-500 text-slate-950' : 'border-slate-600'
                           }`}
                         >
-                          {active && <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />}
+                          {active && <Check size={12} strokeWidth={3} />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <span
-                            className={`block text-xs font-semibold ${
-                              active ? 'text-white' : 'text-slate-200'
-                            }`}
-                          >
-                            {item.title}
-                          </span>
+                          <div className="flex items-center justify-between gap-1">
+                            <span
+                              className={`block text-xs font-semibold ${
+                                active ? 'text-white' : 'text-slate-200'
+                              }`}
+                            >
+                              {item.title}
+                            </span>
+                            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                              {item.modality}
+                            </span>
+                          </div>
                           <span className="text-[11px] text-slate-400 block mt-0.5 leading-relaxed">
                             {item.desc}
                           </span>
@@ -339,6 +391,20 @@ export function LearningProfileModal({
                       </button>
                     );
                   })}
+                </div>
+                {/* Inferred Learning Blend Indicator */}
+                <div className="flex items-center gap-2 pt-1 text-xs">
+                  <span className="text-slate-400 text-[11px]">Inferred learning style:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {getInferredModalities(unblockStrategies).map((m) => (
+                      <span
+                        key={m}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/10 border border-blue-500/30 text-blue-300 capitalize"
+                      >
+                        {m === 'drawing' ? 'Hand-written / Drawing' : m}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -485,8 +551,8 @@ export function LearningProfileModal({
                   {[
                     {
                       id: 'toy_example',
-                      title: 'Toy Example (Solveit)',
-                      desc: 'Show a 2x2 case with simple numbers to reveal the pattern.',
+                      title: 'Micro-Steps (Solveit)',
+                      desc: 'Work through 1-3 lines with clear inspection prompts to reveal the pattern.',
                     },
                     {
                       id: 'guiding_question',

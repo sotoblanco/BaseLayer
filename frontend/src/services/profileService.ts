@@ -134,6 +134,7 @@ export const fetchMyProgress = async (): Promise<CourseProgressSummary[]> => {
 
 export interface LearnerQuestionnaire {
   intake_preference?: 'diagram' | 'table' | 'hands_on' | 'story';
+  unblock_strategies?: ('breakdown_code' | 'visual_numbers' | 'hand_written' | 'analogy_story')[];
   explanation_length?: 'short' | 'thorough';
   exercise_format?: 'micro_steps' | 'macro_challenges' | 'guided_completion';
   hint_preference?: 'toy_example' | 'guiding_question' | 'direct_explanation';
