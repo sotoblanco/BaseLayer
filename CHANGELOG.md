@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.47](https://github.com/sotoblanco/BaseLayer/compare/v0.1.46...v0.1.47) (2026-09-07)
+
+
+### Bug Fixes
+
+* startup modals no longer bury local course catalog ([#105](https://github.com/sotoblanco/BaseLayer/issues/105)) ([2d6bec9](https://github.com/sotoblanco/BaseLayer/commit/2d6bec99536a1757166b3c004a22ba2d06ddada7))
+* vite dev proxy uses 127.0.0.1 to avoid socket hang up on /me/learning-profile ([#104](https://github.com/sotoblanco/BaseLayer/issues/104)) ([881eeea](https://github.com/sotoblanco/BaseLayer/commit/881eeeabc0688820f6f0d2607c9135bc3f4d50fa))
+
 ### [0.1.46](https://github.com/sotoblanco/BaseLayer/compare/v0.1.45...v0.1.46) (2026-09-07)
 
 
