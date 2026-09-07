@@ -10,6 +10,7 @@
 
 import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
+import { sanitizeRunStderr } from '../runOutput';
 import { isMissingModuleError, libraryHelpHint, missingModule } from '../sandboxLibs';
 
 export interface RunResult {
@@ -204,13 +205,20 @@ export async function executeCode(options: RunOptions): Promise<RunResult> {
     }
 
     const data = await response.json();
-    const stderr = data.stderr || '';
-    const module = missingModule(stderr);
+    // Detect on raw stderr first: the #106 sanitizer below must not eat the
+    // `No module named` line before we parse it.
+    const module = missingModule(data.stderr || '');
+    // Defense in depth (issue #106): the server sanitizes /run stderr, but an
+    // older backend could still echo assert source lines with expected values.
+    // Strip the answer key here too whenever hidden tests ran.
+    const serverStderr: string = data.stderr || '';
+    let stderr = test_code.trim() ? sanitizeRunStderr(serverStderr) : serverStderr;
+    // Missing library on the server too: explain how to add it instead of
+    // leaving a bare ModuleNotFoundError.
+    if (module) stderr = `${stderr}\n\n${libraryHelpHint(module)}`;
     return {
       stdout: data.stdout || '',
-      // Missing library on the server too: explain how to add it instead of
-      // leaving a bare ModuleNotFoundError.
-      stderr: module ? `${stderr}\n\n${libraryHelpHint(module)}` : stderr,
+      stderr,
       exit_code: data.exit_code ?? 0,
       engine: 'server',
     };

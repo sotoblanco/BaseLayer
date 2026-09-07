@@ -24,6 +24,7 @@ from routers.ai import router as ai_router
 from routers.file_courses import router as file_courses_router
 from routers.me import router as me_router
 from run_limits import enforce_run_limits
+from run_output import sanitize_run_stderr
 from sandbox_exec import SandboxUnavailableError, execute_docker
 
 
@@ -192,9 +193,17 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
             # Lazy import to avoid circular dependency
             from modal_app import run_in_sandbox
 
-            return run_in_sandbox.remote(
+            result = run_in_sandbox.remote(
                 submission.code, submission.language, submission.test_code or ""
             )
+            # The remote sandbox echoes raw tracebacks; strip the answer key
+            # before the Run console sees it (issue #106).
+            if (submission.test_code or "").strip() and result.get("exit_code") not in (
+                -1,
+                124,
+            ):
+                result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
+            return result
         except ImportError:
             raise HTTPException(status_code=500, detail="Modal backend not found") from None
         except Exception as e:
@@ -212,6 +221,11 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
     # Record run result into LEARNING.md (only for runs that actually executed).
     if result.get("exit_code") in (-1, 124):
         return result
+    # A failing test run echoes assert source lines (expected values) into the
+    # traceback even though the Tests tab is hidden from students. Sanitize the
+    # student-facing stderr; author-side verification keeps full tracebacks.
+    if (submission.test_code or "").strip():
+        result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
     try:
         from learner_profile import record_learner_event
 
