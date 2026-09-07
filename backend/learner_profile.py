@@ -41,6 +41,7 @@ class LearnerFrontMatter(BaseModel):
     pace: Literal["unhurried", "sprint", "mixed"] = "unhurried"
     explanation_length: Literal["short", "thorough"] = "short"
     exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] = "micro_steps"
+    diagnostic_completed: bool = False
 
 
 class LearnerProfileData(BaseModel):
@@ -217,6 +218,7 @@ preferred_modalities:
 pace: {fm.pace}
 explanation_length: {fm.explanation_length}
 exercise_format: {fm.exercise_format}
+diagnostic_completed: {str(fm.diagnostic_completed).lower()}
 ---"""
 
 
@@ -823,6 +825,7 @@ def aggregate_questionnaire_to_markdown(
         pace=answers.pace,
         explanation_length=answers.explanation_length,
         exercise_format=inferred_format,
+        diagnostic_completed=True,
     )
 
     snapshot_text = _build_snapshot(answers, inferred_style, inferred_mods, inferred_format)

@@ -260,3 +260,83 @@ def test_is_docker_daemon_failure():
     assert is_docker_daemon_failure("Unable to find image 'sandbox-runner:latest' locally")
     assert not is_docker_daemon_failure("AssertionError: 2 != 3")
     assert not is_docker_daemon_failure("")
+
+
+class TestRunLearnerTelemetry:
+    """POST /run must record run_result with an explicit submit flag and lesson
+    address (Issue #72) — never infer is_submit from test_code presence."""
+
+    def _profile_signals(self):
+        from learner_profile import get_or_create_profile
+
+        _, parsed = get_or_create_profile("testuser")
+        return parsed["signals"]
+
+    def test_submit_with_slugs_records_signal(self, client: TestClient, auth_headers, monkeypatch):
+        import main as main_module
+
+        monkeypatch.setattr(
+            main_module,
+            "execute_docker",
+            lambda *a, **k: {"stdout": "ok", "stderr": "", "exit_code": 0},
+        )
+        response = client.post(
+            "/run",
+            json={
+                "code": "print(1)",
+                "language": "python",
+                "test_code": "assert True",
+                "is_submit": True,
+                "course_slug": "tinytorch",
+                "lesson_slug": "chapter1--lesson02",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert (
+            "- Completed tinytorch (chapter1--lesson02) with passing python tests."
+            in self._profile_signals()
+        )
+
+    def test_preliminary_run_with_tests_records_nothing(
+        self, client: TestClient, auth_headers, monkeypatch
+    ):
+        import main as main_module
+
+        monkeypatch.setattr(
+            main_module,
+            "execute_docker",
+            lambda *a, **k: {"stdout": "ok", "stderr": "", "exit_code": 0},
+        )
+        response = client.post(
+            "/run",
+            json={
+                "code": "print(1)",
+                "language": "python",
+                "test_code": "assert True",
+                "is_submit": False,
+                "course_slug": "tinytorch",
+                "lesson_slug": "chapter1--lesson02",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert not any("Completed tinytorch" in s for s in self._profile_signals())
+
+    def test_submit_without_slugs_records_nothing(
+        self, client: TestClient, auth_headers, monkeypatch
+    ):
+        import main as main_module
+
+        monkeypatch.setattr(
+            main_module,
+            "execute_docker",
+            lambda *a, **k: {"stdout": "ok", "stderr": "", "exit_code": 0},
+        )
+        response = client.post(
+            "/run",
+            json={"code": "print(1)", "language": "python", "is_submit": True},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert not any("Completed ()" in s for s in self._profile_signals())

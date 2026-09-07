@@ -151,6 +151,13 @@ export default function CoursesPage() {
       if (hasCompleted !== 'true' && hasDismissed !== 'true') {
         getLearningProfile()
           .then((data) => {
+            // Explicit completion flag first (set by questionnaire submit).
+            // Legacy string heuristic only for pre-flag profiles, so choosing
+            // the actual defaults no longer looks like "never completed".
+            if (data.parsed.frontmatter.diagnostic_completed === true) {
+              localStorage.setItem(DIAGNOSTIC_COMPLETED_KEY, 'true');
+              return;
+            }
             const isDefault =
               data.parsed.signals.length <= 1 &&
               !data.markdown.includes('intake_preference') &&

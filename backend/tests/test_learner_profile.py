@@ -648,6 +648,47 @@ Advanced test runner.
         assert fm_guided["exercise_format"] == "guided_completion"
         assert "guided fill-in-the-blank code completion" in data_guided["parsed"]["snapshot"]
 
+    def test_questionnaire_marks_diagnostic_completed(self, client, auth_headers, tmp_path: Path):
+        """Questionnaire submit sets diagnostic_completed so CoursesPage stops
+        string-matching explanation_length to detect onboarding (Issue #72)."""
+        with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
+            response = client.post(
+                "/me/learning-profile/questionnaire",
+                json={"intake_preference": "hands_on"},
+                headers=auth_headers,
+            )
+        assert response.status_code == 200
+        assert response.json()["parsed"]["frontmatter"]["diagnostic_completed"] is True
+
+    def test_default_profile_has_diagnostic_not_completed(self, tmp_path: Path):
+        _, parsed = get_or_create_profile("fresh_learner", base_dir=tmp_path)
+        assert parsed["frontmatter"]["diagnostic_completed"] is False
+
+    def test_legacy_profile_without_flag_parses_as_not_completed(self, tmp_path: Path):
+        user_dir = tmp_path / "legacy_learner"
+        user_dir.mkdir(parents=True)
+        (user_dir / "LEARNING.md").write_text(
+            "---\nusername: legacy_learner\npreferred_ui: light\n"
+            "tutor_style: solveit\nunderstanding_level: intermediate\n"
+            "---\n\n# Learning profile — legacy_learner\n",
+            encoding="utf-8",
+        )
+        _, parsed = get_or_create_profile("legacy_learner", base_dir=tmp_path)
+        assert parsed["frontmatter"]["diagnostic_completed"] is False
+
+    def test_ui_only_lesson_opened_sets_preferred_ui_without_course(self, tmp_path: Path):
+        """Explicit player switch (ui-only event) persists preferred_ui and
+        touches no course entries; opening lessons no longer sends ui (Issue #72)."""
+        record_learner_event(
+            username="ui_learner",
+            event_type="lesson_opened",
+            payload={"ui": "classic"},
+            base_dir=tmp_path,
+        )
+        _, parsed = get_or_create_profile("ui_learner", base_dir=tmp_path)
+        assert parsed["frontmatter"]["preferred_ui"] == "classic"
+        assert parsed["courses_taken"] == []
+
     def test_realistic_unblock_strategies_multi_modal_inference(self):
         # Multiple realistic unblock strategies selected: breakdown_code + visual_numbers + hand_written
         q = LearnerQuestionnaire(
