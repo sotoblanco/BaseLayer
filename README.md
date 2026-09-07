@@ -34,6 +34,7 @@ Anything under `courses/` with at least one lesson folder appears on the home pa
 |---|---|
 | **tinytorch** | A tiny neural-net library from scratch on NumPy (code, sheets, drawings) |
 | **llms-from-scratch** | Llama-style architecture, starting with drawings of the periphery |
+| **data-modeling** | Foundational data modeling across five chapters from raw records to structured tables |
 | **pytorch** | First tensor exercise |
 
 ### Ways to learn (modalities)
