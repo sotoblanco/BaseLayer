@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.50](https://github.com/sotoblanco/BaseLayer/compare/v0.1.49...v0.1.50) (2026-09-07)
+
+
+### Bug Fixes
+
+* stop Run console echoing test assertions on failure ([#106](https://github.com/sotoblanco/BaseLayer/issues/106)) ([#109](https://github.com/sotoblanco/BaseLayer/issues/109)) ([287878e](https://github.com/sotoblanco/BaseLayer/commit/287878e75237ddd260be1bcd2de45c8d9ab57599))
+* summary cache sees lesson file edits via recursive mtime ([#67](https://github.com/sotoblanco/BaseLayer/issues/67)) ([#110](https://github.com/sotoblanco/BaseLayer/issues/110)) ([b8a9b6f](https://github.com/sotoblanco/BaseLayer/commit/b8a9b6fae848717a0a6bc13a3ad170e578a87bd2))
+
 ### [0.1.49](https://github.com/sotoblanco/BaseLayer/compare/v0.1.48...v0.1.49) (2026-09-07)
 
 
