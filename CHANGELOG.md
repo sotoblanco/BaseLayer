@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.46](https://github.com/sotoblanco/BaseLayer/compare/v0.1.45...v0.1.46) (2026-09-07)
+
+
+### Features
+
+* spreadsheet and drawing lessons can actually pass ([#75](https://github.com/sotoblanco/BaseLayer/issues/75)) ([#103](https://github.com/sotoblanco/BaseLayer/issues/103)) ([06838e9](https://github.com/sotoblanco/BaseLayer/commit/06838e914b26901261b1c78ced8b1db986271860))
+
 ### [0.1.45](https://github.com/sotoblanco/BaseLayer/compare/v0.1.44...v0.1.45) (2026-09-07)
 
 ### [0.1.44](https://github.com/sotoblanco/BaseLayer/compare/v0.1.43...v0.1.44) (2026-09-07)
