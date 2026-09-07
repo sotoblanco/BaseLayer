@@ -17,6 +17,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from sandbox_libs import SANDBOX_LIBRARIES
+
 # Constants for tool execution bounds
 MAX_MATERIAL_CHARS = 16_000
 MAX_LESSONS_PER_COURSE = 8
@@ -402,7 +404,7 @@ def get_platform_content_tools() -> PlatformToolsResult:
         ),
     }
 
-    installed_libs = ["numpy", "torch", "matplotlib"]
+    installed_libs = list(SANDBOX_LIBRARIES)
 
     pedagogical_guidelines = [
         "Use 'drawing' when the learner needs to grasp architecture or data flow before writing code.",

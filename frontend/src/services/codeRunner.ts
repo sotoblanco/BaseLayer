@@ -11,6 +11,7 @@
 import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
 import { sanitizeRunStderr } from '../runOutput';
+import { isMissingModuleError, libraryHelpHint, missingModule } from '../sandboxLibs';
 
 export interface RunResult {
   stdout: string;
@@ -167,59 +168,77 @@ export async function executeCode(options: RunOptions): Promise<RunResult> {
 
   const mustUseServer = forceServer || requiresServerExecution(code, test_code, language);
 
+  const runOnServer = async (): Promise<RunResult> => {
+    // Server execution fallback
+    onStatusUpdate?.('Sending to execution server...');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/run`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        code,
+        test_code,
+        language,
+        is_submit: isSubmit,
+        course_slug: courseSlug,
+        lesson_slug: lessonSlug,
+      }),
+    });
+
+    const runError = messageForRunStatus(response.status);
+    if (runError) {
+      if (response.status === 401) {
+        throw new Error('AUTH_401');
+      }
+      return {
+        stdout: '',
+        stderr: runError,
+        exit_code: -1,
+        engine: 'server',
+      };
+    }
+
+    const data = await response.json();
+    // Detect on raw stderr first: the #106 sanitizer below must not eat the
+    // `No module named` line before we parse it.
+    const module = missingModule(data.stderr || '');
+    // Defense in depth (issue #106): the server sanitizes /run stderr, but an
+    // older backend could still echo assert source lines with expected values.
+    // Strip the answer key here too whenever hidden tests ran.
+    const serverStderr: string = data.stderr || '';
+    let stderr = test_code.trim() ? sanitizeRunStderr(serverStderr) : serverStderr;
+    // Missing library on the server too: explain how to add it instead of
+    // leaving a bare ModuleNotFoundError.
+    if (module) stderr = `${stderr}\n\n${libraryHelpHint(module)}`;
+    return {
+      stdout: data.stdout || '',
+      stderr,
+      exit_code: data.exit_code ?? 0,
+      engine: 'server',
+    };
+  };
+
   if (!mustUseServer) {
     try {
-      return await runWithPyodide(code, test_code, 7000, onStatusUpdate);
+      const local = await runWithPyodide(code, test_code, 7000, onStatusUpdate);
+      if (local.exit_code === 0 || !isMissingModuleError(local.stderr)) {
+        return local;
+      }
+      // Browser lacks the module (e.g. embeddings): retry once on the server,
+      // which has the full sandbox set, before reporting the error.
+      onStatusUpdate?.('Module not in browser runtime, retrying on server...');
+      return await runOnServer();
     } catch (err) {
       // If client runner fails or worker isn't supported, fall back cleanly to server
       console.warn('Pyodide run failed, falling back to server /run:', err);
     }
   }
 
-  // Server execution fallback
-  onStatusUpdate?.('Sending to execution server...');
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/run`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      code,
-      test_code,
-      language,
-      is_submit: isSubmit,
-      course_slug: courseSlug,
-      lesson_slug: lessonSlug,
-    }),
-  });
-
-  const runError = messageForRunStatus(response.status);
-  if (runError) {
-    if (response.status === 401) {
-      throw new Error('AUTH_401');
-    }
-    return {
-      stdout: '',
-      stderr: runError,
-      exit_code: -1,
-      engine: 'server',
-    };
-  }
-
-  const data = await response.json();
-  // Defense in depth (issue #106): the server sanitizes /run stderr, but an
-  // older backend could still echo assert source lines with expected values.
-  // Strip the answer key here too whenever hidden tests ran.
-  const serverStderr: string = data.stderr || '';
-  return {
-    stdout: data.stdout || '',
-    stderr: test_code.trim() ? sanitizeRunStderr(serverStderr) : serverStderr,
-    exit_code: data.exit_code ?? 0,
-    engine: 'server',
-  };
+  return runOnServer();
 }
