@@ -27,6 +27,7 @@ from typing import Any, Literal
 from agentic_tools import CuratedCourseResult, CuratedLessonBlueprint
 from agentic_workflow import materialize_curated_course
 from sandbox_exec import SandboxUnavailableError, execute_in_sandbox, is_docker_daemon_failure
+from sandbox_libs import SANDBOX_LIBRARIES, SANDBOX_LIBRARIES_TEXT
 
 MIN_IMPORT_LESSONS = 4
 MAX_IMPORT_LESSONS = 6
@@ -38,8 +39,9 @@ MAX_CODE_FIELD_CHARS = 30_000
 # What the BaseLayer sandbox (Docker `sandbox-runner` / Modal) actually installs.
 # Everything else must come from the Python standard library. pandas/sklearn/
 # requests etc. are NOT safe to assume and make a lesson un-runnable.
-INSTALLED_SANDBOX_LIBRARIES = ("numpy", "torch", "matplotlib")
-INSTALLED_SANDBOX_LIBRARY_TEXT = ", ".join(INSTALLED_SANDBOX_LIBRARIES)
+# Canonical list lives in sandbox_libs.py (shared with the planners).
+INSTALLED_SANDBOX_LIBRARIES = SANDBOX_LIBRARIES
+INSTALLED_SANDBOX_LIBRARY_TEXT = SANDBOX_LIBRARIES_TEXT
 
 _REQUIRED_LESSON_FIELDS = (
     "title",
@@ -464,7 +466,8 @@ def _check_imports(lesson: dict[str, Any], lesson_index: int) -> None:
                     f"Lesson {lesson_index} ({lesson.get('title', 'untitled')}) imports "
                     f'"{root}", which is not available in the BaseLayer sandbox. '
                     f"Only the Python standard library plus {INSTALLED_SANDBOX_LIBRARY_TEXT} are installed. "
-                    "Ask the model to rewrite the lesson without that package."
+                    "Ask the model to rewrite the lesson without that package, or add it "
+                    "to the sandbox first (docs/adding-sandbox-libraries.md)."
                 )
 
 

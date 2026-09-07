@@ -10,6 +10,7 @@
 
 import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
+import { isMissingModuleError, libraryHelpHint, missingModule } from '../sandboxLibs';
 
 export interface RunResult {
   stdout: string;
@@ -166,55 +167,70 @@ export async function executeCode(options: RunOptions): Promise<RunResult> {
 
   const mustUseServer = forceServer || requiresServerExecution(code, test_code, language);
 
+  const runOnServer = async (): Promise<RunResult> => {
+    // Server execution fallback
+    onStatusUpdate?.('Sending to execution server...');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/run`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        code,
+        test_code,
+        language,
+        is_submit: isSubmit,
+        course_slug: courseSlug,
+        lesson_slug: lessonSlug,
+      }),
+    });
+
+    const runError = messageForRunStatus(response.status);
+    if (runError) {
+      if (response.status === 401) {
+        throw new Error('AUTH_401');
+      }
+      return {
+        stdout: '',
+        stderr: runError,
+        exit_code: -1,
+        engine: 'server',
+      };
+    }
+
+    const data = await response.json();
+    const stderr = data.stderr || '';
+    const module = missingModule(stderr);
+    return {
+      stdout: data.stdout || '',
+      // Missing library on the server too: explain how to add it instead of
+      // leaving a bare ModuleNotFoundError.
+      stderr: module ? `${stderr}\n\n${libraryHelpHint(module)}` : stderr,
+      exit_code: data.exit_code ?? 0,
+      engine: 'server',
+    };
+  };
+
   if (!mustUseServer) {
     try {
-      return await runWithPyodide(code, test_code, 7000, onStatusUpdate);
+      const local = await runWithPyodide(code, test_code, 7000, onStatusUpdate);
+      if (local.exit_code === 0 || !isMissingModuleError(local.stderr)) {
+        return local;
+      }
+      // Browser lacks the module (e.g. embeddings): retry once on the server,
+      // which has the full sandbox set, before reporting the error.
+      onStatusUpdate?.('Module not in browser runtime, retrying on server...');
+      return await runOnServer();
     } catch (err) {
       // If client runner fails or worker isn't supported, fall back cleanly to server
       console.warn('Pyodide run failed, falling back to server /run:', err);
     }
   }
 
-  // Server execution fallback
-  onStatusUpdate?.('Sending to execution server...');
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/run`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      code,
-      test_code,
-      language,
-      is_submit: isSubmit,
-      course_slug: courseSlug,
-      lesson_slug: lessonSlug,
-    }),
-  });
-
-  const runError = messageForRunStatus(response.status);
-  if (runError) {
-    if (response.status === 401) {
-      throw new Error('AUTH_401');
-    }
-    return {
-      stdout: '',
-      stderr: runError,
-      exit_code: -1,
-      engine: 'server',
-    };
-  }
-
-  const data = await response.json();
-  return {
-    stdout: data.stdout || '',
-    stderr: data.stderr || '',
-    exit_code: data.exit_code ?? 0,
-    engine: 'server',
-  };
+  return runOnServer();
 }
