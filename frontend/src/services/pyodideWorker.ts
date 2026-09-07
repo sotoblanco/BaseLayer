@@ -81,6 +81,23 @@ if 'main' in sys.modules:
 exit_code = 0
 error_trace = ""
 
+def _sanitize_traceback(full):
+    # Mirrors backend/run_output.py + frontend/runOutput.ts (issue #106):
+    # the Tests tab is hidden from students, so never echo assert source
+    # lines (expected values) or AssertionError details to the Run console.
+    cleaned = []
+    for line in full.strip().splitlines():
+        s = line.strip()
+        if s.startswith("assert "):
+            continue
+        if s and set(s) <= set("^~*|"):
+            continue
+        if s.startswith("AssertionError"):
+            cleaned.append("AssertionError: a test assertion failed. Check your work and try again.")
+            continue
+        cleaned.append(line)
+    return "\\n".join(cleaned)
+
 try:
     # Load and execute main.py
     spec = importlib.util.spec_from_file_location("main", "/home/pyodide/main.py")
@@ -98,15 +115,12 @@ try:
     if test_snippet.strip():
         exec(test_snippet, globals())
 
-except AssertionError as e:
+except AssertionError:
     exit_code = 1
-    # Give clean assert message if present, or traceback
-    lines = traceback.format_exc().strip().splitlines()
-    error_trace = "\\n".join(lines[-3:]) if len(lines) >= 3 else traceback.format_exc()
-except Exception as e:
+    error_trace = _sanitize_traceback(traceback.format_exc())
+except Exception:
     exit_code = 1
-    lines = traceback.format_exc().strip().splitlines()
-    error_trace = "\\n".join(lines[-4:]) if len(lines) >= 4 else traceback.format_exc()
+    error_trace = _sanitize_traceback(traceback.format_exc())
 
 captured_stdout = sys.stdout.getvalue()
 captured_stderr = sys.stderr.getvalue()

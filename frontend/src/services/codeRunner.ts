@@ -10,6 +10,7 @@
 
 import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
+import { sanitizeRunStderr } from '../runOutput';
 
 export interface RunResult {
   stdout: string;
@@ -211,9 +212,13 @@ export async function executeCode(options: RunOptions): Promise<RunResult> {
   }
 
   const data = await response.json();
+  // Defense in depth (issue #106): the server sanitizes /run stderr, but an
+  // older backend could still echo assert source lines with expected values.
+  // Strip the answer key here too whenever hidden tests ran.
+  const serverStderr: string = data.stderr || '';
   return {
     stdout: data.stdout || '',
-    stderr: data.stderr || '',
+    stderr: test_code.trim() ? sanitizeRunStderr(serverStderr) : serverStderr,
     exit_code: data.exit_code ?? 0,
     engine: 'server',
   };

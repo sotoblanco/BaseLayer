@@ -262,6 +262,104 @@ def test_is_docker_daemon_failure():
     assert not is_docker_daemon_failure("")
 
 
+LEAKING_ASSERT_STDERR = (
+    "Traceback (most recent call last):\n"
+    '  File "/tmp/xyz/test.py", line 4, in <module>\n'
+    "    test_add()\n"
+    "    ~~~~~~~~^^\n"
+    '  File "/tmp/xyz/test.py", line 3, in test_add\n'
+    '    assert add(2,3)==5, "expected 5"\n'
+    "           ^^^^^^^^^^^\n"
+    "AssertionError: expected 5\n"
+)
+
+
+class TestSanitizeRunStderr:
+    """Issue #106: the Run console must not echo test assertions (answer key)."""
+
+    def test_strips_assert_source_and_carets_but_keeps_test_name(self):
+        from run_output import sanitize_run_stderr
+
+        cleaned = sanitize_run_stderr(LEAKING_ASSERT_STDERR)
+        assert "assert add(2,3)==5" not in cleaned
+        assert "expected 5" not in cleaned
+        assert "^^^" not in cleaned
+        assert "~~~" not in cleaned
+        # Learner still knows which check failed.
+        assert "in test_add" in cleaned
+
+    def test_generalizes_bare_assertion_error(self):
+        from run_output import sanitize_run_stderr
+
+        cleaned = sanitize_run_stderr("Traceback (most recent call last):\nAssertionError\n")
+        assert "AssertionError" in cleaned
+        assert "a test assertion failed" in cleaned
+
+    def test_preserves_non_assert_errors(self):
+        from run_output import sanitize_run_stderr
+
+        stderr = (
+            "Traceback (most recent call last):\n"
+            '  File "/tmp/xyz/main.py", line 2, in <module>\n'
+            "    print(unknown_name)\n"
+            "NameError: name 'unknown_name' is not defined\n"
+        )
+        assert sanitize_run_stderr(stderr) == stderr
+
+    def test_empty_passthrough(self):
+        from run_output import sanitize_run_stderr
+
+        assert sanitize_run_stderr("") == ""
+
+
+class TestRunEndpointSanitizesAnswerKey:
+    def test_failing_assert_response_hides_expected_values(
+        self, client: TestClient, auth_headers, monkeypatch
+    ):
+        import main as main_module
+
+        monkeypatch.setattr(
+            main_module,
+            "execute_docker",
+            lambda *a, **k: {"stdout": "", "stderr": LEAKING_ASSERT_STDERR, "exit_code": 1},
+        )
+        response = client.post(
+            "/run",
+            json={
+                "code": "def add(a,b):\n    return a+b+1\n",
+                "language": "python",
+                "test_code": "from main import add\nassert add(2,3)==5\n",
+                "is_submit": True,
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["exit_code"] == 1
+        assert "assert add(2,3)==5" not in body["stderr"]
+        assert "expected 5" not in body["stderr"]
+        assert "a test assertion failed" in body["stderr"]
+
+    def test_student_only_error_without_tests_is_untouched(
+        self, client: TestClient, auth_headers, monkeypatch
+    ):
+        import main as main_module
+
+        raw = "Traceback (most recent call last):\nNameError: name 'x' is not defined\n"
+        monkeypatch.setattr(
+            main_module,
+            "execute_docker",
+            lambda *a, **k: {"stdout": "", "stderr": raw, "exit_code": 1},
+        )
+        response = client.post(
+            "/run",
+            json={"code": "print(x)", "language": "python"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["stderr"] == raw
+
+
 class TestRunLearnerTelemetry:
     """POST /run must record run_result with an explicit submit flag and lesson
     address (Issue #72) — never infer is_submit from test_code presence."""
