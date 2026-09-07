@@ -190,17 +190,66 @@ Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). A visi
 
 ## How it works (architecture)
 
-**Proxy.** Vite (`5173`) forwards `/file-courses`, `/run`, `/ai`, … to FastAPI (`8000`).
+```mermaid
+flowchart TB
+    subgraph Client["Browser (React + Vite :5173)"]
+        direction TB
+        UI["UI and Studio Views<br/>(FileCodingPage, UXLightPage, DrawingCanvas)"]
+        Auth["AuthContext<br/>(Local dev auto-login / OAuth2)"]
+        Router["codeRunner Service<br/>(Intelligent Execution Router)"]
+        Pyodide["Pyodide Web Worker<br/>(Wasm In-Browser Execution)"]
 
-**Discovery.** The API scans `courses/` on request. New folders appear after refresh.
+        UI --> Router
+        Router -->|"Python and NumPy<br/>(Zero Docker overhead)"| Pyodide
+    end
 
-**Run.** Submit sends code to `/run`. The backend writes `main.py` or `main.rs` in a temp dir, runs `sandbox-runner` (or a Modal sandbox in the cloud), returns stdout/stderr. Each run is a clean interpreter (`PYTHONDONTWRITEBYTECODE=1`).
+    subgraph Backend["FastAPI Backend (:8000)"]
+        direction TB
+        AuthBackend["Auth and Me Router<br/>(local-learner fallback / JWT)"]
+        CoursesBackend["File Courses Router<br/>(courses/ discovery and drawings)"]
+        AI["SocratiQ AI Service<br/>(Ollama / Gemini / Course Builder)"]
+        RunEndpoint["POST /run<br/>(Sandbox Execution Handler)"]
+    end
 
-**Add a library to the sandbox**
+    Router -->|"Native libs / torch / Rust / fallback<br/>HTTP POST /run"| RunEndpoint
 
-1. Install it in the sandbox image (local Dockerfile under `research/sandbox/` and/or `sandbox_image` in `backend/modal_app.py`).
-2. Rebuild (`./dev.sh` locally).
-3. Use it in `main.py` / tests.
+    subgraph Sandboxes["Execution Sandboxes"]
+        DockerDaemon["Local Docker Daemon<br/>(image: sandbox-runner)<br/>Capped CPU, memory, and no network"]
+        ModalCloud["Cloud Modal Sandbox<br/>(EXECUTION_ENV=modal)<br/>Serverless GPU / CPU"]
+    end
+
+    RunEndpoint -->|"EXECUTION_ENV=docker"| DockerDaemon
+    RunEndpoint -->|"EXECUTION_ENV=modal"| ModalCloud
+```
+
+### Architectural Pillars
+
+1. **Hybrid Execution Engine (`codeRunner`)**:
+   - **In-Browser WebAssembly (Pyodide)**: Runs pure Python and NumPy code directly inside an isolated browser Web Worker with dynamic ESM imports. Exercises like TinyTorch run instantly with ~0ms latency, require zero Docker daemon, and consume no backend compute.
+   - **Backend Sandbox Fallback (`/run`)**: Code importing native C++ extensions like PyTorch (`import torch`), Transformers, or Rust automatically routes to the backend sandbox.
+   - **Execution Sandboxing**: Backend runs are isolated via Docker (`sandbox-runner` image with memory, CPU, and process caps and no network access) or remote serverless sandboxes via Modal (`EXECUTION_ENV=modal`).
+
+2. **Frictionless Local Auth & File System Discovery**:
+   - Courses are simple folder hierarchies under `courses/` (`README.md`, `main.py`, `test.py`, `metadata.json`).
+   - On `localhost`, `ALLOW_LOCAL_WELCOME=true` automatically drops the learner into a local development session (`local-learner`), removing sign-in walls when exploring courses locally.
+
+3. **Multi-Modal Learning Studio**:
+   - **Interactive Code**: Monaco editor with real-time test verification and student/author test visibility.
+   - **Spreadsheet Integration**: Live Google Sheets embeds for visual tensor operations (`MMULT`, `ARRAYFORMULA`, broadcasting).
+   - **Freehand Canvas**: Drawing exercises evaluated against architectural questions using multimodal vision LLMs.
+   - **Adaptive Tutoring & Profiling**: SocratiQ AI tutor using the Solveit method and living `data/learners/{user}/LEARNING.md` profile tracking mastery signals.
+
+---
+
+## Core Features
+
+- **Zero-Install Client Execution**: Test-drive Python and NumPy exercises in WebAssembly directly in Chrome/Firefox/Safari without starting Docker.
+- **File-Based Curriculums**: Build and share courses as standard markdown and python files in Git.
+- **Multi-Modal Workspaces**: Code exercises, interactive Google Sheets, and freehand drawing diagrams on one platform.
+- **SocratiQ Pedagogical AI Tutor**: Socratic hints and guided questions without code dumping; supports Ollama, Gemini, Groq, OpenAI, and OpenRouter.
+- **Agentic Course Builder**: 4-step tool-calling agent generating micro-step curricula adapted to your personal learning profile.
+- **Living Learner Profile (`LEARNING.md`)**: Durable tracking of struggle signals, test attempts, velocity, and modality preferences.
+- **Dual Deployment**: Run 100% locally on your machine or deploy serverless to Modal cloud with one command.
 
 ---
 
