@@ -1708,4 +1708,3 @@ class TestFastCourseSummaryAndCaching:
         assert "generated-numpy-basics" in courses
         assert courses["generated-numpy-basics"]["is_generated"] is True
         assert courses["generated-numpy-basics"]["modalities"] == ["code"]
-

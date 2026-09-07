@@ -501,35 +501,45 @@ def _course_skills(meta: dict, lessons: list[FileLesson]) -> list[str]:
     return _normalize_skills(meta.get("skills")) or _unique_lesson_skills(lessons)
 
 
-def _detect_course_modalities(course_dir: Path) -> list[str]:
-    """Detect which modalities (code, spreadsheet, drawing) are present in the course."""
-    modalities = set()
+def _is_sheet_or_drawing_metadata(path: Path) -> str | None:
     try:
-        for path in course_dir.rglob("*"):
-            if path.is_file():
-                name = path.name
-                if name in ("main.py", "main.rs"):
-                    modalities.add("code")
-                elif name == "question.png":
-                    modalities.add("drawing")
-                elif name == "metadata.json":
-                    try:
-                        content = path.read_text(encoding="utf-8")
-                        if '"exercise_type": "spreadsheet"' in content or '"google_sheet_id"' in content:
-                            modalities.add("spreadsheet")
-                        elif '"exercise_type": "drawing"' in content:
-                            modalities.add("drawing")
-                    except OSError:
-                        pass
+        text = path.read_text(encoding="utf-8")
+        if '"spreadsheet"' in text or '"google_sheet_id"' in text:
+            return "spreadsheet"
+        if '"drawing"' in text:
+            return "drawing"
     except OSError:
         pass
-    if not modalities:
-        modalities.add("code")
-    ordered = []
-    for m in ("code", "spreadsheet", "drawing"):
-        if m in modalities:
-            ordered.append(m)
-    return ordered
+    return None
+
+
+def _check_file_modality(path: Path) -> str | None:
+    name = path.name
+    if name in ("main.py", "main.rs"):
+        return "code"
+    if name == "question.png":
+        return "drawing"
+    if name == "metadata.json":
+        return _is_sheet_or_drawing_metadata(path)
+    return None
+
+
+def _scan_dir_modalities(course_dir: Path) -> set[str]:
+    mods: set[str] = set()
+    for p in course_dir.rglob("*"):
+        m = _check_file_modality(p)
+        if m:
+            mods.add(m)
+    return mods
+
+
+def _detect_course_modalities(course_dir: Path) -> list[str]:
+    """Detect which modalities (code, spreadsheet, drawing) are present in the course."""
+    try:
+        mods = _scan_dir_modalities(course_dir)
+    except OSError:
+        return ["code"]
+    return [m for m in ("code", "spreadsheet", "drawing") if m in mods] or ["code"]
 
 
 def _is_course_generated(course_slug: str) -> bool:
