@@ -32,12 +32,13 @@ import type {
 } from './types';
 import type { ShareKind, SharePayload } from './shareCard';
 import { API_BASE_URL } from '../config';
-import { messageForRunStatus } from '../runErrors';
+import { executeCode } from '../services/codeRunner';
 import { testsToRun } from '../testsToRun';
 import { useAuth } from '../context/AuthContext';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 import { isAuthorRole } from '../testVisibility';
+import { isLocalHost } from '../isLocalHost';
 
 export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
   const { slug, lessonSlug } = useParams<{ slug: string; lessonSlug?: string }>();
@@ -105,10 +106,12 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
           fetchMyProgress(),
         ]);
         if (res.status === 401) {
-          logout();
-          setIsAuthModalOpen(true);
-          setCourseError('Your session has expired. Please sign in again.');
-          return;
+          if (!isLocalHost()) {
+            logout();
+            setIsAuthModalOpen(true);
+            setCourseError('Your session has expired. Please sign in again.');
+            return;
+          }
         }
         if (res.ok) {
           const data: FileCourse = await res.json();
@@ -140,7 +143,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       }
     };
 
-    if (!isAuthenticated) {
+    if (!isAuthenticated && !isLocalHost()) {
       setIsAuthModalOpen(true);
       return;
     }
@@ -271,30 +274,19 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       if (token) headers.Authorization = `Bearer ${token}`;
 
       const language = lesson.language || 'python';
-      const body = customCommand
-        ? { code: customCommand, language }
-        : {
-            code,
-            test_code: testsToRun(lesson.test_code || '', language, isSubmit),
-            language,
-          };
+      const testCode = customCommand
+        ? ''
+        : testsToRun(lesson.test_code || '', language, isSubmit);
 
-      const res = await fetch(`${API_BASE_URL}/run`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
+      const runCode = customCommand || code;
+
+      const data = await executeCode({
+        code: runCode,
+        test_code: testCode,
+        language,
+        token,
+        onStatusUpdate: (msg) => pushOutput({ type: 'stdout', text: msg }),
       });
-      const runError = messageForRunStatus(res.status);
-      if (runError) {
-        if (res.status === 401) {
-          logout();
-          setIsAuthModalOpen(true);
-        }
-        pushOutput({ type: 'error', text: runError });
-        if (isSubmit) triggerFailure(runError);
-        return;
-      }
-      const data = await res.json();
 
       if (data.stdout) pushOutput({ type: 'stdout', text: data.stdout });
       if (data.stderr) pushOutput({ type: 'stderr', text: data.stderr });
@@ -308,9 +300,14 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
           triggerSuccess(data.stdout || 'All tests passed.');
         } else triggerFailure(data.stderr || data.stdout || `Exited with code ${data.exit_code}`);
       }
-    } catch {
-      pushOutput({ type: 'error', text: 'Failed to connect to execution server.' });
-      if (isSubmit) triggerFailure('Failed to connect to execution server.');
+    } catch (err: any) {
+      if (err?.message === 'AUTH_401') {
+        logout();
+        setIsAuthModalOpen(true);
+      }
+      const errText = err?.message || 'Failed to execute code.';
+      pushOutput({ type: 'error', text: errText });
+      if (isSubmit) triggerFailure(errText);
     } finally {
       setIsRunning(false);
       setIsSubmitting(false);

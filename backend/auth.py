@@ -84,8 +84,16 @@ def _decode_and_lookup_user(token: str, session: Session) -> User:
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
+    token: str | None = Depends(oauth2_scheme_optional), session: Session = Depends(get_session)
 ) -> User:
+    if not token and local_welcome_enabled():
+        return _get_or_create_local_user("local-learner", session)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return _decode_and_lookup_user(token, session)
 
 
@@ -95,6 +103,8 @@ async def get_current_user_for_media(
     session: Session = Depends(get_session),
 ) -> User:
     token = token_header or token_query
+    if not token and local_welcome_enabled():
+        return _get_or_create_local_user("local-learner", session)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -7,7 +7,7 @@ import { Play, RotateCw, ChevronLeft, ChevronRight, BookOpen } from 'lucide-reac
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
-import { messageForRunStatus } from '../runErrors';
+import { executeCode, preloadPyodide } from '../services/codeRunner';
 import { Panel, Group, Separator } from "react-resizable-panels";
 import { UserMenu } from '../components/UserMenu';
 import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
@@ -85,37 +85,24 @@ export default function CodingPage() {
         }
     }, [exercise]);
 
+    useEffect(() => {
+        preloadPyodide();
+    }, []);
+
     const handleRun = async () => {
         if (!exercise) return;
 
         setIsRunning(true);
         setOutput("Running...");
 
-        const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         try {
-            const response = await fetch(`${API_BASE_URL}/run`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    code,
-                    test_code: exercise.test_code,
-                    language: exercise.language || "python"
-                })
+            const data = await executeCode({
+                code,
+                test_code: exercise.test_code,
+                language: exercise.language || "python",
+                token,
+                onStatusUpdate: (msg) => setOutput(msg),
             });
-
-            const runError = messageForRunStatus(response.status);
-            if (runError) {
-                setOutput(runError);
-                return;
-            }
-
-            const data = await response.json();
 
             if (data.exit_code === 0) {
                 setOutput(data.stdout || "Success!");
@@ -129,8 +116,8 @@ export default function CodingPage() {
                 const outputMsg = data.stdout ? `\nOutput:\n${data.stdout}` : "";
                 setOutput(`${errorMsg}${outputMsg}`.trim() || `Process exited with code ${data.exit_code}`);
             }
-        } catch (e) {
-            setOutput("Failed to connect to execution server.");
+        } catch (e: any) {
+            setOutput("Execution failed: " + (e?.message || "Unknown error"));
         } finally {
             setIsRunning(false);
         }
