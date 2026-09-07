@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.42](https://github.com/sotoblanco/BaseLayer/compare/v0.1.41...v0.1.42) (2026-09-07)
+
+
+### Features
+
+* **ai:** personalize course prompt with student learning profile and enhance quality ([#97](https://github.com/sotoblanco/BaseLayer/issues/97)) ([336a107](https://github.com/sotoblanco/BaseLayer/commit/336a1072ee5c88fb24229d295789849c9f0043b6))
+
 ### [0.1.41](https://github.com/sotoblanco/BaseLayer/compare/v0.1.40...v0.1.41) (2026-09-07)
 
 
