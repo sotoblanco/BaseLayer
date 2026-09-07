@@ -3,5 +3,10 @@
   "google_sheet_id": null,
   "skills": [
     "Execution blueprint"
+  ],
+  "hints": [
+    "Start with the toy operation z = x + y and predict which layer handles each step before drawing the arrows.",
+    "Name one concrete technical detail per layer (user code line, __add__ magic method, np.add, SIMD/AVX) — the rubric checks for specifics, not generic boxes.",
+    "Inspect the seams: the Framework-to-Backend arrow must read Dispatch and the Backend-to-Hardware arrow Execution."
   ]
 }

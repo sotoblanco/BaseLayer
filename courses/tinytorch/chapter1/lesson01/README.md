@@ -33,5 +33,6 @@ Task:
 - [ ] Click on **Make a private copy**, fill in the sheet, and paste the link to your copy
 - [ ] Use the correct Google Sheets formulas to get the matrix shape and size
 - [ ] Multiply the matrix by 2 and observe the result
+- [ ] Paste your copy link and press **Check my work**: the self-check cells `F7:G8` flip to `TRUE` when each formula is right
 
 > If you did everything correctly you will get a message saying the spreadsheet lesson is complete, and you can move on to the next lesson.

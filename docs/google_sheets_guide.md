@@ -79,6 +79,10 @@ the backend reads the copied sheet and checks the expected cells.
 
 - `cell` is an A1 reference (e.g. `B2`). Numeric and string expected values are both supported;
   numbers are compared numerically (`6` == `6.0`).
+- Tip: point `success_cells` at the template's own self-check cells when it has them
+  (e.g. cells that flip to `TRUE` or `✅` once the learner's formulas are right).
+  tinytorch `chapter1/lesson01` checks `F7:G8` for `TRUE`; `chapter1/lesson04`
+  checks `K8`, `K18`, `L29` for `✅`.
 - Only lessons that define `success_cells` can be auto-verified. The "Check my work" button in the
   light player calls `POST /file-courses/{course}/{lesson}/verify-sheet` with the student's copy
   link. Verification requires a Google service account

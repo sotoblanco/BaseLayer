@@ -4,5 +4,10 @@
   "stroke_width": 4,
   "skills": [
     "Matrix indexing"
+  ],
+  "hints": [
+    "Scan the matrix row by row for the toy target 50 — say each value out loud so you don't skip a row.",
+    "Predict the circle's position first (which row and column hold 50), then draw one clean loop around that cell only.",
+    "Inspect before submitting: exactly one circle, no stray marks — extra marks fail the rubric."
   ]
 }
