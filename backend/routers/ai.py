@@ -140,9 +140,7 @@ class AIStatusResponse(BaseModel):
 
 class CoursePreferencesPayload(BaseModel):
     preferred_modalities: list[str] | None = None
-    exercise_format: (
-        Literal["micro_steps", "macro_challenges", "guided_completion"] | None
-    ) = None
+    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] | None = None
     explanation_length: Literal["short", "thorough"] | None = None
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"] | None = None
     understanding_level: Literal["beginner", "intermediate", "advanced"] | None = None

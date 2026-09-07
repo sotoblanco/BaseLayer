@@ -559,26 +559,28 @@ class TestAgenticWorkflowExecution:
         def fake_llm(prompt: str) -> str:
             assert "GUIDED CODE COMPLETION DIRECTIVE" in prompt
             assert "['code', 'spreadsheet']" in prompt or "code, spreadsheet" in prompt
-            return json.dumps({
-                "title": "Custom Tailored Course",
-                "description": "Tailored desc",
-                "narrative_arc": "Arc",
-                "lessons": [
-                    {
-                        "title": "Lesson 1",
-                        "modality": "code",
-                        "objective": "Guided task",
-                        "toy_data": "x = [1, 2]",
-                        "expected_result": "[1, 2]",
-                        "micro_task": "Fill in ____",
-                        "inspect_prompt": "Inspect x",
-                        "curiosity_prompt": "Why?",
-                        "starter_code": "x = ____\n",
-                        "test_code": "from main import x\nassert x == [1, 2]\n",
-                        "solution_code": "x = [1, 2]\n",
-                    }
-                ]
-            })
+            return json.dumps(
+                {
+                    "title": "Custom Tailored Course",
+                    "description": "Tailored desc",
+                    "narrative_arc": "Arc",
+                    "lessons": [
+                        {
+                            "title": "Lesson 1",
+                            "modality": "code",
+                            "objective": "Guided task",
+                            "toy_data": "x = [1, 2]",
+                            "expected_result": "[1, 2]",
+                            "micro_task": "Fill in ____",
+                            "inspect_prompt": "Inspect x",
+                            "curiosity_prompt": "Why?",
+                            "starter_code": "x = ____\n",
+                            "test_code": "from main import x\nassert x == [1, 2]\n",
+                            "solution_code": "x = [1, 2]\n",
+                        }
+                    ],
+                }
+            )
 
         workflow = AgenticCourseWorkflow(
             generate_text=fake_llm,
@@ -594,7 +596,7 @@ class TestAgenticWorkflowExecution:
                 "exercise_format": "guided_completion",
                 "tutor_style": "solveit",
                 "understanding_level": "beginner",
-            }
+            },
         )
 
         assert result.title == "Custom Tailored Course"
@@ -602,4 +604,3 @@ class TestAgenticWorkflowExecution:
         context_trace = next(t for t in result.tool_traces if t.tool_name == "get_context_learning")
         assert context_trace.details["preferred_modalities"] == ["code", "spreadsheet"]
         assert context_trace.details["understanding_level"] == "Beginner"
-

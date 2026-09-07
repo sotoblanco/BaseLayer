@@ -219,4 +219,3 @@ def test_ai_learning_path_instructions_with_course_preferences(client, auth_head
         # Verify personalization in response
         assert data["personalization"]["tutor_style"] == "solveit"
         assert data["personalization"]["explanation_length"] == "thorough"
-

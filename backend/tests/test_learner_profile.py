@@ -697,4 +697,3 @@ Advanced test runner.
             # Verify signal logged
             signals = parsed["signals"]
             assert any("Tailored course style for 'NumPy Broadcasting'" in s for s in signals)
-
