@@ -1619,6 +1619,45 @@ class TestFastCourseSummaryAndCaching:
         assert res2.json()[0]["title"] == "Updated Title"
         assert res2.json()[0]["lesson_count"] == 2
 
+    def test_mtime_cache_invalidates_on_lesson_file_edit(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
+        """Editing a file inside a lesson (e.g. its metadata.json, which feeds
+        summary modalities) must invalidate the summary cache even though no
+        directory entry was added or removed (Issue #67)."""
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "edit_course"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Edit Course")
+        # Chapter layout: lesson files sit 3 levels deep, where the old
+        # two-level mtime walk could not see content edits.
+        l1 = course_dir / "chapter1" / "lesson01"
+        l1.mkdir(parents=True)
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("pass")
+        lesson_meta = l1 / "metadata.json"
+        lesson_meta.write_text(json.dumps({"exercise_type": "code"}))
+
+        res1 = client.get("/file-courses/")
+        assert res1.status_code == 200
+        assert res1.json()[0]["modalities"] == ["code"]
+
+        # Flip the lesson to spreadsheet with a content-only edit: no directory
+        # entry is added or removed, so only the file's own mtime advances.
+        lesson_meta.write_text(
+            json.dumps({"exercise_type": "spreadsheet", "google_sheet_id": "abc"})
+        )
+        future = lesson_meta.stat().st_mtime + 50
+        os.utime(lesson_meta, (future, future))
+
+        res2 = client.get("/file-courses/")
+        assert res2.status_code == 200
+        assert "spreadsheet" in res2.json()[0]["modalities"]
+
     def test_cache_cleared_on_course_delete(
         self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
     ):

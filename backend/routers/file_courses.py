@@ -590,12 +590,19 @@ def clear_course_summary_cache() -> None:
 
 
 def _entry_tree_mtime(entry: Path) -> float:
+    """Latest mtime under entry, recursive but stat-only (no file reads).
+
+    Must descend all the way to lesson files: summary fields like modalities
+    are read from lesson-level metadata.json, so a content edit there has to
+    invalidate the cache even though no directory entry was added or removed.
+    """
     try:
         mtime = entry.stat().st_mtime
         if entry.is_dir():
             for sub in entry.iterdir():
-                if not sub.name.startswith("."):
-                    mtime = max(mtime, sub.stat().st_mtime)
+                if sub.name.startswith("."):
+                    continue
+                mtime = max(mtime, _entry_tree_mtime(sub))
         return mtime
     except OSError:
         return 0.0
