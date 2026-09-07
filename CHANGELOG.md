@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.53](https://github.com/sotoblanco/BaseLayer/compare/v0.1.52...v0.1.53) (2026-09-07)
+
+
+### Features
+
+* sandbox library help — canonical allowlist, server retry, author docs ([#112](https://github.com/sotoblanco/BaseLayer/issues/112)) ([49d609d](https://github.com/sotoblanco/BaseLayer/commit/49d609dba2f737bc2adc48be16230c3164c6c043)), closes [#2](https://github.com/sotoblanco/BaseLayer/issues/2)
+
 ### [0.1.52](https://github.com/sotoblanco/BaseLayer/compare/v0.1.51...v0.1.52) (2026-09-07)
 
 
