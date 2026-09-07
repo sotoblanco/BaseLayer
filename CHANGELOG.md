@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.49](https://github.com/sotoblanco/BaseLayer/compare/v0.1.48...v0.1.49) (2026-09-07)
+
+
+### Features
+
+* LEARNING.md drives player, tutor context and onboarding ([#72](https://github.com/sotoblanco/BaseLayer/issues/72)) ([#107](https://github.com/sotoblanco/BaseLayer/issues/107)) ([664edf9](https://github.com/sotoblanco/BaseLayer/commit/664edf9f24395782809e7ca24a043a804c766b52))
+
 ### [0.1.48](https://github.com/sotoblanco/BaseLayer/compare/v0.1.47...v0.1.48) (2026-09-07)
 
 ### [0.1.47](https://github.com/sotoblanco/BaseLayer/compare/v0.1.46...v0.1.47) (2026-09-07)
