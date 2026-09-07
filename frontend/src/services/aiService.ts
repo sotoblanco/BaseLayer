@@ -195,9 +195,18 @@ export interface ImportCourseResult extends BuildCourseResult {
     lesson_verifications?: LessonVerificationStatus[];
 }
 
+export interface CoursePreferences {
+    preferred_modalities?: string[];
+    exercise_format?: 'micro_steps' | 'macro_challenges' | 'guided_completion';
+    explanation_length?: 'short' | 'thorough';
+    tutor_style?: 'solveit' | 'socratic' | 'direct' | 'blooms';
+    understanding_level?: 'beginner' | 'intermediate' | 'advanced';
+}
+
 export const buildLearningCourse = async (
     topic: string,
     referenceText?: string,
+    coursePreferences?: CoursePreferences,
 ): Promise<BuildCourseResult> => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -213,7 +222,11 @@ export const buildLearningCourse = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ topic: topic.trim(), resources }),
+        body: JSON.stringify({
+            topic: topic.trim(),
+            resources,
+            course_preferences: coursePreferences,
+        }),
     });
 
     if (!response.ok) {
@@ -240,6 +253,7 @@ export interface CourseInstructionsResult {
 export const getCourseBuildInstructions = async (
     topic: string,
     referenceText?: string,
+    coursePreferences?: CoursePreferences,
 ): Promise<CourseInstructionsResult> => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -255,7 +269,11 @@ export const getCourseBuildInstructions = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ topic: topic.trim(), resources }),
+        body: JSON.stringify({
+            topic: topic.trim(),
+            resources,
+            course_preferences: coursePreferences,
+        }),
     });
 
     if (!response.ok) {

@@ -194,6 +194,7 @@ class AgenticCourseWorkflow:
         topic: str,
         materials: str = "",
         username: str = "",
+        course_preferences: dict[str, Any] | None = None,
     ) -> AgenticWorkflowResult:
         """Executes the complete 4-step agentic workflow:
 
@@ -238,6 +239,17 @@ class AgenticCourseWorkflow:
             username=username,
             data_dir=self.data_dir,
         )
+        if course_preferences:
+            if course_preferences.get("preferred_modalities"):
+                learner_ctx.preferred_modalities = course_preferences["preferred_modalities"]
+            if course_preferences.get("exercise_format"):
+                learner_ctx.exercise_format = course_preferences["exercise_format"]
+            if course_preferences.get("tutor_style"):
+                learner_ctx.tutor_style = course_preferences["tutor_style"]
+            if course_preferences.get("understanding_level"):
+                lvl = str(course_preferences["understanding_level"]).capitalize()
+                if lvl in ("Beginner", "Intermediate", "Advanced"):
+                    learner_ctx.understanding_level = lvl  # type: ignore[assignment]
         t2_duration = round((time.time() - t2_start) * 1000, 1)
         traces.append(
             ToolTrace(

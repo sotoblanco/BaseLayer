@@ -15,10 +15,13 @@ import {
   importLearningCourse,
 } from '../services/aiService';
 import { getLearningProfile, type ProfileFrontMatter } from '../services/profileService';
+import CourseStyleMiniForm, { type CourseStylePreferences } from './CourseStyleMiniForm';
 
 interface ChatCourseImportProps {
   topic: string;
   referenceText: string;
+  preferences?: CourseStylePreferences;
+  onPreferencesChange?: (prefs: CourseStylePreferences) => void;
   onTopicChange: (value: string) => void;
   onReferenceChange: (value: string) => void;
   onImported: (slug: string) => void;
@@ -47,6 +50,8 @@ const CHAT_STEPS = [
 export default function ChatCourseImport({
   topic,
   referenceText,
+  preferences,
+  onPreferencesChange,
   onTopicChange,
   onReferenceChange,
   onImported,
@@ -93,7 +98,16 @@ export default function ChatCourseImport({
     setError('');
     setIsGenerating(true);
     try {
-      const result = await getCourseBuildInstructions(topic, referenceText);
+      const coursePrefs = preferences
+        ? {
+            preferred_modalities: preferences.modalities,
+            exercise_format: preferences.scaffold,
+            explanation_length: preferences.explanationLength,
+            tutor_style: preferences.tutorStyle,
+            understanding_level: preferences.level,
+          }
+        : undefined;
+      const result = await getCourseBuildInstructions(topic, referenceText, coursePrefs);
       setInstructions(result.instructions);
       if (result.personalization) {
         setActivePersonalization(result.personalization);
@@ -273,6 +287,14 @@ export default function ChatCourseImport({
               className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-xs text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 font-mono"
             />
           </div>
+
+          {preferences && onPreferencesChange && (
+            <CourseStyleMiniForm
+              preferences={preferences}
+              onChange={onPreferencesChange}
+              defaultExpanded={false}
+            />
+          )}
 
           {error && (
             <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">

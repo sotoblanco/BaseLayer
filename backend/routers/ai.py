@@ -138,9 +138,18 @@ class AIStatusResponse(BaseModel):
     providers: list[ProviderInfo] = Field(default_factory=list)
 
 
+class CoursePreferencesPayload(BaseModel):
+    preferred_modalities: list[str] | None = None
+    exercise_format: Literal["micro_steps", "macro_challenges", "guided_completion"] | None = None
+    explanation_length: Literal["short", "thorough"] | None = None
+    tutor_style: Literal["solveit", "socratic", "direct", "blooms"] | None = None
+    understanding_level: Literal["beginner", "intermediate", "advanced"] | None = None
+
+
 class BuildCourseRequest(BaseModel):
     topic: str = Field(..., min_length=3, max_length=500)
     resources: list[LearningResource] = Field(default_factory=list, max_length=5)
+    course_preferences: CoursePreferencesPayload | None = None
 
 
 class ToolTraceRead(BaseModel):
@@ -165,6 +174,7 @@ class BuildCourseResponse(BaseModel):
 class CourseInstructionsRequest(BaseModel):
     topic: str = Field(default="", max_length=500)
     resources: list[LearningResource] = Field(default_factory=list, max_length=5)
+    course_preferences: CoursePreferencesPayload | None = None
 
 
 class CourseInstructionsResponse(BaseModel):
@@ -322,12 +332,32 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
 
     materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
 
+    course_pref_dict = (
+        request.course_preferences.model_dump(exclude_none=True)
+        if request.course_preferences
+        else None
+    )
+
+    # Blend course mini-form preferences into LEARNING.md ("update as we go")
+    if course_pref_dict:
+        try:
+            from learner_profile import apply_course_builder_preferences
+
+            apply_course_builder_preferences(
+                username=user.username,
+                topic=topic,
+                preferences=course_pref_dict,
+            )
+        except Exception:
+            pass
+
     try:
         result = ai_service.run_agentic_course_builder(
             topic=topic,
             materials=materials,
             username=user.username,
             courses_dir=COURSES_DIR,
+            course_preferences=course_pref_dict,
         )
     except CourseGenerationError as exc:
         # The builder refused to publish (e.g. no AI model configured, model
@@ -395,6 +425,24 @@ def get_course_build_instructions(
         raise HTTPException(status_code=422, detail="A learning topic is required")
 
     materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
+
+    course_pref_dict = (
+        request.course_preferences.model_dump(exclude_none=True)
+        if request.course_preferences
+        else None
+    )
+
+    if course_pref_dict:
+        try:
+            from learner_profile import apply_course_builder_preferences
+
+            apply_course_builder_preferences(
+                username=user.username,
+                topic=topic,
+                preferences=course_pref_dict,
+            )
+        except Exception:
+            pass
 
     parsed_profile: dict[str, Any] = {}
     try:

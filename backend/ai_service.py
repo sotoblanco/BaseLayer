@@ -236,6 +236,7 @@ class AIService:
         materials: str = "",
         username: str = "",
         courses_dir: Any = None,
+        course_preferences: dict[str, Any] | None = None,
     ) -> Any:
         from agentic_workflow import AgenticCourseWorkflow
 
@@ -243,7 +244,12 @@ class AIService:
             generate_text=self.complete if self.is_configured else None,
             courses_dir=courses_dir,
         )
-        return workflow.execute(topic=topic, materials=materials, username=username)
+        return workflow.execute(
+            topic=topic,
+            materials=materials,
+            username=username,
+            course_preferences=course_preferences,
+        )
 
     def chat(
         self,

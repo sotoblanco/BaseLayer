@@ -647,3 +647,53 @@ Advanced test runner.
         fm_guided = data_guided["parsed"]["frontmatter"]
         assert fm_guided["exercise_format"] == "guided_completion"
         assert "guided fill-in-the-blank code completion" in data_guided["parsed"]["snapshot"]
+
+    def test_realistic_unblock_strategies_multi_modal_inference(self):
+        # Multiple realistic unblock strategies selected: breakdown_code + visual_numbers + hand_written
+        q = LearnerQuestionnaire(
+            unblock_strategies=["breakdown_code", "visual_numbers", "hand_written"],
+            explanation_length="short",
+            exercise_format="micro_steps",
+            hint_preference="toy_example",
+        )
+        md = aggregate_questionnaire_to_markdown("multi_learner", q)
+        fm, body = parse_frontmatter(md)
+        assert fm["preferred_modalities"] == ["code", "spreadsheet", "drawing"]
+        assert fm["tutor_style"] == "solveit"
+        assert "code, spreadsheet, drawing" in body
+
+        # Dual blend: breakdown_code + visual_numbers (infers code and spreadsheet, not forced single)
+        q2 = LearnerQuestionnaire(
+            unblock_strategies=["breakdown_code", "visual_numbers"],
+        )
+        md2 = aggregate_questionnaire_to_markdown("code_sheet_learner", q2)
+        fm2, _ = parse_frontmatter(md2)
+        assert fm2["preferred_modalities"] == ["code", "spreadsheet"]
+
+    def test_apply_course_builder_preferences_blends_profile_and_records_signal(self, tmp_path):
+        from learner_profile import apply_course_builder_preferences, get_or_create_profile
+
+        with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
+            get_or_create_profile("blend_user")
+
+            _, parsed = apply_course_builder_preferences(
+                username="blend_user",
+                topic="NumPy Broadcasting",
+                preferences={
+                    "preferred_modalities": ["code", "spreadsheet"],
+                    "exercise_format": "guided_completion",
+                    "explanation_length": "thorough",
+                    "tutor_style": "solveit",
+                    "understanding_level": "intermediate",
+                },
+                base_dir=tmp_path,
+            )
+
+            fm = parsed["frontmatter"]
+            assert fm["preferred_modalities"] == ["code", "spreadsheet"]
+            assert fm["exercise_format"] == "guided_completion"
+            assert fm["explanation_length"] == "thorough"
+            assert fm["tutor_style"] == "solveit"
+            # Verify signal logged
+            signals = parsed["signals"]
+            assert any("Tailored course style for 'NumPy Broadcasting'" in s for s in signals)
