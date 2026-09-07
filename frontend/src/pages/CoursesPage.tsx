@@ -63,6 +63,12 @@ const PROTECTED_COURSE_SLUGS = new Set([
   'llms-from-scratch',
 ]);
 
+// The startup diagnostic prompt must never hide the catalog on every launch:
+// once the user explicitly dismisses it, remember that choice locally. The
+// modal stays one click away via the "Learning Style" header button.
+const DIAGNOSTIC_COMPLETED_KEY = 'baselayer_diagnostic_completed';
+const DIAGNOSTIC_DISMISSED_KEY = 'baselayer_diagnostic_dismissed';
+
 export default function CoursesPage() {
   const [courses, setCourses] = useState<UnifiedCourse[]>([]);
   const [progressBySlug, setProgressBySlug] = useState<Record<string, CourseProgressSummary>>({});
@@ -82,6 +88,7 @@ export default function CoursesPage() {
   const [courseToDelete, setCourseToDelete] = useState<{ slug: string; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [coursesError, setCoursesError] = useState('');
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -125,12 +132,23 @@ export default function CoursesPage() {
     if (!isAuthenticated && isLocalHost()) {
       setIsAuthModalOpen(true);
     }
+    if (isAuthenticated) {
+      // Background auto-login (localhost) succeeded: dismiss the startup auth
+      // gate so the locally present courses are visible instead of staying
+      // buried under it. The "Learning Guide" entry point uses the separate
+      // isLearningGuideOpen flag and is unaffected.
+      setIsAuthModalOpen(false);
+    }
   }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated) {
-      const hasCompleted = localStorage.getItem('baselayer_diagnostic_completed');
-      if (hasCompleted !== 'true') {
+      const hasCompleted = localStorage.getItem(DIAGNOSTIC_COMPLETED_KEY);
+      const hasDismissed = localStorage.getItem(DIAGNOSTIC_DISMISSED_KEY);
+      // Only auto-prompt on startup when the user has neither completed nor
+      // dismissed the diagnostic; otherwise the modal would cover the locally
+      // present courses on every launch.
+      if (hasCompleted !== 'true' && hasDismissed !== 'true') {
         getLearningProfile()
           .then((data) => {
             const isDefault =
@@ -143,7 +161,7 @@ export default function CoursesPage() {
               setProfileInitialMode('customize');
               setIsProfileModalOpen(true);
             } else {
-              localStorage.setItem('baselayer_diagnostic_completed', 'true');
+              localStorage.setItem(DIAGNOSTIC_COMPLETED_KEY, 'true');
             }
           })
           .catch(() => {
@@ -163,7 +181,12 @@ export default function CoursesPage() {
 
         const unified: UnifiedCourse[] = [];
 
+        // /file-courses/ is the catalog source for local courses/ folders.
+        // Surface its failure instead of silently rendering an empty catalog.
+        let fileCoursesFailed = true;
+
         if (fileRes.status === 'fulfilled' && fileRes.value.ok) {
+          fileCoursesFailed = false;
           const files: FileCourse[] = await fileRes.value.json();
           unified.push(
             ...files.map((c) => {
@@ -202,8 +225,16 @@ export default function CoursesPage() {
         }
 
         setCourses(unified);
+        setCoursesError(
+          fileCoursesFailed
+            ? 'Could not load local courses from the API (GET /file-courses/ failed). Is the backend running? Start it with ./dev.sh (or ./docker-dev.sh) and reload.'
+            : ''
+        );
       } catch (err) {
         console.error('Failed to fetch courses', err);
+        setCoursesError(
+          'Could not load local courses from the API (GET /file-courses/ failed). Is the backend running? Start it with ./dev.sh (or ./docker-dev.sh) and reload.'
+        );
       } finally {
         setLoading(false);
       }
@@ -335,6 +366,9 @@ export default function CoursesPage() {
             {hasNoCourses ? (
               <div className="col-span-full text-center py-20 text-slate-500 bg-slate-900/50 rounded-xl border border-dashed border-slate-800">
                 <p>No courses available right now.</p>
+                {coursesError && (
+                  <p className="mt-3 max-w-xl mx-auto text-xs text-amber-300/90">{coursesError}</p>
+                )}
               </div>
             ) : (
               courses.map((course) => (
@@ -544,7 +578,15 @@ export default function CoursesPage() {
       />
       <LearningProfileModal
         isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          // An explicit close counts as a dismissal: don't cover the catalog
+          // with this prompt again on the next startup. Completing the
+          // questionnaire separately records completion.
+          if (localStorage.getItem(DIAGNOSTIC_COMPLETED_KEY) !== 'true') {
+            localStorage.setItem(DIAGNOSTIC_DISMISSED_KEY, 'true');
+          }
+        }}
         initialMode={profileInitialMode}
       />
       {shareModalData && (
