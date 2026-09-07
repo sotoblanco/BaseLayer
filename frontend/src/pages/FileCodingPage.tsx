@@ -8,7 +8,6 @@ import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link,
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
-import { messageForRunStatus } from '../runErrors';
 import { buildTutorContext } from '../tutorContext';
 import { testsToRun } from '../testsToRun';
 import { Panel, Group, Separator } from "react-resizable-panels";
@@ -16,10 +15,12 @@ import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 import { emitLearnerEvent, fetchMyProgress } from '../services/profileService';
+import { executeCode, preloadPyodide } from '../services/codeRunner';
 import { ShareAchievement } from '../ux-light/components/ShareAchievement';
 import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
 import type { SharePayload } from '../ux-light/shareCard';
 import { findLessonPosition, useLessonUrlSync } from '../lessonUrl';
+import { isLocalHost } from '../isLocalHost';
 interface Lesson {
     slug: string;
     title: string;
@@ -112,22 +113,25 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     useEffect(() => {
         const fetchCourse = async () => {
             if (!isAuthenticated || !token) {
-                setIsAuthModalOpen(true);
-                return;
+                if (!isLocalHost()) {
+                    setIsAuthModalOpen(true);
+                    return;
+                }
             }
             setCourseError(null);
             try {
+                const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
                 const [res, progress] = await Promise.all([
-                    fetch(`${API_BASE_URL}/file-courses/${slug}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    }),
+                    fetch(`${API_BASE_URL}/file-courses/${slug}`, { headers }),
                     fetchMyProgress(),
                 ]);
                 if (res.status === 401) {
-                    logout();
-                    setIsAuthModalOpen(true);
-                    setCourseError('Your session has expired. Please sign in again.');
-                    return;
+                    if (!isLocalHost()) {
+                        logout();
+                        setIsAuthModalOpen(true);
+                        setCourseError('Your session has expired. Please sign in again.');
+                        return;
+                    }
                 }
                 if (res.ok) {
                     const data = await res.json();
@@ -220,6 +224,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         }
     }, [userSheetUrl, lesson, slug]);
 
+    useEffect(() => {
+        preloadPyodide();
+    }, []);
+
     const extractSheetId = (url: string) => {
         const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
         return match ? match[1] : null;
@@ -238,35 +246,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         setIsRunning(true);
         setOutput(isSubmit ? "Running all tests..." : "Running preliminary tests...");
 
-        const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         try {
-            const response = await fetch(`${API_BASE_URL}/run`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    code,
-                    test_code: testsToRun(lesson.test_code, lesson.language || 'python', isSubmit),
-                    language: lesson.language || "python"
-                })
+            const data = await executeCode({
+                code,
+                test_code: testsToRun(lesson.test_code, lesson.language || 'python', isSubmit),
+                language: lesson.language || "python",
+                token,
+                onStatusUpdate: (msg) => setOutput(msg),
             });
-
-            const runError = messageForRunStatus(response.status);
-            if (runError) {
-                if (response.status === 401) {
-                    logout();
-                    setIsAuthModalOpen(true);
-                }
-                setOutput(runError);
-                return;
-            }
-
-            const data = await response.json();
 
             if (data.exit_code === 0) {
                 setOutput(data.stdout || "Success!");
@@ -296,8 +283,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                 const outputMsg = data.stdout ? `\nOutput:\n${data.stdout}` : "";
                 setOutput(`${errorMsg}${outputMsg}`.trim() || `Process exited with code ${data.exit_code}`);
             }
-            } catch {
-            setOutput("Failed to connect to execution server.");
+        } catch (err: any) {
+            if (err?.message === 'AUTH_401') {
+                logout();
+                setIsAuthModalOpen(true);
+                setOutput("Session expired. Please sign in again.");
+            } else {
+                setOutput("Failed to execute code: " + (err?.message || "Unknown error"));
+            }
         } finally {
             setIsRunning(false);
         }

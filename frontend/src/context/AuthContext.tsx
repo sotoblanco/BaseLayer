@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { jwtDecode } from "jwt-decode";
 import { API_BASE_URL } from '../config';
+import { isLocalHost } from '../isLocalHost';
 
 interface User {
     username: string;
@@ -36,6 +37,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
             localStorage.removeItem('token');
             setUser(null);
+            // On localhost, auto-initialize a local session so dev is completely frictionless
+            if (isLocalHost()) {
+                localWelcome('Local Learner').catch(() => {});
+            }
         }
     }, [token]);
 

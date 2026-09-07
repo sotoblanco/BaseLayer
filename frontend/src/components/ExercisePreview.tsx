@@ -3,8 +3,7 @@ import { X, Save, Edit3, Eye, Play, RotateCw } from 'lucide-react';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { CodeEditor } from './CodeEditor';
 import MarkdownViewer from './MarkdownViewer';
-import { API_BASE_URL } from '../config';
-import { messageForRunStatus } from '../runErrors';
+import { executeCode } from '../services/codeRunner';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 
@@ -69,31 +68,14 @@ export default function ExercisePreview({
         setIsRunning(true);
         setOutput("Running...");
 
-        const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-        };
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         try {
-            const response = await fetch(`${API_BASE_URL}/run`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({
-                    code: editedCode,
-                    test_code: editedTestCode,
-                    language: currentLang
-                })
+            const data = await executeCode({
+                code: editedCode,
+                test_code: editedTestCode,
+                language: currentLang,
+                token,
+                onStatusUpdate: (msg) => setOutput(msg),
             });
-
-            const runError = messageForRunStatus(response.status);
-            if (runError) {
-                setOutput(runError);
-                return;
-            }
-
-            const data = await response.json();
 
             if (data.exit_code === 0) {
                 setOutput(data.stdout || "Success!");
@@ -107,8 +89,8 @@ export default function ExercisePreview({
                 const outputMsg = data.stdout ? `\nOutput:\n${data.stdout}` : "";
                 setOutput(`${errorMsg}${outputMsg}`.trim() || `Process exited with code ${data.exit_code}`);
             }
-        } catch (e) {
-            setOutput("Failed to connect to execution server.");
+        } catch (e: any) {
+            setOutput("Execution failed: " + (e?.message || "Unknown error"));
         } finally {
             setIsRunning(false);
         }
