@@ -4,7 +4,7 @@ import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
 import DrawingCanvas from '../components/DrawingCanvas';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send, Sparkles, Compass } from 'lucide-react';
+import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send, Sparkles, Compass, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import confetti from 'canvas-confetti';
 import { API_BASE_URL, APP_VERSION } from "../config";
@@ -84,6 +84,12 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
     const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
     const instructionScrollRef = useRef<HTMLDivElement>(null);
+    // Server-stored completions (LEARNING.md via GET /me/progress), hydrated on
+    // load so refresh never loses checkmarks. Mirrors UXLight completedIds.
+    const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
+    const markLessonComplete = (lessonSlug: string) => {
+        setCompletedSlugs((prev) => new Set(prev).add(lessonSlug));
+    };
 
 
     // Extract chapters from lessons
@@ -146,6 +152,8 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
 
                     // Prefer the lesson named in the URL, else the learner's last lesson, else lesson 1.
                     const courseProgress = progress.find((p) => p.course_slug === slug);
+                    // Hydrate server-stored completions so dots survive refresh.
+                    setCompletedSlugs(new Set(courseProgress?.completed_lessons ?? []));
                     const target =
                         findLessonPosition(extractedChapters, lessonSlug) ??
                         findLessonPosition(extractedChapters, courseProgress?.resume_lesson ?? null);
@@ -286,6 +294,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                             modality: 'code',
                             xp: 35,
                         });
+                        markLessonComplete(lesson.slug);
                         setSharePayload({
                             kind: 'lesson',
                             courseTitle: course.title,
@@ -342,6 +351,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             if (data.passed) {
                 confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
                 if (course && lesson) {
+                    // Server records lesson_passed in submit-drawing; mirror it
+                    // locally so the dot checks immediately.
+                    markLessonComplete(lesson.slug);
                     setSharePayload({
                         kind: 'lesson',
                         courseTitle: course.title,
@@ -389,6 +401,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             if (data.passed) {
                 confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
                 if (course && lesson) {
+                    // Server records lesson_passed in verify-sheet; mirror it
+                    // locally so the dot checks immediately.
+                    markLessonComplete(lesson.slug);
                     setSharePayload({
                         kind: 'lesson',
                         courseTitle: course.title,
@@ -502,19 +517,22 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
 
                     {/* Lesson Dots for Current Chapter */}
                     <div className="flex flex-col gap-2">
-                        {currentChapter?.lessons.map((les, idx) => (
+                        {currentChapter?.lessons.map((les, idx) => {
+                            const isDone = completedSlugs.has(les.slug);
+                            return (
                             <div
                                 key={les.slug}
                                 onClick={() => setCurrentLessonIndex(idx)}
                                 className={`
                             w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors font-bold text-sm
-                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : 'hover:bg-slate-800 text-slate-400'}
+                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : isDone ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/40' : 'hover:bg-slate-800 text-slate-400'}
                         `}
-                                title={les.title}
+                                title={isDone ? `${les.title} (completed)` : les.title}
                             >
-                                {idx + 1}
+                                {isDone ? <Check size={16} /> : idx + 1}
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     {/* Next Chapter Button */}
