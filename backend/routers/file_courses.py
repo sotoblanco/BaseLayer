@@ -22,10 +22,10 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ai_service import ai_service
-from auth import get_current_user, get_current_user_for_media
+from auth import get_current_admin, get_current_user, get_current_user_for_media
 from models import User
 from spreadsheet_verification import (
     SheetReadError,
@@ -34,7 +34,9 @@ from spreadsheet_verification import (
     VerificationUnavailableError,
     extract_sheet_id,
     grade_sheet,
+    parse_sheet_template,
     parse_success_cells,
+    provision_sheet_template,
     read_user_sheet_values,
 )
 
@@ -122,6 +124,10 @@ class FileLesson(BaseModel):
         default_factory=list, description="Target cells/expected values for spreadsheet checks"
     )
     hints: list[str] = Field(default_factory=list, description="Lesson-specific hints")
+    sheet_cells: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Declarative template cells (A1 -> value-or-formula) for provisioning",
+    )
 
 
 class FileCourseSummary(BaseModel):
@@ -150,7 +156,7 @@ class FileCourse(BaseModel):
 
 class ExportLessonBundle(BaseModel):
     title: str
-    slug: str
+    slug: str = ""
     order: int = 1
     chapter: str | None = None
     exercise_type: str = "code"
@@ -167,6 +173,35 @@ class ExportLessonBundle(BaseModel):
     hints: list[str] = Field(default_factory=list)
     question_image_base64: str | None = None
     solution_image_base64: str | None = None
+    sheet_cells: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        copied = dict(data)
+        if not copied.get("slug") and copied.get("title"):
+            cleaned = (
+                re.sub(r"[^a-zA-Z0-9_-]+", "-", str(copied["title"]).strip()).strip("-").lower()
+            )
+            copied["slug"] = cleaned[:50] or "lesson"
+        elif not copied.get("slug"):
+            copied["slug"] = "lesson"
+        if not copied.get("initial_code") and copied.get("starter_code"):
+            copied["initial_code"] = copied["starter_code"]
+        if not copied.get("description"):
+            parts: list[str] = []
+            if copied.get("title"):
+                parts.append(f"# {copied['title']}")
+            if copied.get("objective"):
+                parts.append(str(copied["objective"]))
+            if copied.get("micro_task"):
+                parts.append(f"### Your Task\n{copied['micro_task']}")
+            if copied.get("inspect_prompt"):
+                parts.append(f"> **Inspect:** {copied['inspect_prompt']}")
+            copied["description"] = "\n\n".join(parts) if parts else ""
+        return copied
 
 
 class ExportCourseBundle(BaseModel):
@@ -363,6 +398,9 @@ class LessonMeta:
     title: str | None = None
     success_cells: list[SpreadsheetTargetCell] = field(default_factory=list)
     hints: list[str] = field(default_factory=list)
+    # Declarative template (Issue #108): A1 -> value-or-formula map that can
+    # provision the lesson's Google Sheet. Leading "=" marks a formula.
+    sheet_cells: dict[str, Any] = field(default_factory=dict)
 
 
 def _extract_metadata(lesson_path: Path) -> LessonMeta:
@@ -383,6 +421,7 @@ def _extract_metadata(lesson_path: Path) -> LessonMeta:
         title=_optional_str(metadata.get("title")),
         success_cells=parse_success_cells(metadata.get("success_cells")),
         hints=_normalize_skills(metadata.get("hints"))[:5],
+        sheet_cells=parse_sheet_template((metadata.get("sheet") or {}).get("cells")),
     )
 
 
@@ -428,6 +467,7 @@ def parse_lesson(
         skills=meta.skills,
         success_cells=meta.success_cells,
         hints=meta.hints,
+        sheet_cells=meta.sheet_cells,
     )
 
 
@@ -847,6 +887,7 @@ def _lesson_to_export_bundle(course_path: Path, lesson: FileLesson) -> ExportLes
         stroke_color=lesson.stroke_color,
         stroke_width=lesson.stroke_width,
         hints=lesson.hints,
+        sheet_cells=lesson.sheet_cells,
         question_image_base64=q_img,
         solution_image_base64=s_img,
     )
@@ -916,6 +957,8 @@ def _write_lesson_bundle_files(lesson_dir: Path, lesson: ExportLessonBundle) -> 
         "stroke_width": lesson.stroke_width,
         "hints": lesson.hints,
     }
+    if lesson.sheet_cells:
+        meta["sheet"] = {"cells": lesson.sheet_cells}
     (lesson_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     _write_exercise_specific_files(lesson_dir, lesson)
 
@@ -1310,8 +1353,14 @@ def submit_drawing(
 
 
 def _validate_spreadsheet_lesson(lesson: FileLesson) -> FileLesson:
-    """Validate that a lesson is a spreadsheet exercise with template id."""
-    if lesson.exercise_type != "spreadsheet" or not lesson.google_sheet_id:
+    """Validate that a lesson is a spreadsheet exercise with a copyable template.
+
+    A lesson is copyable when it has a live ``google_sheet_id`` *or* a
+    declarative ``sheet.cells`` map (Issue #108) that can mint a new sheet.
+    """
+    if lesson.exercise_type != "spreadsheet":
+        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise")
+    if not lesson.google_sheet_id and not lesson.sheet_cells:
         raise HTTPException(
             status_code=400,
             detail="Lesson is not a spreadsheet exercise or has no template sheet id",
@@ -1340,12 +1389,9 @@ def _get_service_account_path() -> str:
     return sa_file
 
 
-@router.post("/{course_slug}/{lesson_slug}/copy-sheet")
-def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)):
-    """Create a per-user copy of a template Google Sheet for a lesson."""
-    lesson = _find_lesson_for_copy(course_slug, lesson_slug)
+def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: str) -> str:
+    """Drive-copy a provisioned template; return the new spreadsheet id."""
     sa_file = _get_service_account_path()
-
     try:
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
@@ -1353,7 +1399,6 @@ def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(g
         raise HTTPException(
             status_code=501, detail="googleapiclient not installed on server"
         ) from None
-
     try:
         creds = Credentials.from_service_account_file(
             sa_file, scopes=["https://www.googleapis.com/auth/drive"]
@@ -1364,12 +1409,42 @@ def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(g
             drive.files().copy(fileId=lesson.google_sheet_id, body={"name": new_title}).execute()
         )
         new_id = copied.get("id")
-        return {
-            "google_sheet_id": new_id,
-            "url": f"https://docs.google.com/spreadsheets/d/{new_id}/edit",
-        }
+        if not new_id:
+            raise HTTPException(status_code=500, detail="Drive copy returned no id")
+        from spreadsheet_verification import share_sheet_anyone_with_link
+
+        share_sheet_anyone_with_link(new_id, creds)
+        return new_id
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {e}") from e
+
+
+@router.post("/{course_slug}/{lesson_slug}/copy-sheet")
+def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)):
+    """Create a per-user working copy of a spreadsheet lesson.
+
+    Prefers minting from the lesson's ``sheet.cells`` map (JSON-first, Issue #108)
+    so "Make a private copy" works with no hand-built template. Falls back to
+    Drive-copying ``google_sheet_id`` for legacy lessons. The copy is shared
+    anyone-with-link can edit so the iframe and verify-sheet path work.
+    """
+    lesson = _find_lesson_for_copy(course_slug, lesson_slug)
+    new_title = f"{course_slug}-{lesson_slug}-copy-{user.username}-{int(time.time())}"
+    if lesson.sheet_cells:
+        try:
+            new_id = provision_sheet_template(lesson.sheet_cells, title=new_title)
+        except VerificationUnavailableError as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
+        except SheetReadError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    else:
+        new_id = _copy_existing_template(lesson, course_slug, lesson_slug)
+    return {
+        "google_sheet_id": new_id,
+        "url": f"https://docs.google.com/spreadsheets/d/{new_id}/edit",
+    }
 
 
 class SpreadsheetVerificationRequest(BaseModel):
@@ -1402,6 +1477,73 @@ def _record_modality_pass(
         )
     except Exception:
         pass
+
+
+class ProvisionSheetResponse(BaseModel):
+    google_sheet_id: str
+    url: str
+    cells: int
+
+
+@router.post(
+    "/{course_slug}/{lesson_slug}/provision-sheet",
+    response_model=ProvisionSheetResponse,
+)
+def provision_sheet(
+    course_slug: str,
+    lesson_slug: str,
+    user: User = Depends(get_current_admin),
+):
+    """Create the lesson's Google Sheet from its metadata ``sheet.cells`` map (Issue #108).
+
+    Admin only: this mints a platform-owned sheet and stamps its id into the
+    lesson's metadata.json so rebuilds reuse it instead of minting duplicates.
+    Refuses when the lesson already has a ``google_sheet_id`` or defines no
+    ``sheet.cells`` template.
+    """
+    _require_valid_slugs(course_slug, lesson_slug)
+    course = _get_course_or_404(course_slug)
+    lesson = _find_lesson_in_course_or_404(course, lesson_slug)
+    if lesson.exercise_type != "spreadsheet":
+        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise.")
+    if lesson.google_sheet_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Lesson already has a template sheet. Clear google_sheet_id to re-provision.",
+        )
+    if not lesson.sheet_cells:
+        raise HTTPException(
+            status_code=400,
+            detail="Lesson defines no sheet.cells template to provision from.",
+        )
+    try:
+        spreadsheet_id = provision_sheet_template(
+            lesson.sheet_cells, title=f"{course.title} - {lesson.title}"
+        )
+    except VerificationUnavailableError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except SheetReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    course_path = _get_safe_course_dir(course_slug)
+    lesson_dir = _find_lesson_in_course_dir(course_path, lesson_slug) if course_path else None
+    if lesson_dir is None:
+        raise HTTPException(status_code=404, detail="Lesson directory not found.")
+    meta_path = lesson_dir / "metadata.json"
+    meta = _read_json_object(meta_path)
+    meta["google_sheet_id"] = spreadsheet_id
+    try:
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Sheet created but id could not be saved: {exc}"
+        ) from exc
+    _COURSE_SUMMARY_CACHE.pop(course_slug, None)
+    return ProvisionSheetResponse(
+        google_sheet_id=spreadsheet_id,
+        url=f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit",
+        cells=len(lesson.sheet_cells),
+    )
 
 
 def _validate_verifiable_spreadsheet(course_slug: str, lesson_slug: str) -> FileLesson:

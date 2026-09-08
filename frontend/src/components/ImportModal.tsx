@@ -86,6 +86,10 @@ export function ImportModal({
         throw new Error('Invalid bundle format');
       }
 
+      if (!parsed.kind) {
+        parsed.kind = Array.isArray(parsed.lessons) && parsed.lessons.length > 0 ? 'course' : parsed.lesson ? 'lesson' : 'course';
+      }
+
       if (parsed.kind === 'course' && (!parsed.lessons || !Array.isArray(parsed.lessons))) {
         throw new Error('Course bundle must contain a lessons array.');
       }

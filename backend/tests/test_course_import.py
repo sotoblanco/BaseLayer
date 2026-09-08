@@ -246,7 +246,7 @@ class TestBuildImportInstructions:
         assert "New student learning Python data manipulation." in prompt
         # Check enhanced prompt rules for weaker models
         assert "Narrative Arc & Progressiveness" in prompt
-        assert "Concrete Domain Toy Data" in prompt
+        assert "Concrete Domain Sample Data" in prompt
         assert "NEVER use lazy generic placeholders" in prompt
         assert "Active Inspection & Prediction" in prompt
         assert "Scaffolded Starter Code" in prompt
@@ -343,6 +343,32 @@ class TestExtractAndNormalize:
         payload["lessons"] = payload["lessons"] + [_make_lesson("extra_vec", "Extra", "x")] * 2
         with pytest.raises(CourseImportError, match="4-6"):
             normalize_course_payload(payload)
+
+    def test_sample_data_alias_accepted(self):
+        from course_import import normalize_course_payload
+
+        payload = {
+            "title": "Sample Alias Course",
+            "description": "Testing sample_data key.",
+            "narrative_arc": "From sample to solution.",
+            "lessons": [
+                {
+                    "title": "Lesson 1",
+                    "objective": "Test sample_data alias.",
+                    "sample_data": "x = [1, 2, 3]",
+                    "expected_result": "[2, 4, 6]",
+                    "micro_task": "Return doubled array.",
+                    "inspect_prompt": "Predict double.",
+                    "starter_code": "def f():\n    # TODO: double\n    return None\n",
+                    "test_code": "from main import f\nassert f() is not None\n",
+                    "solution_code": "def f():\n    return [2, 4, 6]\n",
+                }
+                for _ in range(4)
+            ],
+        }
+        res = normalize_course_payload(payload)
+        assert res.lesson_count == 4
+        assert res.lessons[0].toy_data == "x = [1, 2, 3]"
 
     def test_missing_field_rejected(self):
         payload = build_course()

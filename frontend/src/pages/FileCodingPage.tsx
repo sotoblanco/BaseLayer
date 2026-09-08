@@ -20,6 +20,7 @@ import { ShareAchievement } from '../ux-light/components/ShareAchievement';
 import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
 import type { SharePayload } from '../ux-light/shareCard';
 import { findLessonPosition, useLessonUrlSync } from '../lessonUrl';
+import SheetTemplatePreview, { cellsToTsv } from '../components/SheetTemplatePreview';
 import { isLocalHost } from '../isLocalHost';
 interface Lesson {
     slug: string;
@@ -41,6 +42,7 @@ interface Lesson {
     skills?: string[];
     success_cells?: { cell: string; expected: string }[];
     hints?: string[];
+    sheet_cells?: Record<string, string | number | boolean>;
 }
 
 interface Chapter {
@@ -82,7 +84,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
     const [sheetVerification, setSheetVerification] = useState<{ passed: boolean; message: string; checks: { cell: string; expected: string; actual: string | null; ok: boolean }[] } | null>(null);
     const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
-    const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+    const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);
+    const [isCopyingSheet, setIsCopyingSheet] = useState(false);
+    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
     const instructionScrollRef = useRef<HTMLDivElement>(null);
     // Server-stored completions (LEARNING.md via GET /me/progress), hydrated on
     // load so refresh never loses checkmarks. Mirrors UXLight completedIds.
@@ -369,6 +373,66 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         }
     };
 
+    const handleMakeSheetCopy = async () => {
+        if (!lesson || !slug) return;
+        setIsCopyingSheet(true);
+        setSheetVerifyError(null);
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/copy-sheet`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                }
+            );
+            if (response.status === 401) {
+                logout();
+                setIsAuthModalOpen(true);
+                setSheetVerifyError('Your session has expired. Please sign in again.');
+                return;
+            }
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                // If cloud service account is not configured, fall back to clipboard TSV + sheets.new
+                if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
+                    try {
+                        const tsv = cellsToTsv(lesson.sheet_cells);
+                        await navigator.clipboard.writeText(tsv);
+                        window.open('https://sheets.new', '_blank');
+                        setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
+                        return;
+                    } catch {
+                        // fallthrough
+                    }
+                }
+                setSheetVerifyError(data.detail || 'Could not create a private copy of this sheet.');
+                return;
+            }
+            if (data.url) {
+                setUserSheetUrl(data.url);
+                window.open(data.url, '_blank');
+            }
+        } catch {
+            if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
+                try {
+                    const tsv = cellsToTsv(lesson.sheet_cells);
+                    await navigator.clipboard.writeText(tsv);
+                    window.open('https://sheets.new', '_blank');
+                    setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
+                    return;
+                } catch {
+                    // fallthrough
+                }
+            }
+            setSheetVerifyError('Failed to reach the sheet service.');
+        } finally {
+            setIsCopyingSheet(false);
+        }
+    };
+
     const handleSheetVerify = async (sheetUrl: string) => {
         if (!lesson) return;
         setSheetVerification(null);
@@ -417,6 +481,30 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         } finally {
             setIsVerifyingSheet(false);
         }
+    };
+
+    const handleManualSheetPass = () => {
+        if (!course || !lesson) return;
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+        markLessonComplete(lesson.slug);
+        emitLearnerEvent('lesson_passed', {
+            course_slug: slug,
+            lesson_slug: lesson.slug,
+            modality: 'spreadsheet',
+            xp: 35,
+        });
+        setSharePayload({
+            kind: 'lesson',
+            courseTitle: course.title,
+            lessonTitle: lesson.title,
+            skills: lesson.skills?.length ? lesson.skills : course.skills || [],
+        });
+        setSheetVerification({
+            passed: true,
+            message: 'Spreadsheet exercise marked complete.',
+            checks: [],
+        });
+        setSheetVerifyError(null);
     };
 
     const selectLesson = useCallback((chapterIndex: number, lessonIndex: number) => {
@@ -560,7 +648,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     <div className="flex items-center gap-4">
                         <h1 className="font-semibold text-lg tracking-tight text-white">{lesson?.title}</h1>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            {currentLang === 'rust' ? 'Rust' : 'Python'}
+                            {lesson?.exercise_type === 'spreadsheet' ? 'Spreadsheet' : lesson?.exercise_type === 'drawing' ? 'Drawing' : currentLang === 'rust' ? 'Rust' : 'Python'}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
                             File Course
@@ -798,8 +886,8 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                     </div>
                                 </div>
 
-                            ) : lesson?.exercise_type === 'spreadsheet' && lesson?.google_sheet_id ? (
-                                // Spreadsheet Exercise - Google Sheets
+                            ) : lesson?.exercise_type === 'spreadsheet' && (lesson?.google_sheet_id || Object.keys(lesson?.sheet_cells ?? {}).length > 0) ? (
+                                // Spreadsheet Exercise - Google Sheets (live copy) or JSON template preview
                                 <div className="flex-1 flex flex-col overflow-hidden">
                                     <div className="h-12 border-b border-[#333] flex items-center px-4 bg-[#252526] justify-between gap-4">
                                         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -827,12 +915,13 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                         </div>
 
                                         <div className="flex items-center gap-2">
-                                            {lesson.copy_on_open && (
+                                            {(lesson.copy_on_open || Object.keys(lesson.sheet_cells ?? {}).length > 0) && (
                                                 <button
-                                                    onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${lesson.google_sheet_id}/copy`, '_blank')}
-                                                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow-lg shadow-emerald-900/20"
+                                                    onClick={handleMakeSheetCopy}
+                                                    disabled={isCopyingSheet}
+                                                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow-lg shadow-emerald-900/20 disabled:opacity-50"
                                                 >
-                                                    <ExternalLink size={14} /> Make a private copy
+                                                    <ExternalLink size={14} /> {isCopyingSheet ? 'Creating...' : 'Make a private copy'}
                                                 </button>
                                             )}
                                             {hasSheetChecks && (
@@ -862,6 +951,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 title="Google Sheet Exercise"
                                                 allow="autorepair;usercopy;useredit"
                                             />
+                                        ) : Object.keys(lesson?.sheet_cells ?? {}).length > 0 ? (
+                                            <div className="w-full h-full bg-slate-900 text-slate-200 overflow-auto">
+                                                <SheetTemplatePreview cells={lesson?.sheet_cells ?? {}} />
+                                            </div>
                                         ) : (
                                             <div className="flex items-center justify-center h-full text-slate-500 italic">
                                                 Sheet ID not found in metadata...
@@ -895,9 +988,17 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                         </ul>
                                                     )}
                                                 </div>
-                                            ) : sheetVerifyError ? (
-                                                <p className="text-xs text-amber-300">{sheetVerifyError}</p>
-                                            ) : null}
+                                             ) : sheetVerifyError ? (
+                                                 <div className="space-y-1.5">
+                                                     <p className="text-xs text-amber-300">{sheetVerifyError}</p>
+                                                     <button
+                                                         onClick={handleManualSheetPass}
+                                                         className="text-[10px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-200 underline underline-offset-2 transition-colors"
+                                                     >
+                                                         I verified it myself — mark complete
+                                                     </button>
+                                                 </div>
+                                             ) : null}
                                         </div>
                                     )}
                                 </div>

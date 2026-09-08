@@ -8,6 +8,21 @@
     { "cell": "F8", "expected": "TRUE" },
     { "cell": "G8", "expected": "TRUE" }
   ],
+  "sheet": {
+    "cells": {
+      "A1": "Tensor T1: fill B2:D4 with numbers 1..9",
+      "F2": "Shape:",
+      "G2": "=ROWS(B2:D4) & \"x\" & COLUMNS(B2:D4)",
+      "F3": "Size:",
+      "G3": "=COUNT(B2:D4)",
+      "A6": "Doubled (ARRAYFORMULA demo):",
+      "A7": "=ARRAYFORMULA(B2:D4*2)",
+      "F7": "=G2=\"3x3\"",
+      "G7": "=G3=9",
+      "F8": "=A7=2",
+      "G8": "=D9=18"
+    }
+  },
   "skills": [
     "Tensor shape",
     "Google Sheets"
