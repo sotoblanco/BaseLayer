@@ -20,7 +20,7 @@ import { ShareAchievement } from '../ux-light/components/ShareAchievement';
 import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
 import type { SharePayload } from '../ux-light/shareCard';
 import { findLessonPosition, useLessonUrlSync } from '../lessonUrl';
-import SheetTemplatePreview from '../components/SheetTemplatePreview';
+import SheetTemplatePreview, { cellsToTsv } from '../components/SheetTemplatePreview';
 import { isLocalHost } from '../isLocalHost';
 interface Lesson {
     slug: string;
@@ -396,6 +396,18 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             }
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
+                // If cloud service account is not configured, fall back to clipboard TSV + sheets.new
+                if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
+                    try {
+                        const tsv = cellsToTsv(lesson.sheet_cells);
+                        await navigator.clipboard.writeText(tsv);
+                        window.open('https://sheets.new', '_blank');
+                        setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
+                        return;
+                    } catch {
+                        // fallthrough
+                    }
+                }
                 setSheetVerifyError(data.detail || 'Could not create a private copy of this sheet.');
                 return;
             }
@@ -404,6 +416,17 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                 window.open(data.url, '_blank');
             }
         } catch {
+            if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
+                try {
+                    const tsv = cellsToTsv(lesson.sheet_cells);
+                    await navigator.clipboard.writeText(tsv);
+                    window.open('https://sheets.new', '_blank');
+                    setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
+                    return;
+                } catch {
+                    // fallthrough
+                }
+            }
             setSheetVerifyError('Failed to reach the sheet service.');
         } finally {
             setIsCopyingSheet(false);
@@ -458,6 +481,30 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         } finally {
             setIsVerifyingSheet(false);
         }
+    };
+
+    const handleManualSheetPass = () => {
+        if (!course || !lesson) return;
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+        markLessonComplete(lesson.slug);
+        emitLearnerEvent('lesson_passed', {
+            course_slug: slug,
+            lesson_slug: lesson.slug,
+            modality: 'spreadsheet',
+            xp: 35,
+        });
+        setSharePayload({
+            kind: 'lesson',
+            courseTitle: course.title,
+            lessonTitle: lesson.title,
+            skills: lesson.skills?.length ? lesson.skills : course.skills || [],
+        });
+        setSheetVerification({
+            passed: true,
+            message: 'Spreadsheet exercise marked complete.',
+            checks: [],
+        });
+        setSheetVerifyError(null);
     };
 
     const selectLesson = useCallback((chapterIndex: number, lessonIndex: number) => {
@@ -941,9 +988,17 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                         </ul>
                                                     )}
                                                 </div>
-                                            ) : sheetVerifyError ? (
-                                                <p className="text-xs text-amber-300">{sheetVerifyError}</p>
-                                            ) : null}
+                                             ) : sheetVerifyError ? (
+                                                 <div className="space-y-1.5">
+                                                     <p className="text-xs text-amber-300">{sheetVerifyError}</p>
+                                                     <button
+                                                         onClick={handleManualSheetPass}
+                                                         className="text-[10px] uppercase tracking-widest font-bold text-slate-400 hover:text-slate-200 underline underline-offset-2 transition-colors"
+                                                     >
+                                                         I verified it myself — mark complete
+                                                     </button>
+                                                 </div>
+                                             ) : null}
                                         </div>
                                     )}
                                 </div>

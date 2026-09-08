@@ -39,6 +39,7 @@ import { WelcomeGate } from '../components/auth/WelcomeGate';
 import { fetchSolutionCode } from '../solutionApi';
 import { isAuthorRole } from '../testVisibility';
 import { isLocalHost } from '../isLocalHost';
+import { cellsToTsv } from '../components/SheetTemplatePreview';
 
 export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
   const { slug, lessonSlug } = useParams<{ slug: string; lessonSlug?: string }>();
@@ -425,6 +426,17 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
+          try {
+            const tsv = cellsToTsv(lesson.sheet_cells);
+            await navigator.clipboard.writeText(tsv);
+            window.open('https://sheets.new', '_blank');
+            setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
+            return;
+          } catch {
+            // fallthrough
+          }
+        }
         setSheetVerifyError(data.detail || 'Could not create a private copy of this sheet.');
         return;
       }
@@ -433,6 +445,17 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         window.open(data.url, '_blank');
       }
     } catch {
+      if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
+        try {
+          const tsv = cellsToTsv(lesson.sheet_cells);
+          await navigator.clipboard.writeText(tsv);
+          window.open('https://sheets.new', '_blank');
+          setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
+          return;
+        } catch {
+          // fallthrough
+        }
+      }
       setSheetVerifyError('Failed to reach the sheet service.');
     } finally {
       setIsCopyingSheet(false);
