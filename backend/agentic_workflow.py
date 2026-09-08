@@ -336,16 +336,16 @@ Preferred Modalities: {learner_ctx.preferred_modalities}
 Guidance: {learner_ctx.personalization_guidance}
 
 TOOL 3 (PLATFORM TOOLS):
-Available Modalities: {list(platform_tools.modalities.keys())}
+Target Modality: code (all published lessons must be runnable Python code)
 Installed Python Sandbox Packages: {platform_tools.installed_sandbox_libraries}
 
 YOUR TASK:
 Plan 3 to 5 micro-step lessons applying the Solveit methodology:
-1. Toy data (3-5 rows/items, expected output stated before running)
+1. Concrete sample data (3-5 rows/items, expected output stated before running)
 2. Micro-step (1-3 logical lines only)
 3. Live inspection prompt
 4. Curiosity reflection prompt
-5. Python code lessons must import only {platform_tools.installed_sandbox_libraries}
+5. Every lesson's "modality" MUST be "code" (do not use "spreadsheet" or "drawing"). Python code lessons must import only {platform_tools.installed_sandbox_libraries}
 6. test_code must import from main (e.g. from main import ...) and assert results.{guided_directive}
 7. WRITING STYLE & TONE DIRECTIVES (STRICT ANTI-AI CONSTRAINTS):
    Tone: {learner_ctx.tone.upper()}
@@ -423,6 +423,18 @@ Return a JSON object with this exact shape:
                 "please try again."
             )
 
+        # Normalize modalities: models often output "python", "Python", or "Code"
+        # for runnable code lessons. Accept those as "code".
+        for lesson in raw_lessons:
+            mod = str(lesson.get("modality") or "code").lower().strip()
+            if mod in ("code", "python", "py"):
+                lesson["modality"] = "code"
+            elif (lesson.get("starter_code") or lesson.get("test_code")) and mod not in (
+                "spreadsheet",
+                "drawing",
+            ):
+                lesson["modality"] = "code"
+
         # A generated course may only publish code lessons: spreadsheet and drawing
         # lessons need platform-owned assets (a real template sheet id, a real
         # question image) that a text model cannot supply. Reject them instead of
@@ -430,7 +442,7 @@ Return a JSON object with this exact shape:
         non_code = [
             lesson.get("title") or f"lesson {idx}"
             for idx, lesson in enumerate(raw_lessons, start=1)
-            if (lesson.get("modality") or "code") != "code"
+            if lesson.get("modality") != "code"
         ]
         if non_code:
             raise CourseGenerationError(

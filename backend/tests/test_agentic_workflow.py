@@ -459,6 +459,41 @@ class TestAgenticWorkflowExecution:
         assert "provider is down" in str(excinfo.value)
         assert list(courses_dir.iterdir()) == []
 
+    def test_workflow_accepts_python_modality_variant(self, tmp_path):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+
+        plan = json.dumps(
+            {
+                "title": "Vector Math",
+                "description": "desc",
+                "narrative_arc": "arc",
+                "lessons": [
+                    {
+                        "title": "Lesson 1",
+                        "modality": "python",
+                        "objective": "obj",
+                        "toy_data": "data",
+                        "expected_result": "1",
+                        "micro_task": "task",
+                        "inspect_prompt": "inspect",
+                        "curiosity_prompt": "curiosity",
+                        "starter_code": "def f(): pass",
+                        "test_code": "from main import f\nassert True",
+                        "solution_code": "def f(): return 1",
+                    }
+                ],
+            }
+        )
+        workflow = AgenticCourseWorkflow(
+            courses_dir=courses_dir,
+            data_dir=tmp_path / "data",
+            generate_text=lambda prompt: plan,
+        )
+        res = workflow.execute(topic="NumPy broadcasting", materials="", username="alex")
+        assert res.lesson_count == 1
+        assert res.slug.startswith("generated-")
+
     def test_workflow_refuses_non_code_lessons_from_llm(self, tmp_path):
         courses_dir = tmp_path / "courses"
         courses_dir.mkdir()
