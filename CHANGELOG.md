@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.55](https://github.com/sotoblanco/BaseLayer/compare/v0.1.54...v0.1.55) (2026-09-08)
+
+
+### Improvements
+
+* retire SQLite Course and Exercise to make file-courses the only catalog ([#65](https://github.com/sotoblanco/BaseLayer/issues/65)) ([#114](https://github.com/sotoblanco/BaseLayer/issues/114)) ([3e95e66](https://github.com/sotoblanco/BaseLayer/commit/3e95e6620b6ea132575690c79b45bcf12254dec9))
+
 ### [0.1.54](https://github.com/sotoblanco/BaseLayer/compare/v0.1.53...v0.1.54) (2026-09-08)
 
 
