@@ -16,6 +16,7 @@ export function groupLessonsIntoChapters(lessons: FileLesson[]): UXLightChapter[
       id: 'lessons',
       slug: 'lessons',
       title: 'Lessons',
+      name: 'Lessons',
       chapterNumber: 1,
       lessons,
     }];
@@ -34,6 +35,7 @@ export function groupLessonsIntoChapters(lessons: FileLesson[]): UXLightChapter[
       id: slug,
       slug,
       title: formatChapterTitle(slug),
+      name: slug,
       chapterNumber: i + 1,
       lessons: chapterLessons,
     }));

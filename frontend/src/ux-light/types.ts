@@ -48,6 +48,7 @@ export interface UXLightChapter {
   id: string;
   slug: string;
   title: string;
+  name?: string;
   chapterNumber: number;
   lessons: FileLesson[];
 }
