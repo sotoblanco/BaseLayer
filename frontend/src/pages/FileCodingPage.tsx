@@ -444,7 +444,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                             ))}
                                                         </ul>
                                                     )}
-                                                    {drawingFeedback?.self_eval && (
+                                                    {player.drawingFeedback?.self_eval && (
                                                         <div className="pt-2">
                                                             <button
                                                                 onClick={player.handleManualDrawingPass}

@@ -449,56 +449,74 @@ def _extract_consumes_meta(raw: Any) -> list[str]:
     return [str(s).strip() for s in raw_list if s and str(s).strip()]
 
 
-def _extract_metadata(lesson_path: Path) -> LessonMeta:
-    """Extract metadata configuration for lesson."""
-    metadata = _read_json_object(lesson_path / "metadata.json")
-    exercise_type = metadata.get("exercise_type", "code")
-    board_theme = metadata.get("board_theme", "default")
+def _resolve_drawing_meta_fields(
+    metadata: dict[str, Any],
+) -> tuple[str | None, str | None, str | None]:
+    drawing_meta = metadata.get("drawing") or {}
+    prompt = _optional_str(drawing_meta.get("prompt_text") or metadata.get("drawing_prompt"))
+    diagram = _optional_str(
+        drawing_meta.get("solution_diagram") or metadata.get("solution_diagram")
+    )
+    explanation = _optional_str(
+        drawing_meta.get("solution_explanation") or metadata.get("solution_explanation")
+    )
+    return prompt, diagram, explanation
+
+
+def _resolve_drawing_attrs(
+    metadata: dict[str, Any], lesson_path: Path, exercise_type: str, board_theme: str
+) -> tuple[str, str, str | None, str | None, str | None, str | None]:
     if exercise_type in ("hand_drawn", "hand-drawn", "chalkboard"):
         exercise_type = "drawing"
         board_theme = "chalkboard"
 
-    drawing_meta = metadata.get("drawing") or {}
-    drawing_prompt = _optional_str(
-        drawing_meta.get("prompt_text") or metadata.get("drawing_prompt")
-    )
-    solution_diagram = _optional_str(
-        drawing_meta.get("solution_diagram") or metadata.get("solution_diagram")
-    )
-    solution_explanation = _optional_str(
-        drawing_meta.get("solution_explanation") or metadata.get("solution_explanation")
-    )
+    prompt, diagram, explanation = _resolve_drawing_meta_fields(metadata)
 
     image_url = None
     if exercise_type == "drawing":
-        if (lesson_path / "question.png").exists():
-            image_url = "__image__"
-        else:
-            image_url = "__chalkboard__"
+        has_png = (lesson_path / "question.png").is_file()
+        image_url = "__image__" if has_png else "__chalkboard__"
+        if not has_png:
             board_theme = "chalkboard"
 
-    stroke_color = metadata.get("stroke_color")
-    if not stroke_color:
-        stroke_color = "#f8fafc" if board_theme == "chalkboard" else "#e11d48"
+    return exercise_type, board_theme, image_url, prompt, diagram, explanation
 
-    stroke_width = int(metadata.get("stroke_width", 3 if board_theme == "chalkboard" else 4))
+
+def _resolve_stroke_style(metadata: dict[str, Any], board_theme: str) -> tuple[str, int]:
+    color = metadata.get("stroke_color")
+    if not color:
+        color = "#f8fafc" if board_theme == "chalkboard" else "#e11d48"
+    default_w = 3 if board_theme == "chalkboard" else 4
+    width = int(metadata.get("stroke_width", default_w))
+    return color, width
+
+
+def _extract_metadata(lesson_path: Path) -> LessonMeta:
+    """Extract metadata configuration for lesson."""
+    metadata = _read_json_object(lesson_path / "metadata.json")
+    ex_type = metadata.get("exercise_type", "code")
+    theme = metadata.get("board_theme", "default")
+    ex_type, theme, img_url, prompt, diagram, explanation = _resolve_drawing_attrs(
+        metadata, lesson_path, ex_type, theme
+    )
+    stroke_color, stroke_width = _resolve_stroke_style(metadata, theme)
 
     return LessonMeta(
-        exercise_type=exercise_type,
+        exercise_type=ex_type,
         google_sheet_id=metadata.get("google_sheet_id"),
         copy_on_open=bool(metadata.get("copy_on_open", False)),
         stroke_color=stroke_color,
         stroke_width=stroke_width,
-        image_url=image_url,
+        image_url=img_url,
         skills=_normalize_skills(metadata.get("skills")),
         title=_optional_str(metadata.get("title")),
         success_cells=parse_success_cells(metadata.get("success_cells")),
         hints=_normalize_skills(metadata.get("hints"))[:5],
         sheet_cells=parse_sheet_template((metadata.get("sheet") or {}).get("cells")),
-        board_theme=board_theme,
-        drawing_prompt=drawing_prompt,
-        solution_diagram=solution_diagram,
-        solution_explanation=solution_explanation,
+        board_theme=theme,
+        drawing_prompt=prompt,
+        solution_diagram=diagram,
+        solution_explanation=explanation,
         produces=_optional_str(metadata.get("produces")),
         consumes=_extract_consumes_meta(metadata.get("consumes")),
     )
@@ -637,21 +655,21 @@ def _course_skills(meta: dict, lessons: list[FileLesson]) -> list[str]:
     return _normalize_skills(meta.get("skills")) or _unique_lesson_skills(lessons)
 
 
+_SHEET_OR_DRAWING_RE = re.compile(
+    r'"(spreadsheet|google_sheet_id|drawing|hand_drawn|hand-drawn|chalkboard)"'
+)
+
+
 def _is_sheet_or_drawing_metadata(path: Path) -> str | None:
     try:
         text = path.read_text(encoding="utf-8")
-        if '"spreadsheet"' in text or '"google_sheet_id"' in text:
-            return "spreadsheet"
-        if (
-            '"drawing"' in text
-            or '"hand_drawn"' in text
-            or '"hand-drawn"' in text
-            or '"chalkboard"' in text
-        ):
-            return "drawing"
     except OSError:
-        pass
-    return None
+        return None
+    match = _SHEET_OR_DRAWING_RE.search(text)
+    if not match:
+        return None
+    matched = match.group(1)
+    return "spreadsheet" if matched in ("spreadsheet", "google_sheet_id") else "drawing"
 
 
 def _check_file_modality(path: Path) -> str | None:
@@ -1051,10 +1069,16 @@ def _write_exercise_specific_files(lesson_dir: Path, lesson: ExportLessonBundle)
         _write_drawing_files(lesson_dir, lesson)
 
 
-def _write_lesson_bundle_files(lesson_dir: Path, lesson: ExportLessonBundle) -> None:
-    lesson_dir.mkdir(parents=True, exist_ok=True)
-    readme_content = lesson.description or f"# {lesson.title}\n"
-    (lesson_dir / "README.md").write_text(readme_content, encoding="utf-8")
+def _build_drawing_metadata(lesson: ExportLessonBundle) -> dict[str, str]:
+    mapping = {
+        "prompt_text": lesson.drawing_prompt,
+        "solution_diagram": lesson.solution_diagram,
+        "solution_explanation": lesson.solution_explanation,
+    }
+    return {k: v for k, v in mapping.items() if v}
+
+
+def _build_lesson_bundle_metadata(lesson: ExportLessonBundle) -> dict[str, Any]:
     meta: dict[str, Any] = {
         "exercise_type": lesson.exercise_type,
         "skills": lesson.skills,
@@ -1067,18 +1091,19 @@ def _write_lesson_bundle_files(lesson_dir: Path, lesson: ExportLessonBundle) -> 
     }
     if lesson.board_theme and lesson.board_theme != "default":
         meta["board_theme"] = lesson.board_theme
-    if lesson.drawing_prompt or lesson.solution_diagram or lesson.solution_explanation:
-        meta["drawing"] = {
-            k: v
-            for k, v in [
-                ("prompt_text", lesson.drawing_prompt),
-                ("solution_diagram", lesson.solution_diagram),
-                ("solution_explanation", lesson.solution_explanation),
-            ]
-            if v
-        }
+    drawing = _build_drawing_metadata(lesson)
+    if drawing:
+        meta["drawing"] = drawing
     if lesson.sheet_cells:
         meta["sheet"] = {"cells": lesson.sheet_cells}
+    return meta
+
+
+def _write_lesson_bundle_files(lesson_dir: Path, lesson: ExportLessonBundle) -> None:
+    lesson_dir.mkdir(parents=True, exist_ok=True)
+    readme_content = lesson.description or f"# {lesson.title}\n"
+    (lesson_dir / "README.md").write_text(readme_content, encoding="utf-8")
+    meta = _build_lesson_bundle_metadata(lesson)
     (lesson_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     _write_exercise_specific_files(lesson_dir, lesson)
 
@@ -1492,24 +1517,20 @@ def _decode_sketch_image(raw_image_data: str) -> bytes:
         raise HTTPException(status_code=400, detail=f"Invalid image data: {e}") from e
 
 
+def _read_media_bytes(path: Path) -> bytes | None:
+    return path.read_bytes() if path.is_file() else None
+
+
 def _load_drawing_context_files(
     lesson_dir: Path, meta: LessonMeta | None = None
 ) -> tuple[str, bytes | None, bytes | None]:
     """Load instructions, optional question image, and optional solution image."""
-    readme_path = lesson_dir / "README.md"
-    instructions = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
-
-    question_path = lesson_dir / "question.png"
-    if not question_path.exists():
-        if meta and meta.board_theme == "chalkboard":
-            return instructions, None, None
+    instructions = read_file_content(lesson_dir / "README.md")
+    question_bytes = _read_media_bytes(lesson_dir / "question.png")
+    if not question_bytes and not (meta and meta.board_theme == "chalkboard"):
         raise HTTPException(status_code=500, detail="Lesson diagram missing (question.png)")
-    question_img_bytes = question_path.read_bytes()
-
-    solution_path = lesson_dir / "solution.png"
-    solution_img_bytes = solution_path.read_bytes() if solution_path.exists() else None
-
-    return instructions, question_img_bytes, solution_img_bytes
+    solution_bytes = _read_media_bytes(lesson_dir / "solution.png")
+    return instructions, question_bytes, solution_bytes
 
 
 @router.post("/{course_slug}/{lesson_slug}/submit-drawing")
