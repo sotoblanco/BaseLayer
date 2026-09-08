@@ -517,6 +517,20 @@ def _handle_reset(sections: dict[str, list[str]], payload: dict[str, Any]) -> No
     sections["Signals"] = signals[-10:]
 
 
+def _handle_breakdown_requested(sections: dict[str, list[str]], payload: dict[str, Any]) -> None:
+    course_slug = (payload.get("course_slug") or "").strip()
+    lesson_slug = (payload.get("lesson_slug") or "").strip()
+    if course_slug and lesson_slug:
+        target = f"{course_slug} ({lesson_slug})"
+    else:
+        target = course_slug or lesson_slug or "lesson"
+    signals = sections.get("Signals", [])
+    signal_text = f"- Needed a breakdown on {target}."
+    if signal_text not in signals:
+        signals.append(signal_text)
+    sections["Signals"] = signals[-10:]
+
+
 def _handle_tutor_level_changed(fm: LearnerFrontMatter, payload: dict[str, Any]) -> None:
     style = payload.get("tutor_style")
     if style in ("solveit", "socratic", "direct", "blooms"):
@@ -591,6 +605,7 @@ def _dispatch_learner_event(
         "lesson_opened": lambda: _handle_lesson_opened(fm, sections, payload),
         "run_result": lambda: _handle_run_result(sections, payload),
         "reset": lambda: _handle_reset(sections, payload),
+        "breakdown_requested": lambda: _handle_breakdown_requested(sections, payload),
         "lesson_passed": lambda: _handle_lesson_passed(sections, payload),
         "tutor_level_changed": lambda: _handle_tutor_level_changed(fm, payload),
         "course_authored": lambda: _handle_course_authored(sections, payload),
