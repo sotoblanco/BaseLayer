@@ -84,7 +84,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
     const [userSheetUrl, setUserSheetUrl] = useState<string>("");
     const [sheetVerification, setSheetVerification] = useState<{ passed: boolean; message: string; checks: { cell: string; expected: string; actual: string | null; ok: boolean }[] } | null>(null);
     const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
-    const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+    const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);
+    const [isCopyingSheet, setIsCopyingSheet] = useState(false);
+    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
     const instructionScrollRef = useRef<HTMLDivElement>(null);
     // Server-stored completions (LEARNING.md via GET /me/progress), hydrated on
     // load so refresh never loses checkmarks. Mirrors UXLight completedIds.
@@ -368,6 +370,43 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             setDrawingOutput('Failed to submit drawing.');
         } finally {
             setIsSubmittingDrawing(false);
+        }
+    };
+
+    const handleMakeSheetCopy = async () => {
+        if (!lesson || !slug) return;
+        setIsCopyingSheet(true);
+        setSheetVerifyError(null);
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/copy-sheet`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                }
+            );
+            if (response.status === 401) {
+                logout();
+                setIsAuthModalOpen(true);
+                setSheetVerifyError('Your session has expired. Please sign in again.');
+                return;
+            }
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                setSheetVerifyError(data.detail || 'Could not create a private copy of this sheet.');
+                return;
+            }
+            if (data.url) {
+                setUserSheetUrl(data.url);
+                window.open(data.url, '_blank');
+            }
+        } catch {
+            setSheetVerifyError('Failed to reach the sheet service.');
+        } finally {
+            setIsCopyingSheet(false);
         }
     };
 
@@ -829,12 +868,13 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                         </div>
 
                                         <div className="flex items-center gap-2">
-                                            {lesson.copy_on_open && (
+                                            {(lesson.copy_on_open || Object.keys(lesson.sheet_cells ?? {}).length > 0) && (
                                                 <button
-                                                    onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${lesson.google_sheet_id}/copy`, '_blank')}
-                                                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow-lg shadow-emerald-900/20"
+                                                    onClick={handleMakeSheetCopy}
+                                                    disabled={isCopyingSheet}
+                                                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow-lg shadow-emerald-900/20 disabled:opacity-50"
                                                 >
-                                                    <ExternalLink size={14} /> Make a private copy
+                                                    <ExternalLink size={14} /> {isCopyingSheet ? 'Creating...' : 'Make a private copy'}
                                                 </button>
                                             )}
                                             {hasSheetChecks && (

@@ -844,6 +844,69 @@ class TestFileCoursesEndpoints:
         assert res.status_code == 501
         assert "not installed" in res.json()["detail"].lower()
 
+    def test_copy_sheet_from_cells_mints_new_sheet(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        """JSON-first lessons mint a per-user sheet from sheet.cells (Issue #108)."""
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "json_sheet"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# JSON Sheet")
+        lesson_dir = course_dir / "lesson01"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# L1")
+        (lesson_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "exercise_type": "spreadsheet",
+                    "copy_on_open": True,
+                    "sheet": {"cells": {"A1": "Fill B2", "B2": 20}},
+                }
+            )
+        )
+
+        with patch(
+            "routers.file_courses.provision_sheet_template", return_value="COPYID99"
+        ) as mock_mint:
+            res = client.post("/file-courses/json_sheet/lesson01/copy-sheet", headers=auth_headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["google_sheet_id"] == "COPYID99"
+        assert "COPYID99" in body["url"]
+        mock_mint.assert_called_once()
+        assert mock_mint.call_args.kwargs["title"].startswith("json_sheet-lesson01-copy-")
+
+    def test_copy_sheet_cells_without_creds_is_501(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "json_sheet"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# JSON Sheet")
+        lesson_dir = course_dir / "lesson01"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# L1")
+        (lesson_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "exercise_type": "spreadsheet",
+                    "sheet": {"cells": {"A1": "hi"}},
+                }
+            )
+        )
+        monkeypatch.delenv("GOOGLE_SERVICE_ACCOUNT_FILE", raising=False)
+        monkeypatch.delenv("SERVICE_ACCOUNT_FILE", raising=False)
+        res = client.post("/file-courses/json_sheet/lesson01/copy-sheet", headers=auth_headers)
+        assert res.status_code == 501
+
 
 class TestSpreadsheetVerification:
     """Tests for spreadsheet success_cells parsing and the verify-sheet endpoint."""

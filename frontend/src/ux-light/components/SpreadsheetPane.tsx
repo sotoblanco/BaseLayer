@@ -7,6 +7,8 @@ interface SpreadsheetPaneProps {
   userSheetUrl: string;
   onChangeUrl: (url: string) => void;
   onVerify: (sheetUrl: string) => void;
+  onMakeCopy?: () => void;
+  isCopying?: boolean;
   isVerifying: boolean;
   verification: SpreadsheetVerification | null;
   verifyError: string | null;
@@ -24,6 +26,8 @@ export function SpreadsheetPane({
   userSheetUrl,
   onChangeUrl,
   onVerify,
+  onMakeCopy,
+  isCopying,
   isVerifying,
   verification,
   verifyError,
@@ -71,15 +75,14 @@ export function SpreadsheetPane({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {lesson.copy_on_open && lesson.google_sheet_id && (
+          {(lesson.copy_on_open || Object.keys(lesson.sheet_cells ?? {}).length > 0) && onMakeCopy && (
             <button
-              onClick={() =>
-                window.open(`https://docs.google.com/spreadsheets/d/${lesson.google_sheet_id}/copy`, '_blank')
-              }
-              className="flex items-center gap-2 px-3 py-1.5 bg-[#03ef62] hover:bg-[#02c852] rounded text-[#05192d] text-xs font-bold"
+              onClick={onMakeCopy}
+              disabled={isCopying}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#03ef62] hover:bg-[#02c852] rounded text-[#05192d] text-xs font-bold disabled:opacity-50"
             >
               <ExternalLink size={14} />
-              <span className="hidden sm:inline">Make a private copy</span>
+              <span className="hidden sm:inline">{isCopying ? 'Creating...' : 'Make a private copy'}</span>
             </button>
           )}
           {hasChecks && (

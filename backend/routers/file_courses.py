@@ -1325,8 +1325,14 @@ def submit_drawing(
 
 
 def _validate_spreadsheet_lesson(lesson: FileLesson) -> FileLesson:
-    """Validate that a lesson is a spreadsheet exercise with template id."""
-    if lesson.exercise_type != "spreadsheet" or not lesson.google_sheet_id:
+    """Validate that a lesson is a spreadsheet exercise with a copyable template.
+
+    A lesson is copyable when it has a live ``google_sheet_id`` *or* a
+    declarative ``sheet.cells`` map (Issue #108) that can mint a new sheet.
+    """
+    if lesson.exercise_type != "spreadsheet":
+        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise")
+    if not lesson.google_sheet_id and not lesson.sheet_cells:
         raise HTTPException(
             status_code=400,
             detail="Lesson is not a spreadsheet exercise or has no template sheet id",
@@ -1355,12 +1361,9 @@ def _get_service_account_path() -> str:
     return sa_file
 
 
-@router.post("/{course_slug}/{lesson_slug}/copy-sheet")
-def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)):
-    """Create a per-user copy of a template Google Sheet for a lesson."""
-    lesson = _find_lesson_for_copy(course_slug, lesson_slug)
+def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: str) -> str:
+    """Drive-copy a provisioned template; return the new spreadsheet id."""
     sa_file = _get_service_account_path()
-
     try:
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
@@ -1368,7 +1371,6 @@ def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(g
         raise HTTPException(
             status_code=501, detail="googleapiclient not installed on server"
         ) from None
-
     try:
         creds = Credentials.from_service_account_file(
             sa_file, scopes=["https://www.googleapis.com/auth/drive"]
@@ -1379,12 +1381,42 @@ def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(g
             drive.files().copy(fileId=lesson.google_sheet_id, body={"name": new_title}).execute()
         )
         new_id = copied.get("id")
-        return {
-            "google_sheet_id": new_id,
-            "url": f"https://docs.google.com/spreadsheets/d/{new_id}/edit",
-        }
+        if not new_id:
+            raise HTTPException(status_code=500, detail="Drive copy returned no id")
+        from spreadsheet_verification import share_sheet_anyone_with_link
+
+        share_sheet_anyone_with_link(new_id, creds)
+        return new_id
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {e}") from e
+
+
+@router.post("/{course_slug}/{lesson_slug}/copy-sheet")
+def create_sheet_copy(course_slug: str, lesson_slug: str, user: User = Depends(get_current_user)):
+    """Create a per-user working copy of a spreadsheet lesson.
+
+    Prefers minting from the lesson's ``sheet.cells`` map (JSON-first, Issue #108)
+    so "Make a private copy" works with no hand-built template. Falls back to
+    Drive-copying ``google_sheet_id`` for legacy lessons. The copy is shared
+    anyone-with-link can edit so the iframe and verify-sheet path work.
+    """
+    lesson = _find_lesson_for_copy(course_slug, lesson_slug)
+    new_title = f"{course_slug}-{lesson_slug}-copy-{user.username}-{int(time.time())}"
+    if lesson.sheet_cells:
+        try:
+            new_id = provision_sheet_template(lesson.sheet_cells, title=new_title)
+        except VerificationUnavailableError as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
+        except SheetReadError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    else:
+        new_id = _copy_existing_template(lesson, course_slug, lesson_slug)
+    return {
+        "google_sheet_id": new_id,
+        "url": f"https://docs.google.com/spreadsheets/d/{new_id}/edit",
+    }
 
 
 class SpreadsheetVerificationRequest(BaseModel):

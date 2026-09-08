@@ -82,6 +82,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
   const [sheetVerification, setSheetVerification] = useState<SpreadsheetVerification | null>(null);
   const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
   const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);
+  const [isCopyingSheet, setIsCopyingSheet] = useState(false);
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
@@ -401,6 +402,43 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     }
   };
 
+  const handleMakeSheetCopy = async () => {
+    if (!lesson || !slug) return;
+    setIsCopyingSheet(true);
+    setSheetVerifyError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/copy-sheet`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        }
+      );
+      if (response.status === 401) {
+        logout();
+        setIsAuthModalOpen(true);
+        setSheetVerifyError('Your session has expired. Please sign in again.');
+        return;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSheetVerifyError(data.detail || 'Could not create a private copy of this sheet.');
+        return;
+      }
+      if (data.url) {
+        setUserSheetUrl(data.url);
+        window.open(data.url, '_blank');
+      }
+    } catch {
+      setSheetVerifyError('Failed to reach the sheet service.');
+    } finally {
+      setIsCopyingSheet(false);
+    }
+  };
+
   const handleSheetVerify = async (sheetUrl: string) => {
     if (!lesson || !slug) return;
     setSheetVerification(null);
@@ -539,6 +577,8 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         lesson={lesson}
         userSheetUrl={userSheetUrl}
         onChangeUrl={setUserSheetUrl}
+        onMakeCopy={handleMakeSheetCopy}
+        isCopying={isCopyingSheet}
         onVerify={handleSheetVerify}
         isVerifying={isVerifyingSheet}
         verification={sheetVerification}

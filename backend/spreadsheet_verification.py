@@ -214,11 +214,24 @@ def provision_sheet_template(cells: dict[str, str | int | float | bool], title: 
                 valueInputOption="USER_ENTERED",
                 body={"values": grid},
             ).execute()
+        share_sheet_anyone_with_link(spreadsheet_id, creds)
         return spreadsheet_id
     except (VerificationUnavailableError, SheetReadError):
         raise
     except Exception as exc:
         raise SheetReadError(f"Could not provision template sheet: {exc}") from exc
+
+
+def share_sheet_anyone_with_link(spreadsheet_id: str, creds: Any) -> None:
+    """Make a service-account-owned sheet editable by anyone with the link."""
+    from googleapiclient.discovery import build
+
+    drive = build("drive", "v3", credentials=creds)
+    drive.permissions().create(
+        fileId=spreadsheet_id,
+        body={"type": "anyone", "role": "writer"},
+        fields="id",
+    ).execute()
 
 
 def grade_sheet(
