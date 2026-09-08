@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.57](https://github.com/sotoblanco/BaseLayer/compare/v0.1.56...v0.1.57) (2026-09-08)
+
+
+### Improvements
+
+* collapse classic and light players into unified useLessonPlayer ([#66](https://github.com/sotoblanco/BaseLayer/issues/66)) ([#115](https://github.com/sotoblanco/BaseLayer/issues/115)) ([51f3ced](https://github.com/sotoblanco/BaseLayer/commit/51f3cedac0d3fb77b45ce21629cb3a7c191e1f98))
+
 ### [0.1.56](https://github.com/sotoblanco/BaseLayer/compare/v0.1.55...v0.1.56) (2026-09-08)
 
 
