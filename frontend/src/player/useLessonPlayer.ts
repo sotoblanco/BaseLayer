@@ -87,6 +87,7 @@ export interface UseLessonPlayerReturn {
   showDrawingSolution: boolean;
   setShowDrawingSolution: (show: boolean) => void;
   handleDrawingSubmit: () => Promise<void>;
+  handleManualDrawingPass: () => void;
 
   // Spreadsheet
   isSpreadsheetLesson: boolean;
@@ -593,10 +594,14 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
         score: data.score,
         message: data.message || (data.passed ? 'Your drawing passed.' : 'Your drawing needs work.'),
         checks: Array.isArray(data.checks) ? data.checks : undefined,
+        self_eval: !!data.self_eval,
       };
       setDrawingFeedback(feedback);
       setDrawingOutput(feedback.message);
       setDrawingChecks(feedback.checks || []);
+      if (data.self_eval) {
+        setShowDrawingSolution(true);
+      }
       if (feedback.passed) {
         recordLessonPass('drawing');
         triggerSuccess(feedback.message);
@@ -609,6 +614,12 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
       setIsSubmittingDrawing(false);
     }
   }, [lesson, slug, token, xpPenalty, logout, recordLessonPass, triggerSuccess]);
+
+  const handleManualDrawingPass = useCallback(() => {
+    if (!lesson || !course) return;
+    recordLessonPass('drawing');
+    triggerSuccess('Drawing exercise marked complete.');
+  }, [lesson, course, recordLessonPass, triggerSuccess]);
 
   const handleMakeSheetCopy = useCallback(async () => {
     if (!lesson || !slug) return;
@@ -808,6 +819,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     showDrawingSolution,
     setShowDrawingSolution,
     handleDrawingSubmit,
+    handleManualDrawingPass,
 
     isSpreadsheetLesson,
     userSheetUrl,

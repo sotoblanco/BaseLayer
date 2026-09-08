@@ -134,6 +134,10 @@ class FileLesson(BaseModel):
         default_factory=dict,
         description="Declarative template cells (A1 -> value-or-formula) for provisioning",
     )
+    board_theme: str = "default"  # "default" | "chalkboard"
+    drawing_prompt: str | None = None
+    solution_diagram: str | None = None
+    solution_explanation: str | None = None
     produces: str | None = None
     consumes: list[str] = Field(default_factory=list)
     is_locked: bool = False
@@ -217,6 +221,10 @@ class ExportLessonBundle(BaseModel):
     question_image_base64: str | None = None
     solution_image_base64: str | None = None
     sheet_cells: dict[str, Any] = Field(default_factory=dict)
+    board_theme: str = "default"
+    drawing_prompt: str | None = None
+    solution_diagram: str | None = None
+    solution_explanation: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -428,6 +436,10 @@ class LessonMeta:
     # Declarative template (Issue #108): A1 -> value-or-formula map that can
     # provision the lesson's Google Sheet. Leading "=" marks a formula.
     sheet_cells: dict[str, Any] = field(default_factory=dict)
+    board_theme: str = "default"
+    drawing_prompt: str | None = None
+    solution_diagram: str | None = None
+    solution_explanation: str | None = None
     produces: str | None = None
     consumes: list[str] = field(default_factory=list)
 
@@ -441,21 +453,52 @@ def _extract_metadata(lesson_path: Path) -> LessonMeta:
     """Extract metadata configuration for lesson."""
     metadata = _read_json_object(lesson_path / "metadata.json")
     exercise_type = metadata.get("exercise_type", "code")
+    board_theme = metadata.get("board_theme", "default")
+    if exercise_type in ("hand_drawn", "hand-drawn", "chalkboard"):
+        exercise_type = "drawing"
+        board_theme = "chalkboard"
+
+    drawing_meta = metadata.get("drawing") or {}
+    drawing_prompt = _optional_str(
+        drawing_meta.get("prompt_text") or metadata.get("drawing_prompt")
+    )
+    solution_diagram = _optional_str(
+        drawing_meta.get("solution_diagram") or metadata.get("solution_diagram")
+    )
+    solution_explanation = _optional_str(
+        drawing_meta.get("solution_explanation") or metadata.get("solution_explanation")
+    )
+
     image_url = None
-    if exercise_type == "drawing" and (lesson_path / "question.png").exists():
-        image_url = "__image__"
+    if exercise_type == "drawing":
+        if (lesson_path / "question.png").exists():
+            image_url = "__image__"
+        else:
+            image_url = "__chalkboard__"
+            board_theme = "chalkboard"
+
+    stroke_color = metadata.get("stroke_color")
+    if not stroke_color:
+        stroke_color = "#f8fafc" if board_theme == "chalkboard" else "#e11d48"
+
+    stroke_width = int(metadata.get("stroke_width", 3 if board_theme == "chalkboard" else 4))
+
     return LessonMeta(
         exercise_type=exercise_type,
         google_sheet_id=metadata.get("google_sheet_id"),
         copy_on_open=bool(metadata.get("copy_on_open", False)),
-        stroke_color=metadata.get("stroke_color", "#e11d48"),
-        stroke_width=int(metadata.get("stroke_width", 4)),
+        stroke_color=stroke_color,
+        stroke_width=stroke_width,
         image_url=image_url,
         skills=_normalize_skills(metadata.get("skills")),
         title=_optional_str(metadata.get("title")),
         success_cells=parse_success_cells(metadata.get("success_cells")),
         hints=_normalize_skills(metadata.get("hints"))[:5],
         sheet_cells=parse_sheet_template((metadata.get("sheet") or {}).get("cells")),
+        board_theme=board_theme,
+        drawing_prompt=drawing_prompt,
+        solution_diagram=solution_diagram,
+        solution_explanation=solution_explanation,
         produces=_optional_str(metadata.get("produces")),
         consumes=_extract_consumes_meta(metadata.get("consumes")),
     )
@@ -504,6 +547,10 @@ def parse_lesson(
         success_cells=meta.success_cells,
         hints=meta.hints,
         sheet_cells=meta.sheet_cells,
+        board_theme=meta.board_theme,
+        drawing_prompt=meta.drawing_prompt,
+        solution_diagram=meta.solution_diagram,
+        solution_explanation=meta.solution_explanation,
         produces=meta.produces,
         consumes=meta.consumes,
     )
@@ -595,7 +642,12 @@ def _is_sheet_or_drawing_metadata(path: Path) -> str | None:
         text = path.read_text(encoding="utf-8")
         if '"spreadsheet"' in text or '"google_sheet_id"' in text:
             return "spreadsheet"
-        if '"drawing"' in text:
+        if (
+            '"drawing"' in text
+            or '"hand_drawn"' in text
+            or '"hand-drawn"' in text
+            or '"chalkboard"' in text
+        ):
             return "drawing"
     except OSError:
         pass
@@ -940,6 +992,10 @@ def _lesson_to_export_bundle(course_path: Path, lesson: FileLesson) -> ExportLes
         stroke_width=lesson.stroke_width,
         hints=lesson.hints,
         sheet_cells=lesson.sheet_cells,
+        board_theme=lesson.board_theme,
+        drawing_prompt=lesson.drawing_prompt,
+        solution_diagram=lesson.solution_diagram,
+        solution_explanation=lesson.solution_explanation,
         question_image_base64=q_img,
         solution_image_base64=s_img,
     )
@@ -1009,6 +1065,18 @@ def _write_lesson_bundle_files(lesson_dir: Path, lesson: ExportLessonBundle) -> 
         "stroke_width": lesson.stroke_width,
         "hints": lesson.hints,
     }
+    if lesson.board_theme and lesson.board_theme != "default":
+        meta["board_theme"] = lesson.board_theme
+    if lesson.drawing_prompt or lesson.solution_diagram or lesson.solution_explanation:
+        meta["drawing"] = {
+            k: v
+            for k, v in [
+                ("prompt_text", lesson.drawing_prompt),
+                ("solution_diagram", lesson.solution_diagram),
+                ("solution_explanation", lesson.solution_explanation),
+            ]
+            if v
+        }
     if lesson.sheet_cells:
         meta["sheet"] = {"cells": lesson.sheet_cells}
     (lesson_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -1424,13 +1492,17 @@ def _decode_sketch_image(raw_image_data: str) -> bytes:
         raise HTTPException(status_code=400, detail=f"Invalid image data: {e}") from e
 
 
-def _load_drawing_context_files(lesson_dir: Path) -> tuple[str, bytes, bytes | None]:
-    """Load instructions, question image, and optional solution image."""
+def _load_drawing_context_files(
+    lesson_dir: Path, meta: LessonMeta | None = None
+) -> tuple[str, bytes | None, bytes | None]:
+    """Load instructions, optional question image, and optional solution image."""
     readme_path = lesson_dir / "README.md"
     instructions = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
 
     question_path = lesson_dir / "question.png"
     if not question_path.exists():
+        if meta and meta.board_theme == "chalkboard":
+            return instructions, None, None
         raise HTTPException(status_code=500, detail="Lesson diagram missing (question.png)")
     question_img_bytes = question_path.read_bytes()
 
@@ -1447,10 +1519,27 @@ def submit_drawing(
     submission: DrawingSubmission,
     user: User = Depends(get_current_user),
 ):
-    """Evaluate a drawing submission using AI, returning structured rubric feedback."""
+    """Evaluate a drawing submission using AI, or provide self-evaluation feedback."""
     lesson_dir = _get_safe_lesson_dir_or_404(course_slug, lesson_slug)
-    instructions, question_bytes, solution_bytes = _load_drawing_context_files(lesson_dir)
+    meta = _extract_metadata(lesson_dir)
+    instructions, question_bytes, solution_bytes = _load_drawing_context_files(lesson_dir, meta)
     sketch_bytes = _decode_sketch_image(submission.image_data)
+
+    # Chalkboard / hand-drawn lessons without a base diagram run in self-evaluation mode.
+    if meta.board_theme == "chalkboard" and not question_bytes:
+        return {
+            "passed": False,
+            "self_eval": True,
+            "score": 1.0,
+            "message": "Self-evaluation mode: review your chalk drawing against the reference solution on the right, then mark it complete.",
+            "checks": [
+                {
+                    "label": "Self-evaluation active",
+                    "passed": True,
+                    "feedback": "Compare your sketch with the reference solution on the right.",
+                }
+            ],
+        }
 
     result = ai_service.evaluate_drawing(instructions, question_bytes, sketch_bytes, solution_bytes)
     if "error" in result:
