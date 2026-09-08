@@ -562,7 +562,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     <div className="flex items-center gap-4">
                         <h1 className="font-semibold text-lg tracking-tight text-white">{lesson?.title}</h1>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            {currentLang === 'rust' ? 'Rust' : 'Python'}
+                            {lesson?.exercise_type === 'spreadsheet' ? 'Spreadsheet' : lesson?.exercise_type === 'drawing' ? 'Drawing' : currentLang === 'rust' ? 'Rust' : 'Python'}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300">
                             File Course
@@ -800,8 +800,8 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                     </div>
                                 </div>
 
-                            ) : lesson?.exercise_type === 'spreadsheet' && lesson?.google_sheet_id ? (
-                                // Spreadsheet Exercise - Google Sheets
+                            ) : lesson?.exercise_type === 'spreadsheet' && (lesson?.google_sheet_id || Object.keys(lesson?.sheet_cells ?? {}).length > 0) ? (
+                                // Spreadsheet Exercise - Google Sheets (live copy) or JSON template preview
                                 <div className="flex-1 flex flex-col overflow-hidden">
                                     <div className="h-12 border-b border-[#333] flex items-center px-4 bg-[#252526] justify-between gap-4">
                                         <div className="flex items-center gap-3 flex-1 min-w-0">

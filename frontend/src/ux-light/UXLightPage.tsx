@@ -534,7 +534,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         isSubmitting={isSubmittingDrawing}
         feedback={drawingFeedback}
       />
-    ) : exerciseType === 'spreadsheet' && lesson.google_sheet_id ? (
+    ) : exerciseType === 'spreadsheet' && (lesson.google_sheet_id || Object.keys(lesson.sheet_cells ?? {}).length > 0) ? (
       <SpreadsheetPane
         lesson={lesson}
         userSheetUrl={userSheetUrl}
