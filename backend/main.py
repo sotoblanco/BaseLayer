@@ -6,20 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlmodel import Session, select
 
-from auth import auth_router, get_current_admin, get_current_user
-from database import create_db_and_tables, get_session
-from models import (
-    Course,
-    CourseCreate,
-    CourseRead,
-    Exercise,
-    ExerciseCreate,
-    ExerciseRead,
-    ExerciseUpdate,
-    User,
-)
+from auth import auth_router, get_current_user
+from database import create_db_and_tables
+from models import User
 from routers.ai import router as ai_router
 from routers.file_courses import router as file_courses_router
 from routers.me import router as me_router
@@ -79,106 +69,6 @@ async def read_root():
     if os.path.exists("/assets/index.html"):
         return FileResponse("/assets/index.html")
     return {"status": "ok", "message": "BaseLayer App Backend Running"}
-
-
-# --- Admin / Course Routes ---
-
-
-@app.post("/courses/", response_model=CourseRead)
-def create_course(
-    course: CourseCreate,
-    session: Session = Depends(get_session),
-    admin: User = Depends(get_current_admin),
-):
-    db_course = Course.model_validate(course)
-    session.add(db_course)
-    session.commit()
-    session.refresh(db_course)
-    return db_course
-
-
-@app.get("/courses/", response_model=list[CourseRead])
-def read_courses(session: Session = Depends(get_session)):
-    courses = session.exec(select(Course)).all()
-    return courses
-
-
-@app.get("/courses/{course_id}", response_model=CourseRead)
-def read_course(course_id: int, session: Session = Depends(get_session)):
-    course = session.get(Course, course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return course
-
-
-@app.delete("/courses/{course_id}", status_code=204)
-def delete_course(
-    course_id: int,
-    session: Session = Depends(get_session),
-    admin: User = Depends(get_current_admin),
-):
-    course = session.get(Course, course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    session.delete(course)
-    session.commit()
-    return None
-
-
-@app.post("/courses/{course_id}/exercises/", response_model=ExerciseRead)
-def create_exercise_for_course(
-    course_id: int,
-    exercise: ExerciseCreate,
-    session: Session = Depends(get_session),
-    admin: User = Depends(get_current_admin),
-):
-    course = session.get(Course, course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-
-    db_exercise = Exercise.model_validate(exercise)
-    db_exercise.course_id = course_id
-    session.add(db_exercise)
-    session.commit()
-    session.refresh(db_exercise)
-    return db_exercise
-
-
-@app.delete("/courses/{course_id}/exercises/{exercise_id}", status_code=204)
-def delete_exercise(
-    course_id: int,
-    exercise_id: int,
-    session: Session = Depends(get_session),
-    admin: User = Depends(get_current_admin),
-):
-    exercise = session.get(Exercise, exercise_id)
-    if not exercise or exercise.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Exercise not found")
-    session.delete(exercise)
-    session.commit()
-    return None
-
-
-@app.put("/courses/{course_id}/exercises/{exercise_id}", response_model=ExerciseRead)
-def update_exercise(
-    course_id: int,
-    exercise_id: int,
-    exercise_update: ExerciseUpdate,
-    session: Session = Depends(get_session),
-    admin: User = Depends(get_current_admin),
-):
-    db_exercise = session.get(Exercise, exercise_id)
-    if not db_exercise or db_exercise.course_id != course_id:
-        raise HTTPException(status_code=404, detail="Exercise not found")
-
-    exercise_data = exercise_update.dict(exclude_unset=True)
-    for key, value in exercise_data.items():
-        setattr(db_exercise, key, value)
-
-    session.add(db_exercise)
-    session.commit()
-    session.refresh(db_exercise)
-    return db_exercise
 
 
 @app.post("/run")

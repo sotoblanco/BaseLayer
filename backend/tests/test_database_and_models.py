@@ -6,46 +6,38 @@ from sqlmodel import Session
 
 from database import create_db_and_tables, engine, get_session
 from models import (
-    Course,
-    Exercise,
-    ExerciseUpdate,
     GoogleTokenRequest,
     Token,
     TokenData,
+    User,
     UserCreate,
+    UserRead,
 )
 
 
 class TestModels:
     """Test SQLModel schemas and validations."""
 
-    def test_course_and_exercise_models(self):
-        course = Course(
-            title="PyTorch Basics",
-            slug="pytorch-basics",
-            description="Deep Learning",
-            is_published=True,
+    def test_user_models(self):
+        user = User(
+            username="student1",
+            email="student1@example.com",
+            hashed_password="hashed_pwd",
+            role="student",
         )
-        assert course.title == "PyTorch Basics"
-        assert course.is_published is True
+        assert user.username == "student1"
+        assert user.email == "student1@example.com"
+        assert user.role == "student"
+        assert user.hashed_password == "hashed_pwd"
 
-        ex = Exercise(
-            title="Tensors",
-            slug="tensors",
-            description="# Tensors",
-            initial_code="x = 1",
-            test_code="assert x == 1",
-            course=course,
+        user_read = UserRead(
+            id=1,
+            username="student1",
+            email="student1@example.com",
+            role="student",
         )
-        assert ex.title == "Tensors"
-        assert ex.passing_rule == "tests_pass"
-        assert ex.language == "python"
-
-    def test_exercise_update_model(self):
-        update = ExerciseUpdate(title="Updated Title", passing_rule="ai_eval")
-        assert update.title == "Updated Title"
-        assert update.passing_rule == "ai_eval"
-        assert update.description is None
+        assert user_read.id == 1
+        assert user_read.username == "student1"
 
     def test_token_and_auth_models(self):
         token = Token(access_token="abc.123", token_type="bearer")
@@ -78,8 +70,3 @@ class TestDatabase:
             next(gen)
         except StopIteration:
             pass
-
-    def test_get_courses_endpoint(self, client):
-        response = client.get("/courses/")
-        assert response.status_code == 200
-        assert isinstance(response.json(), list)
