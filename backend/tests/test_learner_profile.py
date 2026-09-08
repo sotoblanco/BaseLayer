@@ -149,6 +149,24 @@ I prefer visual and drawing warm-ups before jumping to code.
         _, parsed2 = get_or_create_profile("coder1", base_dir=tmp_path)
         assert any("Completed tinytorch" in s for s in parsed2["signals"])
 
+    def test_record_breakdown_requested_signal(self, tmp_path: Path):
+        get_or_create_profile("breakdown_user", base_dir=tmp_path)
+
+        record_learner_event(
+            username="breakdown_user",
+            event_type="breakdown_requested",
+            payload={
+                "course_slug": "tinytorch",
+                "lesson_slug": "lesson02",
+            },
+            base_dir=tmp_path,
+        )
+
+        _, parsed = get_or_create_profile("breakdown_user", base_dir=tmp_path)
+        assert any(
+            "Needed a breakdown on tinytorch (lesson02)" in s for s in parsed["signals"]
+        )
+
     def test_record_lesson_passed_event(self, tmp_path: Path):
         get_or_create_profile("drawer1", base_dir=tmp_path)
 

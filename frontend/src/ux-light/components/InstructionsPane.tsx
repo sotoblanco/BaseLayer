@@ -18,6 +18,9 @@ interface InstructionsPaneProps {
   xpPenalty: number;
   onTakeHint: () => void;
   code: string;
+  courseSlug?: string;
+  runCount?: number;
+  onRunCode?: () => Promise<void> | void;
 }
 
 export function InstructionsPane({
@@ -29,6 +32,9 @@ export function InstructionsPane({
   xpPenalty,
   onTakeHint,
   code,
+  courseSlug,
+  runCount,
+  onRunCode,
 }: InstructionsPaneProps) {
   const [isHintOpen, setIsHintOpen] = useState(false);
   const [hintIndex, setHintIndex] = useState(0);
@@ -169,6 +175,11 @@ export function InstructionsPane({
           <AIChatPanel
             variant="integrated"
             lessonId={lesson.slug}
+            courseSlug={courseSlug}
+            lessonSlug={lesson.slug}
+            exerciseType={lesson.exercise_type}
+            runCount={runCount}
+            onRunCode={onRunCode}
             context={buildTutorContext(lesson, code)}
           />
         </div>

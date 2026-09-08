@@ -1,4 +1,6 @@
+import json
 import os
+import re
 from typing import Any
 
 from llm import (
@@ -108,6 +110,118 @@ def build_system_prompt(profile: dict[str, Any] | None = None, style: str | None
         _explanation_length_instruction(frontmatter.get("explanation_length") or "short"),
     ]
     return "\n\n".join(sections)
+
+
+def _extract_lesson_title_from_context(context: str) -> str:
+    match = re.search(r"^##\s+Lesson:\s*(.+)$", context, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return "Current Lesson"
+
+
+def _fallback_breakdown(context: str) -> dict[str, Any]:
+    title = _extract_lesson_title_from_context(context)
+    return {
+        "lesson_title": title,
+        "intro": f"Let's break down '{title}' into 3 guided micro-steps following the Solveit method.",
+        "sub_steps": [
+            {
+                "step_number": 1,
+                "title": "Set up toy inputs and inspect starting variables",
+                "toy_data": "sample_input = [1, 2, 3]",
+                "target": "Initialize sample toy data and verify its structure before processing.",
+                "inspect_prompt": "Run print(sample_input) to verify the data structure.",
+            },
+            {
+                "step_number": 2,
+                "title": "Implement core transformation logic on the toy data",
+                "toy_data": "sample_input = [1, 2, 3]",
+                "target": "Write 1 to 3 lines executing the main calculation on the sample data.",
+                "inspect_prompt": "Run print(result) and check the intermediate transformed value.",
+            },
+            {
+                "step_number": 3,
+                "title": "Connect the logic to the main function and verify output",
+                "toy_data": "sample_input = [1, 2, 3]",
+                "target": "Wrap the working logic into the required function signature.",
+                "inspect_prompt": "Run the function on toy data and inspect the return value before submitting.",
+            },
+        ],
+    }
+
+
+def _build_breakdown_prompt(context: str, profile: dict[str, Any] | None = None) -> str:
+    level = "intermediate"
+    if profile:
+        level = (profile.get("frontmatter") or {}).get("understanding_level", "intermediate")
+
+    return f"""You are SocratiQ, an expert programming tutor in BaseLayer following the Solveit methodology.
+The learner has requested "Let's break it down" on their current coding exercise.
+Decompose the current lesson objective into an ordered sequence of 3 to 5 micro-steps that the learner can work through in place in their editor.
+
+Learner understanding level: {level}
+
+Rules:
+1. Divide the overall task into 3 to 5 sequential micro-steps.
+2. Each micro-step MUST contain:
+   - "step_number": integer starting at 1 (1, 2, 3...)
+   - "title": short, descriptive step title
+   - "toy_data": concrete toy data (e.g. 2-3 numbers, tiny list, 2x2 tensor) to make the step verifiable immediately
+   - "target": 1 to 3 lines of coding guidance. DO NOT give away the finished solution or full code!
+   - "inspect_prompt": concrete print or inspection instructions so the learner can verify the intermediate result by running their code
+3. Input hygiene & Answer-Key Security: Never reconstruct or reveal hidden test assertions or complete solutions.
+4. Output format: Return ONLY a valid JSON object (no extra commentary) with keys:
+   - "lesson_title": string
+   - "intro": string (encouraging SocratiQ intro explaining the sub-step breakdown)
+   - "sub_steps": list of 3 to 5 objects, each with keys "step_number", "title", "toy_data", "target", "inspect_prompt"
+
+### Exercise Context
+{context.strip()}
+"""
+
+
+def _extract_breakdown_json(text: str) -> dict[str, Any]:
+    match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    if match:
+        json_str = match.group(1)
+    else:
+        first_brace = text.find("{")
+        last_brace = text.rfind("}")
+        if first_brace != -1 and last_brace != -1:
+            json_str = text[first_brace : last_brace + 1]
+        else:
+            json_str = text
+    return json.loads(json_str)
+
+
+def _normalize_sub_steps(sub_steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for idx, step in enumerate(sub_steps, start=1):
+        if not isinstance(step, dict):
+            continue
+        normalized.append({
+            "step_number": step.get("step_number", idx),
+            "title": str(step.get("title", f"Step {idx}")),
+            "toy_data": str(step.get("toy_data", "")),
+            "target": str(step.get("target", "")),
+            "inspect_prompt": str(step.get("inspect_prompt", "")),
+        })
+    return normalized[:5]
+
+
+def _format_breakdown_result(data: dict[str, Any], context: str) -> dict[str, Any]:
+    steps = data.get("sub_steps", [])
+    if not isinstance(steps, list) or len(steps) < 2:
+        return _fallback_breakdown(context)
+    normalized = _normalize_sub_steps(steps)
+    if len(normalized) < 2:
+        return _fallback_breakdown(context)
+    title = str(data.get("lesson_title") or _extract_lesson_title_from_context(context))
+    return {
+        "lesson_title": title,
+        "intro": str(data.get("intro") or "Here is your guided micro-step breakdown:"),
+        "sub_steps": normalized,
+    }
 
 
 class AIService:
@@ -313,6 +427,23 @@ class AIService:
             if self.settings.provider == "ollama" and is_connection_error(e):
                 return format_ollama_error(e, self.settings.effective_base())
             return f"Error communicating with AI: {str(e)}"
+
+    def generate_breakdown(
+        self,
+        context: str,
+        profile: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Decompose a code lesson into 3-5 Solveit micro-steps."""
+        if not self.is_configured:
+            return _fallback_breakdown(context)
+
+        prompt = _build_breakdown_prompt(context, profile)
+        try:
+            raw = self.complete(prompt)
+            data = _extract_breakdown_json(raw)
+            return _format_breakdown_result(data, context)
+        except Exception:
+            return _fallback_breakdown(context)
 
     def evaluate_drawing(
         self,

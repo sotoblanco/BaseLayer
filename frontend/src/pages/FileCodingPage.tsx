@@ -59,6 +59,8 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         isRunning,
         output,
         handleRun,
+        handleRunCode,
+        runCount,
         drawingCanvasRef,
         drawingOutput,
         drawingChecks,
@@ -315,6 +317,11 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                     <AIChatPanel
                                         variant="integrated"
                                         lessonId={lesson?.slug ?? ''}
+                                        courseSlug={slug}
+                                        lessonSlug={lesson?.slug}
+                                        exerciseType={lesson?.exercise_type}
+                                        runCount={runCount}
+                                        onRunCode={() => handleRunCode()}
                                         context={buildTutorContext(lesson, code)}
                                     />
                                 </div>

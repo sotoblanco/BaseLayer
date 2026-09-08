@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User as UserIcon, Loader, X } from 'lucide-react';
+import { Send, Bot, User as UserIcon, Loader, X, ListTree, Play, CheckCircle2, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
-import { discussImplementation } from '../services/aiService';
+import {
+    discussImplementation,
+    requestBreakdown,
+    type BreakdownResponse,
+} from '../services/aiService';
 import { getLearningProfile, emitLearnerEvent } from '../services/profileService';
 import {
     TUTOR_STYLES,
@@ -25,6 +29,11 @@ interface AIChatPanelProps {
     context: string;
     lessonId: string;
     variant?: 'standalone' | 'integrated';
+    courseSlug?: string;
+    lessonSlug?: string;
+    exerciseType?: string;
+    runCount?: number;
+    onRunCode?: () => Promise<void> | void;
 }
 
 const GREETING: Message = {
@@ -38,7 +47,16 @@ const GREETING: Message = {
 const MAX_SENT_MESSAGES = 12;
 const MAX_SENT_CHARS = 12_000;
 
-export default function AIChatPanel({ context, lessonId, variant = 'standalone' }: AIChatPanelProps) {
+export default function AIChatPanel({
+    context,
+    lessonId,
+    variant = 'standalone',
+    courseSlug,
+    lessonSlug,
+    exerciseType,
+    runCount,
+    onRunCode,
+}: AIChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([GREETING]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +67,17 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
     // profile loads we do not send an override so the server applies the profile.
     const [tutorStyle, setTutorStyle] = useState<TutorStyleId | null>(null);
     const [userOverrodeStyle, setUserOverrodeStyle] = useState(false);
+
+    // Breakdown state (Issue #86)
+    const [breakdown, setBreakdown] = useState<BreakdownResponse | null>(null);
+    const [activeStepIndex, setActiveStepIndex] = useState(0);
+    const [isBreakingDown, setIsBreakingDown] = useState(false);
+    const [stepRunCountAtActivation, setStepRunCountAtActivation] = useState(0);
+
+    const isCodeLesson = !exerciseType || exerciseType === 'code';
+    const currentStep = breakdown?.sub_steps[activeStepIndex];
+    const isLastStep = breakdown ? activeStepIndex === breakdown.sub_steps.length - 1 : false;
+    const hasRunCurrentStep = (runCount ?? 0) > stepRunCountAtActivation;
 
     // Load the learner's persisted tutor style once so the control reflects
     // LEARNING.md instead of a divergent local default.
@@ -93,7 +122,67 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
         setMessages([GREETING]);
         setInput('');
         setIsSettingsOpen(false);
+        setBreakdown(null);
+        setActiveStepIndex(0);
+        setIsBreakingDown(false);
     }, [lessonId]);
+
+    const handleStartBreakdown = async () => {
+        if (isBreakingDown || isLoading) return;
+        setIsBreakingDown(true);
+
+        const promptText = "Let's break it down: can you split this lesson into guided micro-steps?";
+        setMessages((prev) => [...prev, { role: 'user', content: promptText }]);
+
+        try {
+            const result = await requestBreakdown(context, courseSlug, lessonSlug || lessonId);
+            setBreakdown(result);
+            setActiveStepIndex(0);
+            setStepRunCountAtActivation(runCount ?? 0);
+
+            const firstStep = result.sub_steps[0];
+            const introContent = `${result.intro}\n\n**Step 1 of ${result.sub_steps.length}: ${firstStep.title}**\n\n- **Toy Data**: \`${firstStep.toy_data}\`\n- **Target**: ${firstStep.target}\n- **Inspect**: ${firstStep.inspect_prompt}\n\n*Edit your code in the editor and click **Run** to inspect your output before advancing to the next step.*`;
+
+            setMessages((prev) => [...prev, { role: 'assistant', content: introContent }]);
+        } catch (error: any) {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content: error?.message || "I couldn't break down the lesson right now. Please try asking a question directly!",
+                    local: true,
+                },
+            ]);
+        } finally {
+            setIsBreakingDown(false);
+        }
+    };
+
+    const handleAdvanceStep = () => {
+        if (!breakdown || !hasRunCurrentStep) return;
+        const nextIndex = activeStepIndex + 1;
+        if (nextIndex < breakdown.sub_steps.length) {
+            setActiveStepIndex(nextIndex);
+            setStepRunCountAtActivation(runCount ?? 0);
+            const nextStep = breakdown.sub_steps[nextIndex];
+            const nextContent = `Great progress inspecting Step ${activeStepIndex + 1}! Now let's move to **Step ${nextIndex + 1} of ${breakdown.sub_steps.length}: ${nextStep.title}**\n\n- **Toy Data**: \`${nextStep.toy_data}\`\n- **Target**: ${nextStep.target}\n- **Inspect**: ${nextStep.inspect_prompt}\n\n*Update your code and click **Run** to verify the output.*`;
+            setMessages((prev) => [...prev, { role: 'assistant', content: nextContent }]);
+        }
+    };
+
+    const handleFinishBreakdown = () => {
+        if (!breakdown) return;
+        const totalSteps = breakdown.sub_steps.length;
+        setBreakdown(null);
+        setActiveStepIndex(0);
+        const completionMessage = `You completed all ${totalSteps} micro-steps of the breakdown! All the pieces are in place. Rejoin the main lesson and click **Submit** to run the complete automated test suite against your solution.`;
+        setMessages((prev) => [...prev, { role: 'assistant', content: completionMessage }]);
+    };
+
+    const handleCancelBreakdown = () => {
+        setBreakdown(null);
+        setActiveStepIndex(0);
+    };
 
     /**
      * Build the bounded history for this request: drop the local greeting/error
@@ -257,6 +346,118 @@ export default function AIChatPanel({ context, lessonId, variant = 'standalone' 
                                 );
                             })}
                         </div>
+                    </div>
+                )}
+
+                {/* Breakdown Active Guidance Card (Issue #86) */}
+                {breakdown && currentStep && (
+                    <div className="mb-3 p-3.5 bg-slate-900 border border-blue-500/40 rounded-xl shadow-lg animate-in fade-in-50 duration-200 text-left">
+                        <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 uppercase tracking-wider">
+                                    Step {activeStepIndex + 1} of {breakdown.sub_steps.length}
+                                </span>
+                                <h4 className="text-xs font-semibold text-slate-100 truncate max-w-xs sm:max-w-sm">
+                                    {currentStep.title}
+                                </h4>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded ${
+                                    hasRunCurrentStep
+                                        ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40'
+                                        : 'bg-amber-950/60 text-amber-400 border border-amber-800/40'
+                                }`}>
+                                    {hasRunCurrentStep ? 'Inspection run recorded' : 'Run code required'}
+                                </span>
+                                <button
+                                    onClick={handleCancelBreakdown}
+                                    className="text-slate-500 hover:text-slate-300 transition-colors p-1"
+                                    title="Exit breakdown"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                            {currentStep.toy_data && (
+                                <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800 font-mono text-[11px] text-amber-300">
+                                    <div className="text-[10px] uppercase font-bold text-slate-500 mb-0.5">Toy Data</div>
+                                    {currentStep.toy_data}
+                                </div>
+                            )}
+                            <div className="text-slate-300">
+                                <span className="font-semibold text-slate-400 mr-1">Target:</span>
+                                {currentStep.target}
+                            </div>
+                            <div className="text-slate-300">
+                                <span className="font-semibold text-slate-400 mr-1">Inspect:</span>
+                                {currentStep.inspect_prompt}
+                            </div>
+                        </div>
+
+                        <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-xs">
+                                {!hasRunCurrentStep && (
+                                    <span className="text-[11px] text-amber-400/90">
+                                        Run code in editor to verify step
+                                    </span>
+                                )}
+                                {onRunCode && !hasRunCurrentStep && (
+                                    <button
+                                        onClick={() => void onRunCode()}
+                                        className="flex items-center gap-1 text-xs px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 transition-colors"
+                                    >
+                                        <Play size={11} className="text-emerald-400" />
+                                        <span>Run</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            <div>
+                                {!hasRunCurrentStep ? (
+                                    <button
+                                        disabled
+                                        className="text-xs px-3 py-1.5 bg-slate-800/80 text-slate-500 rounded-lg border border-slate-700/50 cursor-not-allowed font-medium"
+                                        title="Run your code in the editor to inspect results before advancing"
+                                    >
+                                        Next Step
+                                    </button>
+                                ) : !isLastStep ? (
+                                    <button
+                                        onClick={handleAdvanceStep}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shadow shadow-blue-500/20"
+                                    >
+                                        <span>Advance to Step {activeStepIndex + 2}</span>
+                                        <ChevronRight size={14} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleFinishBreakdown}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors shadow shadow-emerald-500/20"
+                                    >
+                                        <CheckCircle2 size={14} />
+                                        <span>Rejoin Main Lesson & Submit</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Pre-breakdown launcher button (code lessons only) */}
+                {isCodeLesson && !breakdown && (
+                    <div className="flex items-center justify-between mb-2">
+                        <button
+                            onClick={handleStartBreakdown}
+                            disabled={isBreakingDown || isLoading}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg bg-blue-950/40 border border-blue-800/40 text-blue-300 hover:bg-blue-900/40 hover:text-blue-200 transition-colors disabled:opacity-50"
+                            title="Split this lesson into guided micro-steps on the spot"
+                        >
+                            <ListTree size={13} className="text-blue-400" />
+                            <span>Let's break it down</span>
+                            {isBreakingDown && <Loader size={12} className="animate-spin ml-1 text-blue-400" />}
+                        </button>
                     </div>
                 )}
 

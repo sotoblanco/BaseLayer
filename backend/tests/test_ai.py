@@ -366,3 +366,91 @@ class TestDrawingRubricParsing:
         assert result["passed"] is True
         assert "correct" in result["message"]
         assert result["checks"] == []
+
+
+class TestBreakdownEndpoint:
+    def test_breakdown_requires_auth(self, client: TestClient):
+        response = client.post(
+            "/ai/breakdown",
+            json={"context": "## Lesson: Tensors"},
+        )
+        assert response.status_code == 401
+
+    def test_breakdown_requires_context(self, client: TestClient, auth_headers):
+        response = client.post(
+            "/ai/breakdown",
+            json={"context": "   "},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    def test_breakdown_unconfigured_fallback(self, client: TestClient, auth_headers):
+        response = client.post(
+            "/ai/breakdown",
+            json={
+                "context": "## Lesson: Tensor Operations\n### Assignment\nImplement 2D tensor dot product.",
+                "course_slug": "tinytorch",
+                "lesson_slug": "lesson02",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["lesson_title"] == "Tensor Operations"
+        assert len(data["sub_steps"]) >= 3
+        for step in data["sub_steps"]:
+            assert step["step_number"] >= 1
+            assert step["title"]
+            assert step["toy_data"]
+            assert step["target"]
+            assert step["inspect_prompt"]
+
+    def test_breakdown_with_llm_configured(self, client: TestClient, auth_headers, monkeypatch):
+        llm_response = """```json
+{
+  "lesson_title": "Tensor Operations",
+  "intro": "Let us break this down into 3 steps:",
+  "sub_steps": [
+    {
+      "step_number": 1,
+      "title": "Define 1D vectors",
+      "toy_data": "v1 = [1, 2]; v2 = [3, 4]",
+      "target": "Initialize the two vectors",
+      "inspect_prompt": "print(v1, v2)"
+    },
+    {
+      "step_number": 2,
+      "title": "Compute element-wise product",
+      "toy_data": "prod = [a * b for a, b in zip(v1, v2)]",
+      "target": "Multiply elements",
+      "inspect_prompt": "print(prod)"
+    },
+    {
+      "step_number": 3,
+      "title": "Sum the products",
+      "toy_data": "res = sum(prod)",
+      "target": "Sum up and return",
+      "inspect_prompt": "print(res)"
+    }
+  ]
+}
+```"""
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(AIService, "complete", lambda self, prompt: llm_response)
+
+        response = client.post(
+            "/ai/breakdown",
+            json={
+                "context": "## Lesson: Tensor Operations\n### Assignment\nCompute dot product.",
+                "course_slug": "tinytorch",
+                "lesson_slug": "lesson02",
+            },
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["lesson_title"] == "Tensor Operations"
+        assert len(data["sub_steps"]) == 3
+        assert data["sub_steps"][0]["title"] == "Define 1D vectors"
+        assert data["sub_steps"][1]["toy_data"] == "prod = [a * b for a, b in zip(v1, v2)]"
+

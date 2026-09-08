@@ -87,6 +87,28 @@ class ChatRequest(BaseModel):
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"] | None = None
 
 
+class BreakdownSubStepRead(BaseModel):
+    step_number: int
+    title: str
+    toy_data: str
+    target: str
+    inspect_prompt: str
+
+
+class BreakdownRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    context: str = Field(..., min_length=1, max_length=MAX_AI_CONTEXT_CHARS)
+    course_slug: str | None = None
+    lesson_slug: str | None = None
+
+
+class BreakdownResponse(BaseModel):
+    lesson_title: str
+    intro: str
+    sub_steps: list[BreakdownSubStepRead]
+
+
 class ConfigureKeyRequest(BaseModel):
     provider: str = "gemini"
     api_key: str = ""
@@ -742,3 +764,51 @@ def discuss_implementation(request: ChatRequest, user: User = Depends(get_curren
         "tutor_style": style,
         "understanding_level": frontmatter.get("understanding_level", "intermediate"),
     }
+
+
+def _record_breakdown_event(username: str, course_slug: str | None, lesson_slug: str | None) -> None:
+    try:
+        from learner_profile import record_learner_event
+
+        record_learner_event(
+            username=username,
+            event_type="breakdown_requested",
+            payload={
+                "course_slug": course_slug or "",
+                "lesson_slug": lesson_slug or "",
+            },
+        )
+    except Exception:
+        pass
+
+
+def _get_learner_profile_safe(username: str) -> dict[str, Any]:
+    try:
+        from learner_profile import get_or_create_profile
+
+        return get_or_create_profile(username)[1]
+    except Exception:
+        return {}
+
+
+@router.post("/breakdown", response_model=BreakdownResponse)
+def breakdown_lesson(
+    request: BreakdownRequest,
+    user: User = Depends(get_current_user),
+):
+    if not request.context.strip():
+        raise HTTPException(status_code=422, detail="Lesson context is required")
+
+    _record_breakdown_event(user.username, request.course_slug, request.lesson_slug)
+    profile = _get_learner_profile_safe(user.username)
+    result = ai_service.generate_breakdown(context=request.context, profile=profile)
+
+    return BreakdownResponse(
+        lesson_title=result.get("lesson_title", "Current Lesson"),
+        intro=result.get("intro", ""),
+        sub_steps=[
+            BreakdownSubStepRead(**step)
+            for step in result.get("sub_steps", [])
+        ],
+    )
+
