@@ -114,6 +114,113 @@ def parse_success_cells(raw: Any) -> list[SpreadsheetTargetCell]:
     return cells
 
 
+# Declarative sheet templates (Issue #108): author the lesson template as an
+# A1 -> value-or-formula map in metadata.json instead of hand-building a
+# Google Sheet. Leading "=" marks a formula (spreadsheet convention);
+# everything else is a literal value. Values/formulas only in v1 (no
+# formatting, merges, or validation rules).
+MAX_TEMPLATE_CELLS = 500
+
+
+def parse_sheet_template(raw: Any) -> dict[str, str | int | float | bool]:
+    """Validate a ``sheet.cells`` map into normalized {A1: value} entries."""
+    if not isinstance(raw, dict):
+        return {}
+    cells: dict[str, str | int | float | bool] = {}
+    for key, value in raw.items():
+        cell = normalize_cell_reference(key)
+        if not cell:
+            continue
+        if isinstance(value, bool):
+            cells[cell] = value
+        elif isinstance(value, (int, float)):
+            cells[cell] = value
+        elif isinstance(value, str):
+            cells[cell] = value
+        else:
+            continue
+        if len(cells) >= MAX_TEMPLATE_CELLS:
+            break
+    return cells
+
+
+def _split_cell(cell: str) -> tuple[int, int]:
+    """Split an A1 reference into (row0, col0) zero-based indices."""
+    letters = re.match(r"^([A-Z]+)", cell).group(1)  # type: ignore[union-attr]
+    digits = cell[len(letters) :]
+    col = 0
+    for char in letters:
+        col = col * 26 + (ord(char) - ord("A") + 1)
+    return int(digits) - 1, col - 1
+
+
+def template_to_grid(cells: dict[str, str | int | float | bool]) -> list[list[Any]]:
+    """Expand a cell map into a dense 2D grid for the Sheets values API."""
+    if not cells:
+        return []
+    max_row = max_col = 0
+    positions: dict[tuple[int, int], Any] = {}
+    for cell, value in cells.items():
+        row, col = _split_cell(cell)
+        positions[(row, col)] = value
+        max_row = max(max_row, row)
+        max_col = max(max_col, col)
+    return [
+        [positions.get((row, col), "") for col in range(max_col + 1)] for row in range(max_row + 1)
+    ]
+
+
+def provision_sheet_template(cells: dict[str, str | int | float | bool], title: str) -> str:
+    """Create a real Google Sheet from a cell map; return the spreadsheet id.
+
+    Writes with USER_ENTERED so "=FORMULA" strings become live formulas.
+    Same credentials contract as verify: raises VerificationUnavailableError
+    without service account / googleapiclient, SheetReadError on API failure.
+    """
+    sa_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE") or os.environ.get(
+        "SERVICE_ACCOUNT_FILE"
+    )
+    if not sa_file:
+        raise VerificationUnavailableError(
+            "Sheet provisioning is not configured on this deployment. "
+            "Set GOOGLE_SERVICE_ACCOUNT_FILE to create template sheets from JSON."
+        )
+    try:
+        from google.oauth2.service_account import Credentials
+        from googleapiclient.discovery import build
+    except Exception:
+        raise VerificationUnavailableError(
+            "Sheet provisioning is not available: googleapiclient is not installed on the server."
+        ) from None
+    try:
+        creds = Credentials.from_service_account_file(
+            sa_file,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
+        service = build("sheets", "v4", credentials=creds)
+        created = service.spreadsheets().create(body={"properties": {"title": title}}).execute()
+        spreadsheet_id = created.get("spreadsheetId")
+        if not spreadsheet_id:
+            raise SheetReadError("Google did not return a spreadsheet id.")
+        grid = template_to_grid(cells)
+        if grid:
+            last_col = _column_index_to_letters(len(grid[0]) - 1)
+            service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=f"A1:{last_col}{len(grid)}",
+                valueInputOption="USER_ENTERED",
+                body={"values": grid},
+            ).execute()
+        return spreadsheet_id
+    except (VerificationUnavailableError, SheetReadError):
+        raise
+    except Exception as exc:
+        raise SheetReadError(f"Could not provision template sheet: {exc}") from exc
+
+
 def grade_sheet(
     cells: list[SpreadsheetTargetCell],
     actual_values: dict[str, Any],

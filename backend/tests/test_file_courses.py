@@ -1068,6 +1068,150 @@ class TestSpreadsheetVerification:
         assert missing.checks[1].actual is None
 
 
+class TestSheetCellMap:
+    """Tests for Issue #108: declarative sheet.cells templates in metadata.json."""
+
+    def test_parse_sheet_template_validates_keys_and_values(self):
+        from spreadsheet_verification import parse_sheet_template
+
+        assert parse_sheet_template(None) == {}
+        assert parse_sheet_template([]) == {}
+        parsed = parse_sheet_template(
+            {
+                "a1": "Label",
+                "G2": '=ROWS(B2:D4) & "x"',
+                "B2": 20,
+                "C3": 1.5,
+                "D4": True,
+                "bad-cell": "skip",
+                "E5": ["nope"],
+            }
+        )
+        assert parsed == {
+            "A1": "Label",
+            "G2": '=ROWS(B2:D4) & "x"',
+            "B2": 20,
+            "C3": 1.5,
+            "D4": True,
+        }
+
+    def test_template_to_grid_expands_dense(self):
+        from spreadsheet_verification import template_to_grid
+
+        assert template_to_grid({}) == []
+        grid = template_to_grid({"A1": "h", "B2": "=A1", "C1": 3})
+        assert grid == [["h", "", 3], ["", "=A1", ""]]
+
+    def test_lesson_parse_surfaces_sheet_cells(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "sheetmap"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Sheetmap")
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "exercise_type": "spreadsheet",
+                    "copy_on_open": True,
+                    "sheet": {"cells": {"A1": "Fill B2", "B2": 20}},
+                    "success_cells": [{"cell": "B2", "expected": "20"}],
+                }
+            )
+        )
+
+        res = client.get("/file-courses/sheetmap/chapter1--lesson01", headers=auth_headers)
+        if res.status_code == 404:
+            res = client.get("/file-courses/sheetmap/lesson01", headers=auth_headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["sheet_cells"] == {"A1": "Fill B2", "B2": 20}
+
+    def test_provision_sheet_requires_admin_and_template(
+        self, client: TestClient, auth_headers, admin_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "provable"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Provable")
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "exercise_type": "spreadsheet",
+                    "sheet": {"cells": {"A1": "hi"}},
+                }
+            )
+        )
+
+        # Non-admin cannot mint platform sheets.
+        denied = client.post(
+            "/file-courses/provable/lesson01/provision-sheet", headers=auth_headers
+        )
+        assert denied.status_code == 403
+
+        # Without credentials the endpoint is an honest 501, never a fake sheet.
+        monkeypatch.delenv("GOOGLE_SERVICE_ACCOUNT_FILE", raising=False)
+        monkeypatch.delenv("SERVICE_ACCOUNT_FILE", raising=False)
+        missing = client.post(
+            "/file-courses/provable/lesson01/provision-sheet", headers=admin_headers
+        )
+        assert missing.status_code == 501
+
+    def test_provision_sheet_stamps_id_and_reuses(
+        self, client: TestClient, admin_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        course_dir = courses_dir / "stampable"
+        course_dir.mkdir()
+        (course_dir / "README.md").write_text("# Stampable")
+        l1 = course_dir / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        meta_path = l1 / "metadata.json"
+        meta_path.write_text(
+            json.dumps({"exercise_type": "spreadsheet", "sheet": {"cells": {"A1": "hi"}}})
+        )
+
+        with patch(
+            "routers.file_courses.provision_sheet_template", return_value="NEWID123"
+        ) as mock_provision:
+            res = client.post(
+                "/file-courses/stampable/lesson01/provision-sheet", headers=admin_headers
+            )
+        assert res.status_code == 200
+        assert res.json()["google_sheet_id"] == "NEWID123"
+        mock_provision.assert_called_once()
+        assert json.loads(meta_path.read_text())["google_sheet_id"] == "NEWID123"
+
+        # Second call reuses the stamped id instead of minting a duplicate.
+        with patch(
+            "routers.file_courses.provision_sheet_template",
+            side_effect=AssertionError("must not re-provision"),
+        ):
+            again = client.post(
+                "/file-courses/stampable/lesson01/provision-sheet", headers=admin_headers
+            )
+        assert again.status_code == 409
+
+
 class TestShareExportImport:
     """Tests for Course and Lesson export, sharing, and importing."""
 

@@ -1,5 +1,6 @@
 import { CheckCircle2, ExternalLink, Link, Loader2, Trash2, XCircle } from 'lucide-react';
 import type { FileLesson, SpreadsheetVerification } from '../types';
+import SheetTemplatePreview from '../../components/SheetTemplatePreview';
 
 interface SpreadsheetPaneProps {
   lesson: FileLesson;
@@ -107,6 +108,10 @@ export function SpreadsheetPane({
             title="Google Sheet Exercise"
             allow="autorepair;usercopy;useredit"
           />
+        ) : Object.keys(lesson.sheet_cells ?? {}).length > 0 ? (
+          <div className="w-full h-full bg-[#0b2338] text-slate-200 overflow-auto">
+            <SheetTemplatePreview cells={lesson.sheet_cells ?? {}} />
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full text-[#5b6b7b] italic text-sm">
             Sheet ID not found in metadata...

@@ -20,6 +20,7 @@ import { ShareAchievement } from '../ux-light/components/ShareAchievement';
 import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
 import type { SharePayload } from '../ux-light/shareCard';
 import { findLessonPosition, useLessonUrlSync } from '../lessonUrl';
+import SheetTemplatePreview from '../components/SheetTemplatePreview';
 import { isLocalHost } from '../isLocalHost';
 interface Lesson {
     slug: string;
@@ -41,6 +42,7 @@ interface Lesson {
     skills?: string[];
     success_cells?: { cell: string; expected: string }[];
     hints?: string[];
+    sheet_cells?: Record<string, string | number | boolean>;
 }
 
 interface Chapter {
@@ -862,6 +864,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 title="Google Sheet Exercise"
                                                 allow="autorepair;usercopy;useredit"
                                             />
+                                        ) : Object.keys(lesson?.sheet_cells ?? {}).length > 0 ? (
+                                            <div className="w-full h-full bg-slate-900 text-slate-200 overflow-auto">
+                                                <SheetTemplatePreview cells={lesson?.sheet_cells ?? {}} />
+                                            </div>
                                         ) : (
                                             <div className="flex items-center justify-center h-full text-slate-500 italic">
                                                 Sheet ID not found in metadata...

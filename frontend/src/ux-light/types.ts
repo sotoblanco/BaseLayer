@@ -25,6 +25,7 @@ export interface FileLesson {
   skills?: string[];
   success_cells?: SheetTargetCell[];
   hints?: string[];
+  sheet_cells?: Record<string, string | number | boolean>;
 }
 
 export interface FileCourse {

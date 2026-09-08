@@ -1,6 +1,42 @@
 # Google Sheets Integration Guide
 
-## How to Add Spreadsheet Exercises
+## JSON-first templates (recommended)
+
+Author the template as a `sheet.cells` A1 map in `metadata.json` — no
+browser round-trip, reviewable in PRs, generatable by the course builder:
+
+```json
+{
+  "exercise_type": "spreadsheet",
+  "copy_on_open": true,
+  "sheet": {
+    "cells": {
+      "A1": "Fill B2:D4 with numbers 1..9",
+      "F2": "Shape:",
+      "G2": "=ROWS(B2:D4) & \"x\" & COLUMNS(B2:D4)",
+      "F7": "=G2=\"3x3\""
+    }
+  },
+  "success_cells": [{ "cell": "F7", "expected": "TRUE" }]
+}
+```
+
+Rules: keys are A1 references (case-insensitive, max 500 cells); values are
+strings, numbers, or booleans; a leading `=` marks a formula. Then an admin
+provisions the live template once:
+
+`POST /file-courses/{course}/{lesson}/provision-sheet`
+
+which creates the Google Sheet from the map (formulas go live via
+USER_ENTERED) and stamps `google_sheet_id` back into `metadata.json`, so
+rebuilds reuse it. Without credentials the lesson still opens with a static
+template preview; grading needs the provisioned sheet. `tinytorch/chapter1/lesson01`
+carries a `sheet.cells` map mirroring its hand-built template as the reference
+example.
+
+## Hand-built templates (legacy)
+
+How to Add Spreadsheet Exercises
 
 The application now supports embedding Google Sheets for spreadsheet-based exercises. This allows students to practice with predefined Excel/Sheets exercises that require them to fill in formulas and complete calculations.
 
