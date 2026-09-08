@@ -78,7 +78,7 @@ def _stdlib_modules() -> frozenset[str]:
 EXAMPLE_LESSON: dict[str, str] = {
     "title": "Pixel Luminance: create a normalized RGB array",
     "objective": "Convert an 8-bit RGB color triple into a normalized float array.",
-    "toy_data": "raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
+    "sample_data": "raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
     "expected_result": "np.array([1.0, 0.50196, 0.0])",
     "micro_task": "In make_array(), return the input list converted to a float32 NumPy array divided by 255.0.",
     "inspect_prompt": "Before running: predict what make_array([255, 0, 0])[0] evaluates to. Run to verify.",
@@ -143,7 +143,7 @@ def _format_learner_profile_section(learner_profile: dict[str, Any] | None) -> s
     if style == "solveit":
         lines.append(
             "- Tutor Style: SOLVEIT METHODOLOGY. Strictly enforce hands-on micro-steps from first principles: "
-            "concrete toy data inspection before code, 1-3 line tasks, and prediction-driven verification."
+            "concrete sample data inspection before code, 1-3 line tasks, and prediction-driven verification."
         )
     elif style == "socratic":
         lines.append(
@@ -247,8 +247,8 @@ COURSE TO BUILD
 Topic: {clean_topic}
 {reference_block}{profile_block}
 RULES (follow every rule)
-1. Narrative Arc & Progressiveness: Write exactly {MIN_IMPORT_LESSONS} to {MAX_IMPORT_LESSONS} Python lessons with a clear progression. Each lesson must directly build on the concept or data transformation from the previous lesson, constructing a cohesive mental model or mini-pipeline rather than disconnected toy fragments.
-2. Concrete Domain Toy Data: NEVER use lazy generic placeholders like foo, bar, or arbitrary [1, 2, 3] unless strictly necessary. Always use realistic, domain-relevant toy data tied to the topic (e.g. RGB pixel triples [255, 128, 0] for vision, token sequences for NLP, timestamped sensor readings for time-series, (x, y) coordinates for geometry, trade prices for finance).
+1. Narrative Arc & Progressiveness: Write exactly {MIN_IMPORT_LESSONS} to {MAX_IMPORT_LESSONS} Python lessons with a clear progression. Each lesson must directly build on the concept or data transformation from the previous lesson, constructing a cohesive mental model or mini-pipeline rather than disconnected fragments.
+2. Concrete Domain Sample Data: NEVER use lazy generic placeholders like foo, bar, or arbitrary [1, 2, 3] unless strictly necessary. Always use realistic, domain-relevant sample data tied to the topic (e.g. RGB pixel triples [255, 128, 0] for vision, token sequences for NLP, timestamped sensor readings for time-series, (x, y) coordinates for geometry, trade prices for finance).
 3. Active Inspection & Prediction: Every lesson is a Solveit micro-lesson. The inspect_prompt MUST ask the learner to predict what a specific variable or expression evaluates to before running the code (e.g. "Before running: predict what make_array([255, 0, 0])[0] evaluates to. Run to verify.").
 4. Scaffolded Starter Code: starter_code must contain a clear comment (e.g. # TODO: ...) guiding where to write code, but MUST be incomplete so that it FAILS test_code out of the box. solution_code must PASS test_code with a clean 1-3 line implementation.
 5. Sandboxed Testing Environment: The learner's code lives in a file named main.py, and your test_code runs right next to it. So test_code MUST start by importing what it checks from main, for example: from main import make_array
@@ -266,12 +266,12 @@ Reply ONLY with one ```json fenced block and NOTHING ELSE. No explanations, no t
     {{
       "title": "Name of this lesson",
       "objective": "The single idea this lesson teaches, in one sentence.",
-      "toy_data": "Concrete domain-relevant input, e.g. raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
-      "expected_result": "The exact evaluated result the toy example produces.",
+      "sample_data": "Concrete domain-relevant input, e.g. raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
+      "expected_result": "The exact evaluated result the sample produces.",
       "micro_task": "The concrete 1-3 line task the learner must write in main.py.",
       "inspect_prompt": "Active prediction prompt asking what a specific expression evaluates to before running.",
       "starter_code": "Incomplete Python with a # TODO comment that fails tests until finished.",
-      "test_code": "Python asserting the toy behavior; imports the learner's function from main.",
+      "test_code": "Python asserting the sample behavior; imports the learner's function from main.",
       "solution_code": "Short, complete Python (1-3 lines) that passes test_code."
     }}
   ]
@@ -415,6 +415,8 @@ def _clean_code(value: Any) -> str:
 
 def _required_str(lesson: dict[str, Any], lesson_index: int, field_name: str) -> str:
     value = lesson.get(field_name)
+    if (not isinstance(value, str) or not value.strip()) and field_name == "toy_data":
+        value = lesson.get("sample_data")
     if not isinstance(value, str) or not value.strip():
         raise CourseImportError(
             f'Lesson {lesson_index} is missing a value for "{field_name}". '
