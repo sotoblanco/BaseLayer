@@ -33,6 +33,7 @@ interface FileCourse {
   skills?: string[];
   modalities?: string[];
   is_generated?: boolean;
+  is_project?: boolean;
 }
 
 interface UnifiedCourse {
@@ -46,8 +47,10 @@ interface UnifiedCourse {
   skills?: string[];
   modalities?: string[];
   is_generated?: boolean;
+  is_project?: boolean;
   progress?: CourseProgressSummary | null;
 }
+
 
 const PROTECTED_COURSE_SLUGS = new Set([
   'tinytorch',
@@ -201,8 +204,10 @@ export default function CoursesPage() {
             skills: c.skills,
             modalities: c.modalities || ['code'],
             is_generated: c.is_generated ?? (c.slug.startsWith('generated-') || c.slug.startsWith('learn-')),
+            is_project: Boolean(c.is_project),
             progress: progress ?? null,
           };
+
         });
 
         setCourses(unified);
@@ -402,6 +407,11 @@ export default function CoursesPage() {
                             <Trash2 size={14} />
                           </button>
                         )}
+                        {course.is_project && (
+                          <span className="text-xs px-2.5 py-1 rounded-full font-medium border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                            Project
+                          </span>
+                        )}
                         <span
                           className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
                             course.is_generated
@@ -411,6 +421,7 @@ export default function CoursesPage() {
                         >
                           {course.is_generated ? 'Generated' : 'Curated'}
                         </span>
+
                       </div>
                     </div>
 

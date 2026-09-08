@@ -18,10 +18,12 @@ import {
   Sparkles,
   Compass,
   Check,
+  Lock,
   FileText,
   FlaskConical,
   Table,
 } from 'lucide-react';
+
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { buildTutorContext } from '../tutorContext';
 import { Panel, Group, Separator } from 'react-resizable-panels';
@@ -181,21 +183,26 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     <div className="flex flex-col gap-2">
                         {currentChapter?.lessons.map((les, idx) => {
                             const isDone = completedSlugs.has(les.slug);
+                            const isLocked = Boolean(course?.is_project && les.is_locked);
                             return (
                             <div
                                 key={les.slug}
-                                onClick={() => selectLesson(currentChapterIndex, idx)}
+                                onClick={() => {
+                                    if (!isLocked) selectLesson(currentChapterIndex, idx);
+                                }}
                                 className={`
-                            w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors font-bold text-sm
-                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : isDone ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/40' : 'hover:bg-slate-800 text-slate-400'}
+                            w-10 h-10 rounded-lg flex items-center justify-center transition-colors font-bold text-sm
+                            ${isLocked ? 'cursor-not-allowed opacity-40 bg-slate-900/60 text-slate-500 border border-slate-800' : 'cursor-pointer'}
+                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : isDone ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/40' : isLocked ? '' : 'hover:bg-slate-800 text-slate-400'}
                         `}
-                                title={isDone ? `${les.title} (completed)` : les.title}
+                                title={isLocked ? `${les.title} (Locked - complete prior steps)` : isDone ? `${les.title} (completed)` : les.title}
                             >
-                                {isDone ? <Check size={16} /> : idx + 1}
+                                {isLocked ? <Lock size={14} /> : isDone ? <Check size={16} /> : idx + 1}
                             </div>
                             );
                         })}
                     </div>
+
 
                     {/* Next Chapter Button */}
                     {chapters.length > 1 && (

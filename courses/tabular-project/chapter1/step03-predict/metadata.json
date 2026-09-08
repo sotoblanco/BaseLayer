@@ -1,0 +1,8 @@
+{
+  "title": "Generate Predictions",
+  "consumes": [
+    "dataset.csv",
+    "scaled_data.py"
+  ],
+  "produces": "predictions.csv"
+}

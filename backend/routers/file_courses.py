@@ -25,8 +25,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
 
 from ai_service import ai_service
-from auth import get_current_admin, get_current_user, get_current_user_for_media
+from auth import get_current_admin, get_current_user, get_current_user_for_media, get_optional_user
 from models import User
+from project_artifacts import (
+    check_step_unlock_status,
+    get_step_artifacts_contract,
+    get_user_artifacts,
+    is_project_course,
+)
 from spreadsheet_verification import (
     SheetReadError,
     SpreadsheetTargetCell,
@@ -128,6 +134,9 @@ class FileLesson(BaseModel):
         default_factory=dict,
         description="Declarative template cells (A1 -> value-or-formula) for provisioning",
     )
+    produces: str | None = None
+    consumes: list[str] = Field(default_factory=list)
+    is_locked: bool = False
 
 
 class FileCourseSummary(BaseModel):
@@ -140,6 +149,7 @@ class FileCourseSummary(BaseModel):
     skills: list[str] = Field(default_factory=list)
     modalities: list[str] = Field(default_factory=list)
     is_generated: bool = False
+    is_project: bool = False
 
 
 class FileCourse(BaseModel):
@@ -152,6 +162,14 @@ class FileCourse(BaseModel):
     skills: list[str] = Field(default_factory=list)
     modalities: list[str] = Field(default_factory=list)
     is_generated: bool = False
+    is_project: bool = False
+
+
+class ProjectArtifactsResponse(BaseModel):
+    is_project: bool
+    artifacts: list[str] = Field(default_factory=list)
+    step_locks: dict[str, bool] = Field(default_factory=dict)
+
 
 
 class ExportLessonBundle(BaseModel):
@@ -401,6 +419,13 @@ class LessonMeta:
     # Declarative template (Issue #108): A1 -> value-or-formula map that can
     # provision the lesson's Google Sheet. Leading "=" marks a formula.
     sheet_cells: dict[str, Any] = field(default_factory=dict)
+    produces: str | None = None
+    consumes: list[str] = field(default_factory=list)
+
+
+def _extract_consumes_meta(raw: Any) -> list[str]:
+    raw_list = raw if isinstance(raw, list) else [raw]
+    return [str(s).strip() for s in raw_list if s and str(s).strip()]
 
 
 def _extract_metadata(lesson_path: Path) -> LessonMeta:
@@ -422,6 +447,8 @@ def _extract_metadata(lesson_path: Path) -> LessonMeta:
         success_cells=parse_success_cells(metadata.get("success_cells")),
         hints=_normalize_skills(metadata.get("hints"))[:5],
         sheet_cells=parse_sheet_template((metadata.get("sheet") or {}).get("cells")),
+        produces=_optional_str(metadata.get("produces")),
+        consumes=_extract_consumes_meta(metadata.get("consumes")),
     )
 
 
@@ -468,7 +495,10 @@ def parse_lesson(
         success_cells=meta.success_cells,
         hints=meta.hints,
         sheet_cells=meta.sheet_cells,
+        produces=meta.produces,
+        consumes=meta.consumes,
     )
+
 
 
 def _is_chapter_dir(d: Path) -> bool:
@@ -600,6 +630,15 @@ def _is_course_generated(course_slug: str) -> bool:
     )
 
 
+def _apply_project_contracts(course_path: Path, lessons: list[FileLesson]) -> None:
+    for lesson in lessons:
+        _is_p, consumes, produces = get_step_artifacts_contract(course_path, lesson.slug)
+        if consumes:
+            lesson.consumes = consumes
+        if produces:
+            lesson.produces = produces
+
+
 def parse_course(course_slug: str) -> FileCourse | None:
     """Parse a course directory into a FileCourse object"""
     course_path = _get_safe_course_dir(course_slug)
@@ -609,6 +648,9 @@ def parse_course(course_slug: str) -> FileCourse | None:
     meta = _read_json_object(course_path / "metadata.json")
     modalities = _detect_course_modalities(course_path)
     is_generated = _is_course_generated(course_slug)
+    is_project = is_project_course(course_path)
+    if is_project:
+        _apply_project_contracts(course_path, lessons)
     return FileCourse(
         slug=course_slug,
         title=_course_title(meta, course_path, course_slug),
@@ -617,7 +659,9 @@ def parse_course(course_slug: str) -> FileCourse | None:
         skills=_course_skills(meta, lessons),
         modalities=modalities,
         is_generated=is_generated,
+        is_project=is_project,
     )
+
 
 
 # In-process cache for course summaries: course_slug -> (course_dir, mtime, FileCourseSummary | None)
@@ -726,7 +770,9 @@ def _build_course_summary(
         skills=skills,
         modalities=_detect_course_modalities(course_dir),
         is_generated=_is_course_generated(course_slug),
+        is_project=is_project_course(course_dir),
     )
+
 
 
 def _is_valid_course_dir(course_dir: Path) -> bool:
@@ -1217,10 +1263,64 @@ def delete_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(
     )
 
 
+def _apply_lesson_locks(course: FileCourse, username: str, course_dir: Path) -> None:
+    if not course.is_project:
+        return
+    steps = [
+        {"slug": l.slug, "consumes": l.consumes, "produces": l.produces}
+        for l in course.lessons
+    ]
+    locks = check_step_unlock_status(username, course.slug, steps, course_dir=course_dir)
+    for l in course.lessons:
+        l.is_locked = locks.get(l.slug, False)
+
+
+def _build_project_artifacts_response(
+    course_slug: str,
+    course_dir: Path,
+    username: str,
+) -> ProjectArtifactsResponse:
+    artifacts = sorted(list(get_user_artifacts(username, course_slug)))
+    course = parse_course(course_slug)
+    steps = [
+        {"slug": l.slug, "consumes": l.consumes, "produces": l.produces}
+        for l in (course.lessons if course else [])
+    ]
+    step_locks = check_step_unlock_status(username, course_slug, steps, course_dir=course_dir)
+    return ProjectArtifactsResponse(
+        is_project=True,
+        artifacts=artifacts,
+        step_locks=step_locks,
+    )
+
+
+@router.get("/{course_slug}/artifacts", response_model=ProjectArtifactsResponse)
+def get_project_artifacts(
+    course_slug: str,
+    user: User | None = Depends(get_optional_user),
+):
+    """Return the user's generated project artifacts and step locks for a project course."""
+    if not _validate_slug(course_slug):
+        raise HTTPException(status_code=400, detail="Invalid course slug format")
+    course_dir = _get_safe_course_dir(course_slug)
+    if not course_dir:
+        raise HTTPException(status_code=404, detail=f"Course '{course_slug}' not found")
+    if not is_project_course(course_dir):
+        return ProjectArtifactsResponse(is_project=False)
+
+    username = user.username if user else "anonymous"
+    return _build_project_artifacts_response(course_slug, course_dir, username)
+
+
+
 @router.get("/{course_slug}", response_model=FileCourse)
 def get_file_course(course_slug: str, user: User = Depends(get_current_user)):
     """Get a specific file-based course with all its lessons"""
-    return _get_course_or_404(course_slug)
+    course = _get_course_or_404(course_slug)
+    course_dir = _get_safe_course_dir(course_slug)
+    if course_dir is not None:
+        _apply_lesson_locks(course, user.username, course_dir)
+    return course
 
 
 @router.get("/{course_slug}/{lesson_slug}", response_model=FileLesson)
@@ -1228,7 +1328,11 @@ def get_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(get
     """Get a specific lesson from a file-based course"""
     _require_valid_slugs(course_slug, lesson_slug)
     course = _get_course_or_404(course_slug)
+    course_dir = _get_safe_course_dir(course_slug)
+    if course_dir is not None:
+        _apply_lesson_locks(course, user.username, course_dir)
     return _find_lesson_in_course_or_404(course, lesson_slug)
+
 
 
 def _get_safe_lesson_dir_or_404(course_slug: str, lesson_slug: str) -> Path:

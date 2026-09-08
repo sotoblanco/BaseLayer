@@ -49,11 +49,34 @@ def is_docker_daemon_failure(text: str) -> bool:
     return any(indicator in lowered for indicator in DAEMON_FAILURE_INDICATORS)
 
 
+from collections.abc import Callable
+from pathlib import Path
+
+
+def _cleanup_timed_out_container(container_name: str) -> None:
+    for cleanup_cmd in (
+        ["docker", "kill", container_name],
+        ["docker", "rm", "-f", container_name],
+    ):
+        try:
+            cleanup_result = subprocess.run(
+                cleanup_cmd,
+                capture_output=True,
+                timeout=5,
+            )
+            if cleanup_result.returncode == 0:
+                break
+        except Exception:
+            continue
+
+
 def execute_docker(
     code: str,
     language: str = "python",
     test_code: str | None = None,
     timeout: int = 5,
+    setup_workspace: Callable[[Path], None] | None = None,
+    inspect_workspace: Callable[[Path, dict], dict | None] | None = None,
 ) -> dict:
     """Run ``code`` in an isolated local Docker container (``sandbox-runner``).
 
@@ -67,6 +90,9 @@ def execute_docker(
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
             cmd = write_submission(temp_dir, code, language, test_code)
+
+            if setup_workspace is not None:
+                setup_workspace(Path(temp_dir))
 
             # Ensure temp dir is writable by container processes
             try:
@@ -114,29 +140,18 @@ def execute_docker(
                     raise SandboxUnavailableError(
                         f"Docker sandbox is unavailable: {result.stderr.strip() or result.stdout.strip()}"
                     )
-                return {
+                out = {
                     "stdout": result.stdout,
                     "stderr": result.stderr,
                     "exit_code": result.returncode,
                 }
+                if inspect_workspace is not None:
+                    custom_out = inspect_workspace(Path(temp_dir), out)
+                    if custom_out is not None:
+                        out = custom_out
+                return out
             except subprocess.TimeoutExpired:
-                # SIGKILLing the `docker run` client does not stop the container
-                # it started, so stop it explicitly. Fall back to a force-remove
-                # so a timed-out or orphaned container is never left running.
-                for cleanup_cmd in (
-                    ["docker", "kill", container_name],
-                    ["docker", "rm", "-f", container_name],
-                ):
-                    try:
-                        cleanup_result = subprocess.run(
-                            cleanup_cmd,
-                            capture_output=True,
-                            timeout=5,
-                        )
-                    except Exception:
-                        continue
-                    if cleanup_result.returncode == 0:
-                        break
+                _cleanup_timed_out_container(container_name)
                 return {"stdout": "", "stderr": "Execution timed out", "exit_code": 124}
             except FileNotFoundError as exc:
                 raise SandboxUnavailableError(f"Executable not found: {exc}") from exc
@@ -150,11 +165,14 @@ def execute_docker(
         return {"stdout": "", "stderr": str(exc), "exit_code": -1}
 
 
+
 def execute_in_sandbox(
     code: str,
     language: str = "python",
     test_code: str | None = None,
     timeout: int = 5,
+    setup_workspace: Callable[[Path], None] | None = None,
+    inspect_workspace: Callable[[Path, dict], dict | None] | None = None,
 ) -> dict:
     """Run code through whatever backend ``POST /run`` would use.
 
@@ -172,4 +190,12 @@ def execute_in_sandbox(
             return run_in_sandbox.remote(code, language, test_code or "")
         except Exception as exc:
             raise SandboxUnavailableError(str(exc)) from exc
-    return execute_docker(code, language, test_code, timeout=timeout)
+    return execute_docker(
+        code,
+        language,
+        test_code,
+        timeout=timeout,
+        setup_workspace=setup_workspace,
+        inspect_workspace=inspect_workspace,
+    )
+

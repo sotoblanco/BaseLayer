@@ -26,6 +26,9 @@ export interface FileLesson {
   success_cells?: SheetTargetCell[];
   hints?: string[];
   sheet_cells?: Record<string, string | number | boolean>;
+  produces?: string;
+  consumes?: string[];
+  is_locked?: boolean;
 }
 
 export interface FileCourse {
@@ -34,6 +37,7 @@ export interface FileCourse {
   description: string;
   lessons: FileLesson[];
   skills?: string[];
+  is_project?: boolean;
 }
 
 export interface FileCourseSummary {
@@ -42,7 +46,9 @@ export interface FileCourseSummary {
   description: string;
   lesson_count: number;
   skills?: string[];
+  is_project?: boolean;
 }
+
 
 export interface UXLightChapter {
   id: string;

@@ -309,10 +309,17 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     }
   }, [lesson, slug]);
 
-  const selectLesson = useCallback((chapterIndex: number, lessonIndex: number) => {
-    setCurrentChapterIndex(chapterIndex);
-    setCurrentLessonIndex(lessonIndex);
-  }, []);
+  const selectLesson = useCallback(
+    (chapterIndex: number, lessonIndex: number) => {
+      const targetLesson = chapters[chapterIndex]?.lessons[lessonIndex];
+      if (course?.is_project && targetLesson?.is_locked) {
+        return;
+      }
+      setCurrentChapterIndex(chapterIndex);
+      setCurrentLessonIndex(lessonIndex);
+    },
+    [chapters, course]
+  );
 
   useLessonUrlSync({
     courseSlug: slug,
@@ -332,9 +339,13 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
   const handleNext = useCallback(() => {
     if (currentGlobalIndex < allLessons.length - 1) {
       const next = allLessons[currentGlobalIndex + 1];
+      if (course?.is_project && next.lesson?.is_locked) {
+        return;
+      }
       selectLesson(next.chapterIndex, next.lessonIndex);
     }
-  }, [currentGlobalIndex, allLessons, selectLesson]);
+  }, [currentGlobalIndex, allLessons, selectLesson, course]);
+
 
   const pushOutput = useCallback((msg: Omit<OutputMessage, 'id' | 'timestamp'>) => {
     setOutputs((prev) => [
@@ -390,7 +401,22 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
           : course.skills || [],
       });
     }
-  }, [lesson, course, xpPenalty, completedIds, allLessons.length]);
+
+    if (course.is_project) {
+      fetch(`${API_BASE_URL}/file-courses/${slug}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((updated: FileCourse | null) => {
+          if (updated) {
+            setCourse(updated);
+            setChapters(groupLessonsIntoChapters(updated.lessons));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [lesson, course, xpPenalty, completedIds, allLessons.length, slug, token]);
+
 
   const openShare = useCallback((kind: 'course' | 'lesson') => {
     if (!course || !lesson) return;

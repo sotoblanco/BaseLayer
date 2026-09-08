@@ -71,56 +71,31 @@ async def read_root():
     return {"status": "ok", "message": "BaseLayer App Backend Running"}
 
 
-@app.post("/run")
-def run_code(submission: CodeSubmission, user: User = Depends(get_current_user)):
-    enforce_run_limits(
-        user.username, submission.code, submission.language, submission.test_code or ""
-    )
-    execution_env = os.environ.get("EXECUTION_ENV", "docker")
+from project_artifacts import build_project_workspace_handlers
 
-    if execution_env == "modal":
-        try:
-            # Lazy import to avoid circular dependency
-            from modal_app import run_in_sandbox
 
-            result = run_in_sandbox.remote(
-                submission.code, submission.language, submission.test_code or ""
-            )
-            # The remote sandbox echoes raw tracebacks; strip the answer key
-            # before the Run console sees it (issue #106).
-            if (submission.test_code or "").strip() and result.get("exit_code") not in (
-                -1,
-                124,
-            ):
-                result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
-            return result
-        except ImportError:
-            raise HTTPException(status_code=500, detail="Modal backend not found") from None
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e)) from e
-
-    # Default: Use local Docker (shared executor, identical resource caps/cleanup).
+def _run_in_modal(submission: CodeSubmission) -> dict:
     try:
-        result = execute_docker(submission.code, submission.language, submission.test_code or "")
-    except SandboxUnavailableError as exc:
-        # Docker (or another required executable) not found on the host. Return a
-        # structured response instead of raising so the frontend can display a
-        # helpful message instead of 'undefined'.
-        return {"stdout": "", "stderr": str(exc), "exit_code": -1}
+        from modal_app import run_in_sandbox
 
-    # Record run result into LEARNING.md (only for runs that actually executed).
-    if result.get("exit_code") in (-1, 124):
+        result = run_in_sandbox.remote(
+            submission.code, submission.language, submission.test_code or ""
+        )
+        if (submission.test_code or "").strip() and result.get("exit_code") not in (-1, 124):
+            result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
         return result
-    # A failing test run echoes assert source lines (expected values) into the
-    # traceback even though the Tests tab is hidden from students. Sanitize the
-    # student-facing stderr; author-side verification keeps full tracebacks.
-    if (submission.test_code or "").strip():
-        result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Modal backend not found") from None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+def _record_run_event(user_username: str, submission: CodeSubmission, result: dict) -> None:
     try:
         from learner_profile import record_learner_event
 
         record_learner_event(
-            username=user.username,
+            username=user_username,
             event_type="run_result",
             payload={
                 "success": result.get("exit_code") == 0,
@@ -133,7 +108,46 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
     except Exception:
         pass
 
+
+@app.post("/run")
+def run_code(submission: CodeSubmission, user: User = Depends(get_current_user)):
+    enforce_run_limits(
+        user.username, submission.code, submission.language, submission.test_code or ""
+    )
+    _is_proj, lock_error, setup_ws, inspect_ws = build_project_workspace_handlers(
+        username=user.username,
+        course_slug=submission.course_slug,
+        lesson_slug=submission.lesson_slug,
+        is_submit=submission.is_submit,
+    )
+    if lock_error is not None:
+        return lock_error
+
+    execution_env = os.environ.get("EXECUTION_ENV", "docker")
+    if execution_env == "modal":
+        return _run_in_modal(submission)
+
+    # Default: Use local Docker (shared executor, identical resource caps/cleanup).
+    try:
+        result = execute_docker(
+            submission.code,
+            submission.language,
+            submission.test_code or "",
+            setup_workspace=setup_ws,
+            inspect_workspace=inspect_ws,
+        )
+    except SandboxUnavailableError as exc:
+        return {"stdout": "", "stderr": str(exc), "exit_code": -1}
+
+    if result.get("exit_code") in (-1, 124):
+        return result
+
+    if (submission.test_code or "").strip():
+        result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
+
+    _record_run_event(user.username, submission, result)
     return result
+
 
 
 # Serve static assets (JS, CSS, images)
