@@ -1503,6 +1503,50 @@ class TestShareExportImport:
         assert (l_dir / "question.png").read_bytes() == b"sample-png-content"
         assert (l_dir / "solution.png").is_file()
 
+    def test_import_chat_generated_course_without_slugs(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        payload = {
+            "title": "Cosine Similarity from First Principles",
+            "description": "Learn vectors.",
+            "lessons": [
+                {
+                    "title": "Vector Dot Product",
+                    "objective": "Calculate dot product.",
+                    "micro_task": "Return dot product in vector_dot().",
+                    "starter_code": "def vector_dot(u, v):\n    return None\n",
+                    "test_code": "from main import vector_dot\nassert True\n",
+                    "solution_code": "def vector_dot(u, v):\n    return 1\n",
+                },
+                {
+                    "title": "Vector Norm",
+                    "objective": "Calculate norm.",
+                    "micro_task": "Return norm in vector_norm().",
+                    "starter_code": "def vector_norm(v):\n    return None\n",
+                    "test_code": "from main import vector_norm\nassert True\n",
+                    "solution_code": "def vector_norm(v):\n    return 1\n",
+                },
+            ],
+        }
+
+        res = client.post("/file-courses/import", json=payload, headers=auth_headers)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["lesson_count"] == 2
+        assert "cosine-similarity" in data["course_slug"]
+
+        # Check materialized lesson files have description and code
+        imported_dir = courses_dir / data["course_slug"] / "chapter1" / "vector-dot-product"
+        assert (imported_dir / "main.py").is_file()
+        assert "vector_dot" in (imported_dir / "main.py").read_text()
+        assert "Calculate dot product" in (imported_dir / "README.md").read_text()
+
     def test_helper_unit_functions(self, tmp_path: Path):
         from routers.file_courses import (
             _decode_image_base64_safely,

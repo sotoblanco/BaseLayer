@@ -22,7 +22,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ai_service import ai_service
 from auth import get_current_admin, get_current_user, get_current_user_for_media
@@ -156,7 +156,7 @@ class FileCourse(BaseModel):
 
 class ExportLessonBundle(BaseModel):
     title: str
-    slug: str
+    slug: str = ""
     order: int = 1
     chapter: str | None = None
     exercise_type: str = "code"
@@ -174,6 +174,34 @@ class ExportLessonBundle(BaseModel):
     question_image_base64: str | None = None
     solution_image_base64: str | None = None
     sheet_cells: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        copied = dict(data)
+        if not copied.get("slug") and copied.get("title"):
+            cleaned = (
+                re.sub(r"[^a-zA-Z0-9_-]+", "-", str(copied["title"]).strip()).strip("-").lower()
+            )
+            copied["slug"] = cleaned[:50] or "lesson"
+        elif not copied.get("slug"):
+            copied["slug"] = "lesson"
+        if not copied.get("initial_code") and copied.get("starter_code"):
+            copied["initial_code"] = copied["starter_code"]
+        if not copied.get("description"):
+            parts: list[str] = []
+            if copied.get("title"):
+                parts.append(f"# {copied['title']}")
+            if copied.get("objective"):
+                parts.append(str(copied["objective"]))
+            if copied.get("micro_task"):
+                parts.append(f"### Your Task\n{copied['micro_task']}")
+            if copied.get("inspect_prompt"):
+                parts.append(f"> **Inspect:** {copied['inspect_prompt']}")
+            copied["description"] = "\n\n".join(parts) if parts else ""
+        return copied
 
 
 class ExportCourseBundle(BaseModel):

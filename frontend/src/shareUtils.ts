@@ -105,7 +105,15 @@ export async function postImportBundle(
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Failed to import bundle');
+    let errMsg = 'Failed to import bundle';
+    if (typeof err.detail === 'string') {
+      errMsg = err.detail;
+    } else if (Array.isArray(err.detail)) {
+      errMsg = err.detail.map((d: any) => d.msg || JSON.stringify(d)).join('; ');
+    } else if (err.message) {
+      errMsg = err.message;
+    }
+    throw new Error(errMsg);
   }
   return res.json();
 }
