@@ -24,7 +24,7 @@ from agentic_workflow import (
     CourseGenerationError,
     materialize_curated_course,
 )
-from ai_service import AIService
+from ai_service import AIService, ai_service
 from routers.file_courses import parse_course
 
 
@@ -841,4 +841,105 @@ class TestCoursePlanAndPreviewFlow:
         )
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
+
+    def test_plan_with_empty_topic_returns_422(self, client, auth_headers):
+        response = client.post(
+            "/ai/learning-path/plan",
+            json={"topic": "   "},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    def test_plan_with_course_preferences(self, client, auth_headers, tmp_path: Path, monkeypatch):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(
+            AIService, "complete", lambda self, prompt: _llm_plan_json("preferences topic")
+        )
+
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            response = client.post(
+                "/ai/learning-path/plan",
+                json={
+                    "topic": "NumPy with Custom Preferences",
+                    "course_preferences": {
+                        "preferred_modalities": ["code"],
+                        "exercise_format": "micro_steps",
+                        "explanation_length": "short",
+                        "tutor_style": "solveit",
+                        "understanding_level": "intermediate",
+                    },
+                },
+                headers=auth_headers,
+            )
+        assert response.status_code == 200
+        assert response.json()["plan_id"]
+
+    def test_plan_error_handling(self, client, auth_headers, tmp_path: Path, monkeypatch):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        # 503 when CourseGenerationError occurs
+        def raise_generation_error(*args, **kwargs):
+            raise CourseGenerationError("Model offline")
+
+        monkeypatch.setattr(ai_service, "plan_agentic_course", raise_generation_error)
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            res503 = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Testing 503 error"},
+                headers=auth_headers,
+            )
+            assert res503.status_code == 503
+
+        # 500 when unexpected error occurs
+        def raise_unexpected_error(*args, **kwargs):
+            raise RuntimeError("Unexpected boom")
+
+        monkeypatch.setattr(ai_service, "plan_agentic_course", raise_unexpected_error)
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            res500 = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Testing 500 error"},
+                headers=auth_headers,
+            )
+            assert res500.status_code == 500
+
+    def test_approve_error_handling(self, client, auth_headers, tmp_path: Path, monkeypatch):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(
+            AIService, "complete", lambda self, prompt: _llm_plan_json("error handling topic")
+        )
+
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            plan_res = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Error Handling Topic"},
+                headers=auth_headers,
+            )
+            plan_id = plan_res.json()["plan_id"]
+
+            # Empty lesson override triggers CourseGenerationError -> 400
+            res400 = client.post(
+                "/ai/learning-path/approve",
+                json={"plan_id": plan_id, "lessons": [{"order": 999}]},
+                headers=auth_headers,
+            )
+            assert res400.status_code == 400
+
+            # Unexpected error -> 500
+            with patch("agentic_workflow.materialize_planned_course", side_effect=RuntimeError("disk full")):
+                res500 = client.post(
+                    "/ai/learning-path/approve",
+                    json={"plan_id": plan_id},
+                    headers=auth_headers,
+                )
+                assert res500.status_code == 500
+
 

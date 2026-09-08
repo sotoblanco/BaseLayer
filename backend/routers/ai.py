@@ -368,54 +368,53 @@ def test_connection_endpoint(request: Request, body: TestConnectionRequest):
     )
 
 
-@router.post("/learning-path/plan", response_model=CoursePlanPreviewResponse)
-def plan_learning_path(request: BuildCourseRequest, user: User = Depends(get_current_user)):
-    """Plan a course without writing anything to disk. Returns safe preview metadata stripped of code answers."""
-    topic = request.topic.strip()
-    if not topic:
-        raise HTTPException(status_code=422, detail="A learning topic is required")
-
-    materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
-
-    course_pref_dict = (
-        request.course_preferences.model_dump(exclude_none=True)
-        if request.course_preferences
-        else None
-    )
-
-    # Blend course mini-form preferences into LEARNING.md ("update as we go")
-    if course_pref_dict:
-        try:
-            from learner_profile import apply_course_builder_preferences
-
-            apply_course_builder_preferences(
-                username=user.username,
-                topic=topic,
-                preferences=course_pref_dict,
-            )
-        except Exception:
-            pass
-
+def _prepare_course_builder_prefs(
+    request: BuildCourseRequest, username: str
+) -> dict[str, Any] | None:
+    if not request.course_preferences:
+        return None
+    pref_dict = request.course_preferences.model_dump(exclude_none=True)
     try:
-        plan_result = ai_service.plan_agentic_course(
-            topic=topic,
-            materials=materials,
-            username=user.username,
-            courses_dir=COURSES_DIR,
-            course_preferences=course_pref_dict,
+        from learner_profile import apply_course_builder_preferences
+
+        apply_course_builder_preferences(
+            username=username,
+            topic=request.topic.strip(),
+            preferences=pref_dict,
         )
-    except CourseGenerationError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Agentic course planning failed: {exc}"
-        ) from exc
+    except Exception:
+        pass
+    return pref_dict
 
-    from course_plans import plan_store
 
-    plan_id = plan_store.save(plan_result, username=user.username)
+def _record_course_authorship(username: str, slug: str, title: str, count: int) -> None:
+    try:
+        from learner_profile import record_learner_event
 
-    safe_lessons = [
+        record_learner_event(
+            username=username,
+            event_type="course_authored",
+            payload={"course_slug": slug, "title": title, "lesson_count": count},
+        )
+    except Exception:
+        pass
+
+
+def _map_tool_traces(traces: list[Any]) -> list[ToolTraceRead]:
+    return [
+        ToolTraceRead(
+            tool_name=t.tool_name,
+            status=t.status,
+            input_summary=t.input_summary,
+            output_summary=t.output_summary,
+            details=t.details,
+        )
+        for t in traces
+    ]
+
+
+def _map_safe_preview_lessons(lessons: list[Any]) -> list[LessonPreviewRead]:
+    return [
         LessonPreviewRead(
             order=l.order,
             title=l.title,
@@ -428,55 +427,41 @@ def plan_learning_path(request: BuildCourseRequest, user: User = Depends(get_cur
             curiosity_prompt=l.curiosity_prompt,
             skills=l.skills,
         )
-        for l in plan_result.lessons
+        for l in lessons
     ]
 
-    return CoursePlanPreviewResponse(
-        plan_id=plan_id,
-        slug=plan_result.slug,
-        title=plan_result.title,
-        description=plan_result.description,
-        narrative_arc=plan_result.narrative_arc,
-        lesson_count=plan_result.lesson_count,
-        grounded_in=plan_result.grounded_in,
-        tool_traces=[
-            ToolTraceRead(
-                tool_name=t.tool_name,
-                status=t.status,
-                input_summary=t.input_summary,
-                output_summary=t.output_summary,
-                details=t.details,
-            )
-            for t in plan_result.tool_traces
-        ],
-        solveit_compliance=plan_result.solveit_compliance,
-        lessons=safe_lessons,
-    )
 
-
-@router.post("/learning-path/approve", response_model=BuildCourseResponse)
-@router.post("/learning-path/confirm", response_model=BuildCourseResponse)
-def approve_learning_path(request: ApproveCourseRequest, user: User = Depends(get_current_user)):
-    """Approve and materialize a previously planned course to disk."""
-    from course_plans import plan_store
-    from agentic_workflow import materialize_planned_course
-
-    stored = plan_store.get(request.plan_id)
-    if not stored:
-        raise HTTPException(
-            status_code=404,
-            detail="Course plan not found or expired. Please generate a fresh plan.",
+def _generate_course_plan(
+    topic: str, materials: str, username: str, prefs: dict[str, Any] | None
+) -> Any:
+    try:
+        return ai_service.plan_agentic_course(
+            topic=topic,
+            materials=materials,
+            username=username,
+            courses_dir=COURSES_DIR,
+            course_preferences=prefs,
         )
+    except CourseGenerationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Agentic course planning failed: {exc}") from exc
+
+
+def _materialize_approved_plan(
+    stored_plan: Any,
+    request: ApproveCourseRequest,
+) -> Any:
+    from agentic_workflow import materialize_planned_course
 
     lessons_override = (
         [l.model_dump(exclude_none=True) for l in request.lessons]
         if request.lessons is not None
         else None
     )
-
     try:
-        result = materialize_planned_course(
-            plan=stored.plan,
+        return materialize_planned_course(
+            plan=stored_plan,
             courses_dir=COURSES_DIR,
             title_override=request.title,
             description_override=request.description,
@@ -490,21 +475,72 @@ def approve_learning_path(request: ApproveCourseRequest, user: User = Depends(ge
             status_code=500, detail=f"Failed to materialize approved course: {exc}"
         ) from exc
 
-    # Record course authorship into LEARNING.md
-    try:
-        from learner_profile import record_learner_event
 
-        record_learner_event(
-            username=user.username,
-            event_type="course_authored",
-            payload={
-                "course_slug": result.slug,
-                "title": result.title,
-                "lesson_count": result.lesson_count,
-            },
+def _execute_agentic_build(
+    topic: str, materials: str, username: str, prefs: dict[str, Any] | None
+) -> Any:
+    try:
+        return ai_service.run_agentic_course_builder(
+            topic=topic,
+            materials=materials,
+            username=username,
+            courses_dir=COURSES_DIR,
+            course_preferences=prefs,
         )
-    except Exception:
-        pass
+    except CourseGenerationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Agentic course creation failed: {exc}"
+        ) from exc
+
+
+@router.post("/learning-path/plan", response_model=CoursePlanPreviewResponse)
+def plan_learning_path(request: BuildCourseRequest, user: User = Depends(get_current_user)):
+    """Plan a course without writing anything to disk. Returns safe preview metadata stripped of code answers."""
+    topic = request.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="A learning topic is required")
+
+    materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
+    course_pref_dict = _prepare_course_builder_prefs(request, user.username)
+    plan_result = _generate_course_plan(topic, materials, user.username, course_pref_dict)
+
+    from course_plans import plan_store
+
+    plan_id = plan_store.save(plan_result, username=user.username)
+
+    return CoursePlanPreviewResponse(
+        plan_id=plan_id,
+        slug=plan_result.slug,
+        title=plan_result.title,
+        description=plan_result.description,
+        narrative_arc=plan_result.narrative_arc,
+        lesson_count=plan_result.lesson_count,
+        grounded_in=plan_result.grounded_in,
+        tool_traces=_map_tool_traces(plan_result.tool_traces),
+        solveit_compliance=plan_result.solveit_compliance,
+        lessons=_map_safe_preview_lessons(plan_result.lessons),
+    )
+
+
+@router.post("/learning-path/approve", response_model=BuildCourseResponse)
+@router.post("/learning-path/confirm", response_model=BuildCourseResponse)
+def approve_learning_path(request: ApproveCourseRequest, user: User = Depends(get_current_user)):
+    """Approve and materialize a previously planned course to disk."""
+    from course_plans import plan_store
+
+    stored = plan_store.get(request.plan_id)
+    if not stored:
+        raise HTTPException(
+            status_code=404,
+            detail="Course plan not found or expired. Please generate a fresh plan.",
+        )
+
+    result = _materialize_approved_plan(stored.plan, request)
+    _record_course_authorship(user.username, result.slug, result.title, result.lesson_count)
 
     return BuildCourseResponse(
         slug=result.slug,
@@ -513,16 +549,7 @@ def approve_learning_path(request: ApproveCourseRequest, user: User = Depends(ge
         narrative_arc=result.narrative_arc,
         lesson_count=result.lesson_count,
         grounded_in=result.grounded_in,
-        tool_traces=[
-            ToolTraceRead(
-                tool_name=t.tool_name,
-                status=t.status,
-                input_summary=t.input_summary,
-                output_summary=t.output_summary,
-                details=t.details,
-            )
-            for t in result.tool_traces
-        ],
+        tool_traces=_map_tool_traces(result.tool_traces),
         solveit_compliance=result.solveit_compliance,
     )
 
@@ -535,61 +562,9 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
         raise HTTPException(status_code=422, detail="A learning topic is required")
 
     materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
-
-    course_pref_dict = (
-        request.course_preferences.model_dump(exclude_none=True)
-        if request.course_preferences
-        else None
-    )
-
-    # Blend course mini-form preferences into LEARNING.md ("update as we go")
-    if course_pref_dict:
-        try:
-            from learner_profile import apply_course_builder_preferences
-
-            apply_course_builder_preferences(
-                username=user.username,
-                topic=topic,
-                preferences=course_pref_dict,
-            )
-        except Exception:
-            pass
-
-    try:
-        result = ai_service.run_agentic_course_builder(
-            topic=topic,
-            materials=materials,
-            username=user.username,
-            courses_dir=COURSES_DIR,
-            course_preferences=course_pref_dict,
-        )
-    except CourseGenerationError as exc:
-        # The builder refused to publish (e.g. no AI model configured, model
-        # failed, or lessons needed unowned assets). Nothing was written to disk;
-        # surface the honest reason instead of a fake course.
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except FileExistsError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Agentic course creation failed: {exc}"
-        ) from exc
-
-    # Record course authorship into LEARNING.md
-    try:
-        from learner_profile import record_learner_event
-
-        record_learner_event(
-            username=user.username,
-            event_type="course_authored",
-            payload={
-                "course_slug": result.slug,
-                "title": result.title,
-                "lesson_count": result.lesson_count,
-            },
-        )
-    except Exception:
-        pass
+    course_pref_dict = _prepare_course_builder_prefs(request, user.username)
+    result = _execute_agentic_build(topic, materials, user.username, course_pref_dict)
+    _record_course_authorship(user.username, result.slug, result.title, result.lesson_count)
 
     return BuildCourseResponse(
         slug=result.slug,
@@ -598,16 +573,7 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
         narrative_arc=result.narrative_arc,
         lesson_count=result.lesson_count,
         grounded_in=result.grounded_in,
-        tool_traces=[
-            ToolTraceRead(
-                tool_name=t.tool_name,
-                status=t.status,
-                input_summary=t.input_summary,
-                output_summary=t.output_summary,
-                details=t.details,
-            )
-            for t in result.tool_traces
-        ],
+        tool_traces=_map_tool_traces(result.tool_traces),
         solveit_compliance=result.solveit_compliance,
     )
 
