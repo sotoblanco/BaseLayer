@@ -438,18 +438,18 @@ def _map_tool_traces(traces: list[Any]) -> list[ToolTraceRead]:
 def _map_safe_preview_lessons(lessons: list[Any]) -> list[LessonPreviewRead]:
     return [
         LessonPreviewRead(
-            order=l.order,
-            title=l.title,
-            modality=l.modality,
-            objective=l.objective,
-            toy_data=l.toy_data,
-            expected_result=l.expected_result,
-            micro_task=l.micro_task,
-            inspect_prompt=l.inspect_prompt,
-            curiosity_prompt=l.curiosity_prompt,
-            skills=l.skills,
+            order=lesson.order,
+            title=lesson.title,
+            modality=lesson.modality,
+            objective=lesson.objective,
+            toy_data=lesson.toy_data,
+            expected_result=lesson.expected_result,
+            micro_task=lesson.micro_task,
+            inspect_prompt=lesson.inspect_prompt,
+            curiosity_prompt=lesson.curiosity_prompt,
+            skills=lesson.skills,
         )
-        for l in lessons
+        for lesson in lessons
     ]
 
 
@@ -467,7 +467,9 @@ def _generate_course_plan(
     except CourseGenerationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Agentic course planning failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Agentic course planning failed: {exc}"
+        ) from exc
 
 
 def _materialize_approved_plan(
@@ -477,7 +479,7 @@ def _materialize_approved_plan(
     from agentic_workflow import materialize_planned_course
 
     lessons_override = (
-        [l.model_dump(exclude_none=True) for l in request.lessons]
+        [lesson.model_dump(exclude_none=True) for lesson in request.lessons]
         if request.lessons is not None
         else None
     )
@@ -766,7 +768,9 @@ def discuss_implementation(request: ChatRequest, user: User = Depends(get_curren
     }
 
 
-def _record_breakdown_event(username: str, course_slug: str | None, lesson_slug: str | None) -> None:
+def _record_breakdown_event(
+    username: str, course_slug: str | None, lesson_slug: str | None
+) -> None:
     try:
         from learner_profile import record_learner_event
 
@@ -806,9 +810,5 @@ def breakdown_lesson(
     return BreakdownResponse(
         lesson_title=result.get("lesson_title", "Current Lesson"),
         intro=result.get("intro", ""),
-        sub_steps=[
-            BreakdownSubStepRead(**step)
-            for step in result.get("sub_steps", [])
-        ],
+        sub_steps=[BreakdownSubStepRead(**step) for step in result.get("sub_steps", [])],
     )
-

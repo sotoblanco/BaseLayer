@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from auth import auth_router, get_current_user
 from database import create_db_and_tables
 from models import User
+from project_artifacts import build_project_workspace_handlers
 from routers.ai import router as ai_router
 from routers.file_courses import router as file_courses_router
 from routers.me import router as me_router
@@ -71,10 +72,8 @@ async def read_root():
     return {"status": "ok", "message": "BaseLayer App Backend Running"}
 
 
-from project_artifacts import build_project_workspace_handlers
-
-
 def _run_in_modal(submission: CodeSubmission) -> dict:
+
     try:
         from modal_app import run_in_sandbox
 
@@ -147,7 +146,6 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
 
     _record_run_event(user.username, submission, result)
     return result
-
 
 
 # Serve static assets (JS, CSS, images)

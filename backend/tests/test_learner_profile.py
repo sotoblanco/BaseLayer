@@ -163,9 +163,7 @@ I prefer visual and drawing warm-ups before jumping to code.
         )
 
         _, parsed = get_or_create_profile("breakdown_user", base_dir=tmp_path)
-        assert any(
-            "Needed a breakdown on tinytorch (lesson02)" in s for s in parsed["signals"]
-        )
+        assert any("Needed a breakdown on tinytorch (lesson02)" in s for s in parsed["signals"])
 
     def test_record_lesson_passed_event(self, tmp_path: Path):
         get_or_create_profile("drawer1", base_dir=tmp_path)

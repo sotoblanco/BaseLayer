@@ -171,6 +171,31 @@ class ProjectArtifactsResponse(BaseModel):
     step_locks: dict[str, bool] = Field(default_factory=dict)
 
 
+def _coerce_bundle_slug(copied: dict[str, Any]) -> str:
+    if copied.get("slug"):
+        return str(copied["slug"])
+    title = copied.get("title")
+    if not title:
+        return "lesson"
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(title).strip()).strip("-").lower()
+    return cleaned[:50] or "lesson"
+
+
+def _append_bundle_part(parts: list[str], prefix: str, value: Any) -> None:
+    if value:
+        parts.append(f"{prefix}{value}")
+
+
+def _coerce_bundle_description(copied: dict[str, Any]) -> str:
+    if copied.get("description"):
+        return str(copied["description"])
+    parts: list[str] = []
+    _append_bundle_part(parts, "# ", copied.get("title"))
+    _append_bundle_part(parts, "", copied.get("objective"))
+    _append_bundle_part(parts, "### Your Task\n", copied.get("micro_task"))
+    _append_bundle_part(parts, "> **Inspect:** ", copied.get("inspect_prompt"))
+    return "\n\n".join(parts)
+
 
 class ExportLessonBundle(BaseModel):
     title: str
@@ -199,26 +224,10 @@ class ExportLessonBundle(BaseModel):
         if not isinstance(data, dict):
             return data
         copied = dict(data)
-        if not copied.get("slug") and copied.get("title"):
-            cleaned = (
-                re.sub(r"[^a-zA-Z0-9_-]+", "-", str(copied["title"]).strip()).strip("-").lower()
-            )
-            copied["slug"] = cleaned[:50] or "lesson"
-        elif not copied.get("slug"):
-            copied["slug"] = "lesson"
+        copied["slug"] = _coerce_bundle_slug(copied)
         if not copied.get("initial_code") and copied.get("starter_code"):
             copied["initial_code"] = copied["starter_code"]
-        if not copied.get("description"):
-            parts: list[str] = []
-            if copied.get("title"):
-                parts.append(f"# {copied['title']}")
-            if copied.get("objective"):
-                parts.append(str(copied["objective"]))
-            if copied.get("micro_task"):
-                parts.append(f"### Your Task\n{copied['micro_task']}")
-            if copied.get("inspect_prompt"):
-                parts.append(f"> **Inspect:** {copied['inspect_prompt']}")
-            copied["description"] = "\n\n".join(parts) if parts else ""
+        copied["description"] = _coerce_bundle_description(copied)
         return copied
 
 
@@ -500,7 +509,6 @@ def parse_lesson(
     )
 
 
-
 def _is_chapter_dir(d: Path) -> bool:
     """Return True if directory contains at least one lesson subdirectory."""
     if not d.is_dir() or d.name.startswith("."):
@@ -663,7 +671,6 @@ def parse_course(course_slug: str) -> FileCourse | None:
     )
 
 
-
 # In-process cache for course summaries: course_slug -> (course_dir, mtime, FileCourseSummary | None)
 _COURSE_SUMMARY_CACHE: dict[str, tuple[Path, float, FileCourseSummary | None]] = {}
 
@@ -772,7 +779,6 @@ def _build_course_summary(
         is_generated=_is_course_generated(course_slug),
         is_project=is_project_course(course_dir),
     )
-
 
 
 def _is_valid_course_dir(course_dir: Path) -> bool:
@@ -1267,12 +1273,12 @@ def _apply_lesson_locks(course: FileCourse, username: str, course_dir: Path) -> 
     if not course.is_project:
         return
     steps = [
-        {"slug": l.slug, "consumes": l.consumes, "produces": l.produces}
-        for l in course.lessons
+        {"slug": lesson.slug, "consumes": lesson.consumes, "produces": lesson.produces}
+        for lesson in course.lessons
     ]
     locks = check_step_unlock_status(username, course.slug, steps, course_dir=course_dir)
-    for l in course.lessons:
-        l.is_locked = locks.get(l.slug, False)
+    for lesson in course.lessons:
+        lesson.is_locked = locks.get(lesson.slug, False)
 
 
 def _build_project_artifacts_response(
@@ -1280,11 +1286,11 @@ def _build_project_artifacts_response(
     course_dir: Path,
     username: str,
 ) -> ProjectArtifactsResponse:
-    artifacts = sorted(list(get_user_artifacts(username, course_slug)))
+    artifacts = sorted(get_user_artifacts(username, course_slug))
     course = parse_course(course_slug)
     steps = [
-        {"slug": l.slug, "consumes": l.consumes, "produces": l.produces}
-        for l in (course.lessons if course else [])
+        {"slug": lesson.slug, "consumes": lesson.consumes, "produces": lesson.produces}
+        for lesson in (course.lessons if course else [])
     ]
     step_locks = check_step_unlock_status(username, course_slug, steps, course_dir=course_dir)
     return ProjectArtifactsResponse(
@@ -1312,7 +1318,6 @@ def get_project_artifacts(
     return _build_project_artifacts_response(course_slug, course_dir, username)
 
 
-
 @router.get("/{course_slug}", response_model=FileCourse)
 def get_file_course(course_slug: str, user: User = Depends(get_current_user)):
     """Get a specific file-based course with all its lessons"""
@@ -1332,7 +1337,6 @@ def get_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(get
     if course_dir is not None:
         _apply_lesson_locks(course, user.username, course_dir)
     return _find_lesson_in_course_or_404(course, lesson_slug)
-
 
 
 def _get_safe_lesson_dir_or_404(course_slug: str, lesson_slug: str) -> Path:
@@ -1493,9 +1497,7 @@ def _get_service_account_path() -> str:
     return sa_file
 
 
-def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: str) -> str:
-    """Drive-copy a provisioned template; return the new spreadsheet id."""
-    sa_file = _get_service_account_path()
+def _drive_copy_file(sa_file: str, file_id: str | None, title: str) -> str:
     try:
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
@@ -1503,26 +1505,35 @@ def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: s
         raise HTTPException(
             status_code=501, detail="googleapiclient not installed on server"
         ) from None
-    try:
-        creds = Credentials.from_service_account_file(
-            sa_file, scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        drive = build("drive", "v3", credentials=creds)
-        new_title = f"{course_slug}-{lesson_slug}-copy-{int(time.time())}"
-        copied = (
-            drive.files().copy(fileId=lesson.google_sheet_id, body={"name": new_title}).execute()
-        )
-        new_id = copied.get("id")
-        if not new_id:
-            raise HTTPException(status_code=500, detail="Drive copy returned no id")
-        from spreadsheet_verification import share_sheet_anyone_with_link
 
-        share_sheet_anyone_with_link(new_id, creds)
-        return new_id
+    from spreadsheet_verification import share_sheet_anyone_with_link
+
+    creds = Credentials.from_service_account_file(
+        sa_file, scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    drive = build("drive", "v3", credentials=creds)
+    copied = drive.files().copy(fileId=file_id, body={"name": title}).execute()
+    new_id = copied.get("id")
+    if not new_id:
+        raise HTTPException(status_code=500, detail="Drive copy returned no id")
+    share_sheet_anyone_with_link(new_id, creds)
+    return new_id
+
+
+def _safe_drive_copy(sa_file: str, sheet_id: str | None, title: str) -> str:
+    try:
+        return _drive_copy_file(sa_file, sheet_id, title)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {e}") from e
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {exc}") from exc
+
+
+def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: str) -> str:
+    """Drive-copy a provisioned template; return the new spreadsheet id."""
+    sa_file = _get_service_account_path()
+    new_title = f"{course_slug}-{lesson_slug}-copy-{int(time.time())}"
+    return _safe_drive_copy(sa_file, lesson.google_sheet_id, new_title)
 
 
 @router.post("/{course_slug}/{lesson_slug}/copy-sheet")
@@ -1589,6 +1600,37 @@ class ProvisionSheetResponse(BaseModel):
     cells: int
 
 
+def _validate_provisionable_lesson(lesson: FileLesson) -> None:
+    if lesson.exercise_type != "spreadsheet":
+        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise.")
+    if lesson.google_sheet_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Lesson already has a template sheet. Clear google_sheet_id to re-provision.",
+        )
+    if not lesson.sheet_cells:
+        raise HTTPException(
+            status_code=400,
+            detail="Lesson defines no sheet.cells template to provision from.",
+        )
+
+
+def _persist_provisioned_sheet_id(course_slug: str, lesson_slug: str, spreadsheet_id: str) -> None:
+    course_path = _get_safe_course_dir(course_slug)
+    lesson_dir = _find_lesson_in_course_dir(course_path, lesson_slug) if course_path else None
+    if lesson_dir is None:
+        raise HTTPException(status_code=404, detail="Lesson directory not found.")
+    meta_path = lesson_dir / "metadata.json"
+    meta = _read_json_object(meta_path)
+    meta["google_sheet_id"] = spreadsheet_id
+    try:
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Sheet created but id could not be saved: {exc}"
+        ) from exc
+
+
 @router.post(
     "/{course_slug}/{lesson_slug}/provision-sheet",
     response_model=ProvisionSheetResponse,
@@ -1608,18 +1650,7 @@ def provision_sheet(
     _require_valid_slugs(course_slug, lesson_slug)
     course = _get_course_or_404(course_slug)
     lesson = _find_lesson_in_course_or_404(course, lesson_slug)
-    if lesson.exercise_type != "spreadsheet":
-        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise.")
-    if lesson.google_sheet_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Lesson already has a template sheet. Clear google_sheet_id to re-provision.",
-        )
-    if not lesson.sheet_cells:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson defines no sheet.cells template to provision from.",
-        )
+    _validate_provisionable_lesson(lesson)
     try:
         spreadsheet_id = provision_sheet_template(
             lesson.sheet_cells, title=f"{course.title} - {lesson.title}"
@@ -1629,19 +1660,7 @@ def provision_sheet(
     except SheetReadError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    course_path = _get_safe_course_dir(course_slug)
-    lesson_dir = _find_lesson_in_course_dir(course_path, lesson_slug) if course_path else None
-    if lesson_dir is None:
-        raise HTTPException(status_code=404, detail="Lesson directory not found.")
-    meta_path = lesson_dir / "metadata.json"
-    meta = _read_json_object(meta_path)
-    meta["google_sheet_id"] = spreadsheet_id
-    try:
-        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    except OSError as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Sheet created but id could not be saved: {exc}"
-        ) from exc
+    _persist_provisioned_sheet_id(course_slug, lesson_slug, spreadsheet_id)
     _COURSE_SUMMARY_CACHE.pop(course_slug, None)
     return ProvisionSheetResponse(
         google_sheet_id=spreadsheet_id,

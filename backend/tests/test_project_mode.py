@@ -7,11 +7,9 @@ and step unlocking across the full 3-step project lifecycle.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-import shutil
 import subprocess
-import tempfile
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -20,9 +18,7 @@ from project_artifacts import (
     copy_project_artifacts_to_workspace,
     get_step_artifacts_contract,
     get_user_artifacts,
-    get_user_course_artifacts_dir,
     is_project_course,
-    is_step_locked,
     load_course_project_manifest,
     save_produced_artifact,
 )
@@ -83,7 +79,9 @@ class TestProjectArtifactsModule:
         workspace.mkdir()
         (workspace / "dataset.csv").write_text("x,y\n1.0,2.0\n", encoding="utf-8")
 
-        saved = save_produced_artifact(username, course_slug, workspace, "dataset.csv", base_dir=tmp_path)
+        saved = save_produced_artifact(
+            username, course_slug, workspace, "dataset.csv", base_dir=tmp_path
+        )
         assert saved is True
 
         artifacts = get_user_artifacts(username, course_slug, base_dir=tmp_path)
@@ -107,7 +105,9 @@ class TestProjectArtifactsModule:
 
         # Step 2 emits scaled_data.py
         (ws2 / "scaled_data.py").write_text("MEAN_X = 2.5\n", encoding="utf-8")
-        saved2 = save_produced_artifact(username, course_slug, ws2, "scaled_data.py", base_dir=tmp_path)
+        saved2 = save_produced_artifact(
+            username, course_slug, ws2, "scaled_data.py", base_dir=tmp_path
+        )
         assert saved2 is True
 
         # Step 3 now unlocks
@@ -132,9 +132,7 @@ class TestProjectModeEndpoints:
         assert data["lessons"][1]["consumes"] == ["dataset.csv"]
         assert data["lessons"][2]["is_locked"] is True
 
-    def test_get_project_artifacts_endpoint(
-        self, client: TestClient, auth_headers
-    ):
+    def test_get_project_artifacts_endpoint(self, client: TestClient, auth_headers):
         response = client.get("/file-courses/tabular-project/artifacts", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
@@ -144,9 +142,7 @@ class TestProjectModeEndpoints:
         assert data["step_locks"]["chapter1--step01-ingest"] is False
         assert data["step_locks"]["chapter1--step02-scale"] is True
 
-    def test_run_rejects_locked_step(
-        self, client: TestClient, auth_headers
-    ):
+    def test_run_rejects_locked_step(self, client: TestClient, auth_headers):
         # Trying to run step 2 while step 1 artifact missing
         response = client.post(
             "/run",
@@ -188,12 +184,16 @@ class TestProjectModeEndpoints:
         assert response.status_code == 200
         body = response.json()
         assert body["exit_code"] == 1
-        assert "Verification failed: required artifact 'dataset.csv' was not produced" in body["stderr"]
+        assert (
+            "Verification failed: required artifact 'dataset.csv' was not produced"
+            in body["stderr"]
+        )
 
     def test_end_to_end_project_accumulation(
         self, client: TestClient, auth_headers, monkeypatch, tmp_path
     ):
         import sys
+
         import learner_profile
         import project_artifacts
 
@@ -211,17 +211,21 @@ class TestProjectModeEndpoints:
             if not temp_dir:
                 return real_run(cmd, *args, **kwargs)
 
-            sub_cmd = list(cmd[cmd.index("sandbox-runner") + 1:])
+            sub_cmd = list(cmd[cmd.index("sandbox-runner") + 1 :])
             if sub_cmd and sub_cmd[0] == "python":
                 sub_cmd[0] = sys.executable
             return real_run(sub_cmd, cwd=temp_dir, capture_output=True, text=True)
 
-
         monkeypatch.setattr(subprocess, "run", fake_docker_run)
 
-
         # 1. Submit Step 1 with correct solution
-        step1_dir = Path(__file__).resolve().parent.parent.parent / "courses" / "tabular-project" / "chapter1" / "step01-ingest"
+        step1_dir = (
+            Path(__file__).resolve().parent.parent.parent
+            / "courses"
+            / "tabular-project"
+            / "chapter1"
+            / "step01-ingest"
+        )
         step1_code = (step1_dir / "solution.py").read_text()
         step1_test = (step1_dir / "test.py").read_text()
 
@@ -250,7 +254,13 @@ class TestProjectModeEndpoints:
         assert art_data["step_locks"]["chapter1--step03-predict"] is True
 
         # 2. Submit Step 2 with solution
-        step2_dir = Path(__file__).resolve().parent.parent.parent / "courses" / "tabular-project" / "chapter1" / "step02-scale"
+        step2_dir = (
+            Path(__file__).resolve().parent.parent.parent
+            / "courses"
+            / "tabular-project"
+            / "chapter1"
+            / "step02-scale"
+        )
         step2_code = (step2_dir / "solution.py").read_text()
         step2_test = (step2_dir / "test.py").read_text()
 
@@ -277,7 +287,13 @@ class TestProjectModeEndpoints:
         assert art_data2["step_locks"]["chapter1--step03-predict"] is False
 
         # 3. Submit Step 3 with solution
-        step3_dir = Path(__file__).resolve().parent.parent.parent / "courses" / "tabular-project" / "chapter1" / "step03-predict"
+        step3_dir = (
+            Path(__file__).resolve().parent.parent.parent
+            / "courses"
+            / "tabular-project"
+            / "chapter1"
+            / "step03-predict"
+        )
         step3_code = (step3_dir / "solution.py").read_text()
         step3_test = (step3_dir / "test.py").read_text()
 

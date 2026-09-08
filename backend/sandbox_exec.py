@@ -13,6 +13,8 @@ import os
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Callable
+from pathlib import Path
 
 from run_exec import write_submission
 
@@ -47,10 +49,6 @@ def is_docker_daemon_failure(text: str) -> bool:
         return False
     lowered = text.lower()
     return any(indicator in lowered for indicator in DAEMON_FAILURE_INDICATORS)
-
-
-from collections.abc import Callable
-from pathlib import Path
 
 
 def _cleanup_timed_out_container(container_name: str) -> None:
@@ -165,7 +163,6 @@ def execute_docker(
         return {"stdout": "", "stderr": str(exc), "exit_code": -1}
 
 
-
 def execute_in_sandbox(
     code: str,
     language: str = "python",
@@ -198,4 +195,3 @@ def execute_in_sandbox(
         setup_workspace=setup_workspace,
         inspect_workspace=inspect_workspace,
     )
-

@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import shutil
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from learner_profile import get_learners_data_dir
@@ -151,7 +152,9 @@ def is_project_course(course_dir: Path) -> bool:
 def _clean_slug_match(target_slug: str, candidate_slug: str) -> bool:
     if target_slug == candidate_slug:
         return True
-    return candidate_slug.endswith(f"--{target_slug}") or target_slug.endswith(f"--{candidate_slug}")
+    return candidate_slug.endswith(f"--{target_slug}") or target_slug.endswith(
+        f"--{candidate_slug}"
+    )
 
 
 def _clean_str(val: Any) -> str:
@@ -215,8 +218,12 @@ def get_step_artifacts_contract(
     step_info = _find_step_in_manifest(manifest.get("steps"), lesson_slug) or {}
     lesson_meta = _load_lesson_file_meta(course_dir, lesson_slug)
 
-    consumes = _extract_consumes(step_info.get("consumes")) or _extract_consumes(lesson_meta.get("consumes"))
-    produces = _extract_produces(step_info.get("produces")) or _extract_produces(lesson_meta.get("produces"))
+    consumes = _extract_consumes(step_info.get("consumes")) or _extract_consumes(
+        lesson_meta.get("consumes")
+    )
+    produces = _extract_produces(step_info.get("produces")) or _extract_produces(
+        lesson_meta.get("produces")
+    )
 
     return True, consumes, produces
 
@@ -284,7 +291,7 @@ def check_step_unlock_status(
     """Calculate the lock status of each step in a project course."""
     step_locks: dict[str, bool] = {}
     for idx, step in enumerate(steps):
-        slug = step.get("lesson_slug") or step.get("slug") or f"step{idx+1}"
+        slug = step.get("lesson_slug") or step.get("slug") or f"step{idx + 1}"
         step_locks[slug] = _is_step_entry_locked(
             idx, step, username, course_slug, course_dir, base_dir
         )
@@ -351,10 +358,6 @@ def _resolve_project_step(
     return course_dir, consumes, produces
 
 
-
-from collections.abc import Callable
-
-
 def build_project_workspace_handlers(
     username: str,
     course_slug: str,
@@ -412,8 +415,3 @@ def build_project_workspace_handlers(
         )
 
     return True, None, setup_workspace, inspect_workspace
-
-
-
-
-
