@@ -337,3 +337,9 @@ def google_login(data: GoogleTokenRequest, session: Session = Depends(get_sessio
         return {"access_token": access_token, "token_type": "bearer"}
     except ValueError as exc:
         raise HTTPException(status_code=401, detail="Invalid Google token") from exc
+
+
+@auth_router.get("/admin-check")
+def verify_admin_status(admin: User = Depends(get_current_admin)):
+    """Verifies that the current user has admin privileges."""
+    return {"status": "ok", "role": admin.role}

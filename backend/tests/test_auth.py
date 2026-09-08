@@ -68,14 +68,8 @@ class TestSignup:
             data={"username": ADMIN_USER["username"], "password": ADMIN_USER["password"]},
         )
         assert login.status_code == 200
-        admin_attempt = client.post(
-            "/courses/",
-            json={
-                "title": "Hack",
-                "description": "desc",
-                "slug": "hack",
-                "is_published": False,
-            },
+        admin_attempt = client.get(
+            "/auth/admin-check",
             headers={"Authorization": f"Bearer {login.json()['access_token']}"},
         )
         assert admin_attempt.status_code == 403
@@ -224,11 +218,7 @@ class TestTokenValidation:
 
     def test_valid_token_accepted(self, client: TestClient, auth_headers):
         """A valid token grants access to a protected endpoint."""
-        # /auth/me is not implemented, so we use the admin endpoint
-        # which checks get_current_user first. We expect 403 (not admin)
-        # rather than 401 (unauthenticated).
-        response = client.get("/courses/", headers=auth_headers)
-        # Courses list should succeed for any authenticated user
+        response = client.get("/me/progress", headers=auth_headers)
         assert response.status_code == 200
 
     def test_invalid_token_rejected(self, client: TestClient):
@@ -272,31 +262,13 @@ class TestAdminAccess:
 
     def test_admin_can_access_admin_routes(self, client: TestClient, admin_headers):
         """Admin user can hit admin-protected endpoints."""
-        # Admin dashboard route -- create a course
-        response = client.post(
-            "/courses/",
-            json={
-                "title": "Test Course",
-                "description": "desc",
-                "slug": "test-course",
-                "is_published": False,
-            },
-            headers=admin_headers,
-        )
+        response = client.get("/auth/admin-check", headers=admin_headers)
         assert response.status_code == 200
+        assert response.json()["role"] == "admin"
 
     def test_student_cannot_access_admin_routes(self, client: TestClient, auth_headers):
         """A student token is rejected from admin-protected endpoints."""
-        response = client.post(
-            "/courses/",
-            json={
-                "title": "Hack",
-                "description": "desc",
-                "slug": "hack",
-                "is_published": False,
-            },
-            headers=auth_headers,
-        )
+        response = client.get("/auth/admin-check", headers=auth_headers)
         assert response.status_code == 403
 
 

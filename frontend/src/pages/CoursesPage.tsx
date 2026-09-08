@@ -4,7 +4,6 @@ import {
   Terminal,
   ChevronRight,
   FolderCode,
-  Database,
   Compass,
   Sliders,
   CheckCircle2,
@@ -36,16 +35,10 @@ interface FileCourse {
   is_generated?: boolean;
 }
 
-interface DbCourse {
-  id: number;
-  title: string;
-  description: string;
-  exercises?: { id: number }[];
-}
-
 interface UnifiedCourse {
   id: string;
-  type: 'file' | 'db';
+  slug: string;
+  type: 'file';
   title: string;
   description: string;
   lesson_count: number;
@@ -181,62 +174,39 @@ export default function CoursesPage() {
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const [fileRes, dbRes] = await Promise.allSettled([
-          fetch(`${API_BASE_URL}/file-courses/`),
-          fetch(`${API_BASE_URL}/courses/`),
-        ]);
+        const fileRes = await fetch(`${API_BASE_URL}/file-courses/`);
 
-        const unified: UnifiedCourse[] = [];
-
-        // /file-courses/ is the catalog source for local courses/ folders.
-        // Surface its failure instead of silently rendering an empty catalog.
-        let fileCoursesFailed = true;
-
-        if (fileRes.status === 'fulfilled' && fileRes.value.ok) {
-          fileCoursesFailed = false;
-          const files: FileCourse[] = await fileRes.value.json();
-          unified.push(
-            ...files.map((c) => {
-              const progress = progressBySlug[c.slug];
-              const resume = progress && !progress.completed && progress.resume_lesson;
-              return {
-                id: `file-${c.slug}`,
-                type: 'file' as const,
-                title: c.title,
-                description: c.description.replace(/^#\s+[^\n]+\n*/, '').trim() || c.description,
-                lesson_count: c.lesson_count,
-                navigatePath: resume
-                  ? `/file-course/${c.slug}/${progress!.resume_lesson}`
-                  : `/file-course/${c.slug}`,
-                skills: c.skills,
-                modalities: c.modalities || ['code'],
-                is_generated: c.is_generated ?? (c.slug.startsWith('generated-') || c.slug.startsWith('learn-')),
-                progress: progress ?? null,
-              };
-            })
+        if (!fileRes.ok) {
+          setCoursesError(
+            'Could not load local courses from the API (GET /file-courses/ failed). Is the backend running? Start it with ./dev.sh (or ./docker-dev.sh) and reload.'
           );
+          setCourses([]);
+          return;
         }
 
-        if (dbRes.status === 'fulfilled' && dbRes.value.ok) {
-          const dbs: DbCourse[] = await dbRes.value.json();
-          unified.push(
-            ...dbs.map((c) => ({
-              id: `db-${c.id}`,
-              type: 'db' as const,
-              title: c.title,
-              description: c.description,
-              lesson_count: c.exercises?.length ?? 0,
-              navigatePath: `/course/${c.id}`,
-            }))
-          );
-        }
+        const files: FileCourse[] = await fileRes.json();
+        const unified: UnifiedCourse[] = files.map((c) => {
+          const progress = progressBySlug[c.slug];
+          const resume = progress && !progress.completed && progress.resume_lesson;
+          return {
+            id: `file-${c.slug}`,
+            slug: c.slug,
+            type: 'file' as const,
+            title: c.title,
+            description: c.description.replace(/^#\s+[^\n]+\n*/, '').trim() || c.description,
+            lesson_count: c.lesson_count,
+            navigatePath: resume
+              ? `/file-course/${c.slug}/${progress!.resume_lesson}`
+              : `/file-course/${c.slug}`,
+            skills: c.skills,
+            modalities: c.modalities || ['code'],
+            is_generated: c.is_generated ?? (c.slug.startsWith('generated-') || c.slug.startsWith('learn-')),
+            progress: progress ?? null,
+          };
+        });
 
         setCourses(unified);
-        setCoursesError(
-          fileCoursesFailed
-            ? 'Could not load local courses from the API (GET /file-courses/ failed). Is the backend running? Start it with ./dev.sh (or ./docker-dev.sh) and reload.'
-            : ''
-        );
+        setCoursesError('');
       } catch (err) {
         console.error('Failed to fetch courses', err);
         setCoursesError(
@@ -394,85 +364,57 @@ export default function CoursesPage() {
                     }
                   }}
                 >
-                  <div
-                    className={`h-2 bg-gradient-to-r ${
-                      course.type === 'file'
-                        ? 'from-emerald-600 to-teal-600'
-                        : 'from-blue-600 to-indigo-600'
-                    }`}
-                  />
+                  <div className="h-2 bg-gradient-to-r from-emerald-600 to-teal-600" />
                   <div className="p-6 flex-1 flex flex-col">
                     <div className="flex items-start justify-between mb-4">
-                      <div
-                        className={`p-3 bg-slate-800 rounded-lg transition-colors ${
-                          course.type === 'file'
-                            ? 'group-hover:bg-emerald-500/10 group-hover:text-emerald-400'
-                            : 'group-hover:bg-blue-500/10 group-hover:text-blue-400'
-                        }`}
-                      >
-                        {course.type === 'file' ? <FolderCode size={24} /> : <Database size={24} />}
+                      <div className="p-3 bg-slate-800 rounded-lg transition-colors group-hover:bg-emerald-500/10 group-hover:text-emerald-400">
+                        <FolderCode size={24} />
                       </div>
                       <div className="flex items-center gap-1.5">
-                        {course.type === 'file' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const cleanSlug = course.id.replace(/^file-/, '');
-                                setShareModalData({
-                                  courseSlug: cleanSlug,
-                                  title: course.title,
-                                });
-                              }}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
-                              title="Share or export this course"
-                            >
-                              <Share2 size={14} />
-                            </button>
-                            {!PROTECTED_COURSE_SLUGS.has(course.id.replace(/^file-/, '').toLowerCase()) && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCourseToDelete({
-                                    slug: course.id.replace(/^file-/, ''),
-                                    title: course.title,
-                                  });
-                                }}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
-                                title="Remove course from catalog"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const cleanSlug = course.slug;
+                            setShareModalData({
+                              courseSlug: cleanSlug,
+                              title: course.title,
+                            });
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-700"
+                          title="Share or export this course"
+                        >
+                          <Share2 size={14} />
+                        </button>
+                        {!PROTECTED_COURSE_SLUGS.has(course.slug.toLowerCase()) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCourseToDelete({
+                                slug: course.slug,
+                                title: course.title,
+                              });
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors border border-transparent hover:border-rose-500/20"
+                            title="Remove course from catalog"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         )}
                         <span
                           className={`text-xs px-2.5 py-1 rounded-full font-medium border ${
-                            course.type === 'file'
-                              ? course.is_generated
-                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                              : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            course.is_generated
+                              ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                           }`}
                         >
-                          {course.type === 'file'
-                            ? course.is_generated
-                              ? 'Generated'
-                              : 'Curated'
-                            : 'Database'}
+                          {course.is_generated ? 'Generated' : 'Curated'}
                         </span>
                       </div>
                     </div>
 
-                    <h3
-                      className={`text-xl font-bold mb-2 transition-colors ${
-                        course.type === 'file'
-                          ? 'group-hover:text-emerald-400'
-                          : 'group-hover:text-blue-400'
-                      }`}
-                    >
+                    <h3 className="text-xl font-bold mb-2 transition-colors group-hover:text-emerald-400">
                       {course.title}
                     </h3>
 

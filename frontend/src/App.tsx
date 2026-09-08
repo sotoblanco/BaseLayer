@@ -1,9 +1,6 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import CodingPage from './pages/CodingPage';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import CoursesPage from './pages/CoursesPage';
 import FileCourseRouter from './pages/FileCourseRouter';
-import AdminDashboard from './pages/admin/AdminDashboard';
-import CourseEditor from './pages/admin/CourseEditor';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import { AuthProvider } from './context/AuthContext';
@@ -16,11 +13,11 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/" element={<CoursesPage />} />
-          <Route path="/course/:id" element={<CodingPage />} />
+          <Route path="/course/:id" element={<Navigate to="/" replace />} />
           <Route path="/file-course/:slug" element={<FileCourseRouter />} />
           <Route path="/file-course/:slug/:lessonSlug" element={<FileCourseRouter />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/courses/:id" element={<CourseEditor />} />
+          <Route path="/admin" element={<Navigate to="/" replace />} />
+          <Route path="/admin/*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
