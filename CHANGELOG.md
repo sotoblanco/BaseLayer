@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.56](https://github.com/sotoblanco/BaseLayer/compare/v0.1.55...v0.1.56) (2026-09-08)
+
+
+### Features
+
+* preview planned course before disk write ([#85](https://github.com/sotoblanco/BaseLayer/issues/85)) ([#116](https://github.com/sotoblanco/BaseLayer/issues/116)) ([87ad79f](https://github.com/sotoblanco/BaseLayer/commit/87ad79f55f473fa670a97cfabfbef2750f820526))
+
 ### [0.1.55](https://github.com/sotoblanco/BaseLayer/compare/v0.1.54...v0.1.55) (2026-09-08)
 
 
