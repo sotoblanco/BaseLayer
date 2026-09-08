@@ -199,13 +199,15 @@ def _normalize_sub_steps(sub_steps: list[dict[str, Any]]) -> list[dict[str, Any]
     for idx, step in enumerate(sub_steps, start=1):
         if not isinstance(step, dict):
             continue
-        normalized.append({
-            "step_number": step.get("step_number", idx),
-            "title": str(step.get("title", f"Step {idx}")),
-            "toy_data": str(step.get("toy_data", "")),
-            "target": str(step.get("target", "")),
-            "inspect_prompt": str(step.get("inspect_prompt", "")),
-        })
+        normalized.append(
+            {
+                "step_number": step.get("step_number", idx),
+                "title": str(step.get("title", f"Step {idx}")),
+                "toy_data": str(step.get("toy_data", "")),
+                "target": str(step.get("target", "")),
+                "inspect_prompt": str(step.get("inspect_prompt", "")),
+            }
+        )
     return normalized[:5]
 
 

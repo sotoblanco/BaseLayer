@@ -1,5 +1,6 @@
 import { CheckCircle2, Lightbulb, Send, XCircle } from 'lucide-react';
 import DrawingCanvas from '../../components/DrawingCanvas';
+import ChalkboardSolution from '../../components/ChalkboardSolution';
 import type { DrawingFeedback, FileLesson } from '../types';
 import { API_BASE_URL } from '../../config';
 
@@ -12,6 +13,8 @@ interface DrawingPaneProps {
   onSubmit: () => void;
   isSubmitting: boolean;
   feedback: DrawingFeedback | null;
+  onMarkComplete?: () => void;
+  isComplete?: boolean;
 }
 
 export function DrawingPane({
@@ -23,39 +26,68 @@ export function DrawingPane({
   onSubmit,
   isSubmitting,
   feedback,
+  onMarkComplete,
+  isComplete,
 }: DrawingPaneProps) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const imageAuthQuery = token ? `?token=${encodeURIComponent(token)}` : '';
   const passed = feedback?.passed ?? false;
   const hasFeedback = feedback !== null;
   const checks = feedback?.checks?.length ? feedback.checks : [];
+  const isChalkboard =
+    lesson.board_theme === 'chalkboard' ||
+    lesson.image_url === '__chalkboard__' ||
+    !lesson.image_url;
 
   return (
     <div className="flex flex-col h-full bg-[#05192d]">
       <div className="flex-1 flex overflow-hidden min-h-0">
         <div className={`${showSolution ? 'w-1/2' : 'w-full'} border-r border-[#1d3952] min-h-0`}>
           <DrawingCanvas
-            imageUrl={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/image${imageAuthQuery}`}
+            imageUrl={
+              lesson.image_url === '__chalkboard__'
+                ? ''
+                : `${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/image${imageAuthQuery}`
+            }
             strokeColor={lesson.stroke_color}
             strokeWidth={lesson.stroke_width}
+            boardTheme={isChalkboard ? 'chalkboard' : 'default'}
+            promptText={lesson.drawing_prompt || lesson.title}
             onCanvasRef={onCanvasRef}
           />
         </div>
         {showSolution && (
-          <div className="w-1/2 overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-[#1d3952]">
-              <h3 className="text-xs font-bold text-[#ffb800] uppercase tracking-widest flex items-center gap-2">
-                <Lightbulb size={14} />
-                Reference Solution
-              </h3>
-            </div>
-            <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
-              <img
-                src={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/solution${imageAuthQuery}`}
-                alt="Solution"
-                className="max-w-full max-h-full object-contain rounded-lg border border-[#ffb800]/30"
+          <div className="w-1/2 overflow-hidden flex flex-col p-2 bg-[#05192d]">
+            {lesson.solution_diagram || lesson.solution_explanation ? (
+              <ChalkboardSolution
+                title={`${lesson.title} - Solution`}
+                diagram={lesson.solution_diagram}
+                explanation={lesson.solution_explanation}
+                imageUrl={
+                  lesson.image_url !== '__chalkboard__'
+                    ? `${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/solution${imageAuthQuery}`
+                    : undefined
+                }
+                onMarkComplete={onMarkComplete}
+                isComplete={isComplete}
               />
-            </div>
+            ) : (
+              <div className="flex flex-col h-full overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-[#1d3952]">
+                  <h3 className="text-xs font-bold text-[#ffb800] uppercase tracking-widest flex items-center gap-2">
+                    <Lightbulb size={14} />
+                    Reference Solution
+                  </h3>
+                </div>
+                <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
+                  <img
+                    src={`${API_BASE_URL}/file-courses/${courseSlug}/${lesson.slug}/solution${imageAuthQuery}`}
+                    alt="Solution"
+                    className="max-w-full max-h-full object-contain rounded-lg border border-[#ffb800]/30"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -64,16 +96,20 @@ export function DrawingPane({
         <div className="max-h-40 overflow-y-auto px-4 py-3 custom-scrollbar bg-[#0b2338] border-b border-[#1d3952]">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-widest text-[#93a3b4]">
-              AI Feedback
+              {feedback?.self_eval ? 'Self-Evaluation' : 'Drawing Evaluation'}
             </span>
             {hasFeedback && (
               <span
                 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${
-                  passed ? 'text-[#03ef62]' : 'text-[#ffb800]'
+                  passed
+                    ? 'text-[#03ef62]'
+                    : feedback?.self_eval
+                      ? 'text-amber-300'
+                      : 'text-[#ffb800]'
                 }`}
               >
                 {passed ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                {passed ? 'Passed' : 'Keep iterating'}
+                {passed ? 'Passed' : feedback?.self_eval ? 'Self Check' : 'Keep iterating'}
               </span>
             )}
           </div>
@@ -85,11 +121,27 @@ export function DrawingPane({
               {feedback && feedback.message && (
                 <p
                   className={`text-xs leading-relaxed whitespace-pre-wrap ${
-                    passed ? 'text-[#03ef62]' : 'text-[#e6edf3]'
+                    passed
+                      ? 'text-[#03ef62]'
+                      : feedback?.self_eval
+                        ? 'text-amber-300 font-medium'
+                        : 'text-[#e6edf3]'
                   }`}
                 >
                   {feedback.message}
                 </p>
+              )}
+              {feedback?.self_eval && onMarkComplete && !passed && (
+                <div className="pt-1">
+                  <button
+                    onClick={onMarkComplete}
+                    disabled={isComplete}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow"
+                  >
+                    <CheckCircle2 size={13} />
+                    {isComplete ? 'Completed ✓' : 'I evaluated my drawing — mark complete'}
+                  </button>
+                </div>
               )}
               {checks.length > 0 && (
                 <ul className="space-y-1.5 pt-1 border-t border-[#1d3952]">
@@ -117,8 +169,7 @@ export function DrawingPane({
             </div>
           ) : (
             <p className="text-xs text-[#5b6b7b] italic mt-2">
-              Submit your drawing to receive rubric feedback (intent / missing elements / extra
-              marks)...
+              Submit your drawing or open the solution to compare and evaluate your sketch...
             </p>
           )}
         </div>

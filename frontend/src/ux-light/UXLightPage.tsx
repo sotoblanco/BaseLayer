@@ -156,6 +156,11 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
         onSubmit={handleDrawingSubmit}
         isSubmitting={isSubmittingDrawing}
         feedback={drawingFeedback}
+        onMarkComplete={() => {
+          recordLessonPass('drawing');
+          triggerSuccess('Drawing exercise marked complete.');
+        }}
+        isComplete={completedIds.has(lesson.slug)}
       />
     ) : exerciseType === 'spreadsheet' && (lesson.google_sheet_id || Object.keys(lesson.sheet_cells ?? {}).length > 0) ? (
       <SpreadsheetPane

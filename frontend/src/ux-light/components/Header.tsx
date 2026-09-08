@@ -13,7 +13,9 @@ import {
   Layers,
   ArrowLeft,
   Share2,
+  Lock,
 } from 'lucide-react';
+
 import type { FileCourse, FileLesson, UXLightChapter } from '../types';
 import { UserMenu } from '../../components/UserMenu';
 
@@ -175,22 +177,30 @@ export function Header({
                     {chapter.lessons.map((ex, eIdx) => {
                       const isSelected = cIdx === currentChapterIndex && eIdx === currentLessonIndex;
                       const isCompleted = completedIds.has(ex.slug);
+                      const isLocked = Boolean(course?.is_project && ex.is_locked);
                       return (
                         <button
                           key={ex.slug}
                           type="button"
+                          disabled={isLocked}
                           onClick={() => {
-                            onSelectLesson(cIdx, eIdx);
-                            setIsOutlineOpen(false);
+                            if (!isLocked) {
+                              onSelectLesson(cIdx, eIdx);
+                              setIsOutlineOpen(false);
+                            }
                           }}
                           className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs text-left transition-colors ${
-                            isSelected
+                            isLocked
+                              ? 'opacity-40 cursor-not-allowed text-[#93a3b4]'
+                              : isSelected
                               ? 'bg-[rgba(3,239,98,0.14)] text-[#05192d] font-bold border border-[#03ef62]/40'
                               : 'hover:bg-[#f4f6f8] text-[#1a2733] border border-transparent'
                           }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            {isCompleted ? (
+                            {isLocked ? (
+                              <Lock size={16} className="text-[#93a3b4] shrink-0" />
+                            ) : isCompleted ? (
                               <CheckCircle2 size={16} className="text-[#03ef62] fill-[#03ef62]/20 shrink-0" />
                             ) : isSelected ? (
                               <div className="w-4 h-4 rounded-full border-2 border-[#03ef62] flex items-center justify-center shrink-0">
@@ -202,11 +212,12 @@ export function Header({
                             <span className="truncate">{ex.title}</span>
                           </div>
                           <span className="px-1.5 py-0.5 rounded bg-[#e2e8ee] text-[#5b6b7b] font-mono text-[10px] shrink-0 ml-2">
-                            35 XP
+                            {isLocked ? 'Locked' : '35 XP'}
                           </span>
                         </button>
                       );
                     })}
+
                   </div>
                 </div>
               ))}

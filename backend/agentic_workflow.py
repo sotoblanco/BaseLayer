@@ -226,7 +226,7 @@ def _find_override_blueprint(
 
 
 def _renumber_lessons(lessons: list[CuratedLessonBlueprint]) -> list[CuratedLessonBlueprint]:
-    lessons.sort(key=lambda l: l.order)
+    lessons.sort(key=lambda lesson_bp: lesson_bp.order)
     for idx, lesson in enumerate(lessons, start=1):
         lesson.order = idx
     return lessons
@@ -235,7 +235,7 @@ def _renumber_lessons(lessons: list[CuratedLessonBlueprint]) -> list[CuratedLess
 def _collect_overridden_lessons(
     plan_lessons: list[CuratedLessonBlueprint], overrides: list[dict[str, Any]]
 ) -> list[CuratedLessonBlueprint]:
-    orig_map = {l.order: l for l in plan_lessons}
+    orig_map = {lesson_bp.order: lesson_bp for lesson_bp in plan_lessons}
     result = [
         bp for item in overrides if (bp := _find_override_blueprint(orig_map, item)) is not None
     ]
@@ -263,9 +263,7 @@ def materialize_planned_course(
 ) -> AgenticWorkflowResult:
     """Materializes a previously planned course, applying any user-approved edits."""
     title = (title_override or "").strip() or plan.title
-    description = (
-        plan.description if description_override is None else description_override.strip()
-    )
+    description = plan.description if description_override is None else description_override.strip()
     final_lessons = _resolve_overridden_lessons(plan.lessons, lessons_override)
 
     curated = CuratedCourseResult(

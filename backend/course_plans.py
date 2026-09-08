@@ -1,7 +1,6 @@
 import threading
 import time
 import uuid
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -25,11 +24,7 @@ class CoursePlanStore:
         self._ttl_seconds = ttl_seconds
 
     def _evict_expired(self, now: float) -> None:
-        expired = [
-            k
-            for k, v in self._plans.items()
-            if now - v.created_at > self._ttl_seconds
-        ]
+        expired = [k for k, v in self._plans.items() if now - v.created_at > self._ttl_seconds]
         for k in expired:
             self._plans.pop(k, None)
 

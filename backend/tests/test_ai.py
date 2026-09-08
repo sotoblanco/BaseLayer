@@ -453,4 +453,3 @@ class TestBreakdownEndpoint:
         assert len(data["sub_steps"]) == 3
         assert data["sub_steps"][0]["title"] == "Define 1D vectors"
         assert data["sub_steps"][1]["toy_data"] == "prod = [a * b for a, b in zip(v1, v2)]"
-

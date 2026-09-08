@@ -25,8 +25,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, model_validator
 
 from ai_service import ai_service
-from auth import get_current_admin, get_current_user, get_current_user_for_media
+from auth import get_current_admin, get_current_user, get_current_user_for_media, get_optional_user
 from models import User
+from project_artifacts import (
+    check_step_unlock_status,
+    get_step_artifacts_contract,
+    get_user_artifacts,
+    is_project_course,
+)
 from spreadsheet_verification import (
     SheetReadError,
     SpreadsheetTargetCell,
@@ -128,6 +134,13 @@ class FileLesson(BaseModel):
         default_factory=dict,
         description="Declarative template cells (A1 -> value-or-formula) for provisioning",
     )
+    board_theme: str = "default"  # "default" | "chalkboard"
+    drawing_prompt: str | None = None
+    solution_diagram: str | None = None
+    solution_explanation: str | None = None
+    produces: str | None = None
+    consumes: list[str] = Field(default_factory=list)
+    is_locked: bool = False
 
 
 class FileCourseSummary(BaseModel):
@@ -140,6 +153,7 @@ class FileCourseSummary(BaseModel):
     skills: list[str] = Field(default_factory=list)
     modalities: list[str] = Field(default_factory=list)
     is_generated: bool = False
+    is_project: bool = False
 
 
 class FileCourse(BaseModel):
@@ -152,6 +166,39 @@ class FileCourse(BaseModel):
     skills: list[str] = Field(default_factory=list)
     modalities: list[str] = Field(default_factory=list)
     is_generated: bool = False
+    is_project: bool = False
+
+
+class ProjectArtifactsResponse(BaseModel):
+    is_project: bool
+    artifacts: list[str] = Field(default_factory=list)
+    step_locks: dict[str, bool] = Field(default_factory=dict)
+
+
+def _coerce_bundle_slug(copied: dict[str, Any]) -> str:
+    if copied.get("slug"):
+        return str(copied["slug"])
+    title = copied.get("title")
+    if not title:
+        return "lesson"
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(title).strip()).strip("-").lower()
+    return cleaned[:50] or "lesson"
+
+
+def _append_bundle_part(parts: list[str], prefix: str, value: Any) -> None:
+    if value:
+        parts.append(f"{prefix}{value}")
+
+
+def _coerce_bundle_description(copied: dict[str, Any]) -> str:
+    if copied.get("description"):
+        return str(copied["description"])
+    parts: list[str] = []
+    _append_bundle_part(parts, "# ", copied.get("title"))
+    _append_bundle_part(parts, "", copied.get("objective"))
+    _append_bundle_part(parts, "### Your Task\n", copied.get("micro_task"))
+    _append_bundle_part(parts, "> **Inspect:** ", copied.get("inspect_prompt"))
+    return "\n\n".join(parts)
 
 
 class ExportLessonBundle(BaseModel):
@@ -174,6 +221,10 @@ class ExportLessonBundle(BaseModel):
     question_image_base64: str | None = None
     solution_image_base64: str | None = None
     sheet_cells: dict[str, Any] = Field(default_factory=dict)
+    board_theme: str = "default"
+    drawing_prompt: str | None = None
+    solution_diagram: str | None = None
+    solution_explanation: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -181,26 +232,10 @@ class ExportLessonBundle(BaseModel):
         if not isinstance(data, dict):
             return data
         copied = dict(data)
-        if not copied.get("slug") and copied.get("title"):
-            cleaned = (
-                re.sub(r"[^a-zA-Z0-9_-]+", "-", str(copied["title"]).strip()).strip("-").lower()
-            )
-            copied["slug"] = cleaned[:50] or "lesson"
-        elif not copied.get("slug"):
-            copied["slug"] = "lesson"
+        copied["slug"] = _coerce_bundle_slug(copied)
         if not copied.get("initial_code") and copied.get("starter_code"):
             copied["initial_code"] = copied["starter_code"]
-        if not copied.get("description"):
-            parts: list[str] = []
-            if copied.get("title"):
-                parts.append(f"# {copied['title']}")
-            if copied.get("objective"):
-                parts.append(str(copied["objective"]))
-            if copied.get("micro_task"):
-                parts.append(f"### Your Task\n{copied['micro_task']}")
-            if copied.get("inspect_prompt"):
-                parts.append(f"> **Inspect:** {copied['inspect_prompt']}")
-            copied["description"] = "\n\n".join(parts) if parts else ""
+        copied["description"] = _coerce_bundle_description(copied)
         return copied
 
 
@@ -401,27 +436,71 @@ class LessonMeta:
     # Declarative template (Issue #108): A1 -> value-or-formula map that can
     # provision the lesson's Google Sheet. Leading "=" marks a formula.
     sheet_cells: dict[str, Any] = field(default_factory=dict)
+    board_theme: str = "default"
+    drawing_prompt: str | None = None
+    solution_diagram: str | None = None
+    solution_explanation: str | None = None
+    produces: str | None = None
+    consumes: list[str] = field(default_factory=list)
+
+
+def _extract_consumes_meta(raw: Any) -> list[str]:
+    raw_list = raw if isinstance(raw, list) else [raw]
+    return [str(s).strip() for s in raw_list if s and str(s).strip()]
 
 
 def _extract_metadata(lesson_path: Path) -> LessonMeta:
     """Extract metadata configuration for lesson."""
     metadata = _read_json_object(lesson_path / "metadata.json")
     exercise_type = metadata.get("exercise_type", "code")
+    board_theme = metadata.get("board_theme", "default")
+    if exercise_type in ("hand_drawn", "hand-drawn", "chalkboard"):
+        exercise_type = "drawing"
+        board_theme = "chalkboard"
+
+    drawing_meta = metadata.get("drawing") or {}
+    drawing_prompt = _optional_str(
+        drawing_meta.get("prompt_text") or metadata.get("drawing_prompt")
+    )
+    solution_diagram = _optional_str(
+        drawing_meta.get("solution_diagram") or metadata.get("solution_diagram")
+    )
+    solution_explanation = _optional_str(
+        drawing_meta.get("solution_explanation") or metadata.get("solution_explanation")
+    )
+
     image_url = None
-    if exercise_type == "drawing" and (lesson_path / "question.png").exists():
-        image_url = "__image__"
+    if exercise_type == "drawing":
+        if (lesson_path / "question.png").exists():
+            image_url = "__image__"
+        else:
+            image_url = "__chalkboard__"
+            board_theme = "chalkboard"
+
+    stroke_color = metadata.get("stroke_color")
+    if not stroke_color:
+        stroke_color = "#f8fafc" if board_theme == "chalkboard" else "#e11d48"
+
+    stroke_width = int(metadata.get("stroke_width", 3 if board_theme == "chalkboard" else 4))
+
     return LessonMeta(
         exercise_type=exercise_type,
         google_sheet_id=metadata.get("google_sheet_id"),
         copy_on_open=bool(metadata.get("copy_on_open", False)),
-        stroke_color=metadata.get("stroke_color", "#e11d48"),
-        stroke_width=int(metadata.get("stroke_width", 4)),
+        stroke_color=stroke_color,
+        stroke_width=stroke_width,
         image_url=image_url,
         skills=_normalize_skills(metadata.get("skills")),
         title=_optional_str(metadata.get("title")),
         success_cells=parse_success_cells(metadata.get("success_cells")),
         hints=_normalize_skills(metadata.get("hints"))[:5],
         sheet_cells=parse_sheet_template((metadata.get("sheet") or {}).get("cells")),
+        board_theme=board_theme,
+        drawing_prompt=drawing_prompt,
+        solution_diagram=solution_diagram,
+        solution_explanation=solution_explanation,
+        produces=_optional_str(metadata.get("produces")),
+        consumes=_extract_consumes_meta(metadata.get("consumes")),
     )
 
 
@@ -468,6 +547,12 @@ def parse_lesson(
         success_cells=meta.success_cells,
         hints=meta.hints,
         sheet_cells=meta.sheet_cells,
+        board_theme=meta.board_theme,
+        drawing_prompt=meta.drawing_prompt,
+        solution_diagram=meta.solution_diagram,
+        solution_explanation=meta.solution_explanation,
+        produces=meta.produces,
+        consumes=meta.consumes,
     )
 
 
@@ -557,7 +642,12 @@ def _is_sheet_or_drawing_metadata(path: Path) -> str | None:
         text = path.read_text(encoding="utf-8")
         if '"spreadsheet"' in text or '"google_sheet_id"' in text:
             return "spreadsheet"
-        if '"drawing"' in text:
+        if (
+            '"drawing"' in text
+            or '"hand_drawn"' in text
+            or '"hand-drawn"' in text
+            or '"chalkboard"' in text
+        ):
             return "drawing"
     except OSError:
         pass
@@ -600,6 +690,15 @@ def _is_course_generated(course_slug: str) -> bool:
     )
 
 
+def _apply_project_contracts(course_path: Path, lessons: list[FileLesson]) -> None:
+    for lesson in lessons:
+        _is_p, consumes, produces = get_step_artifacts_contract(course_path, lesson.slug)
+        if consumes:
+            lesson.consumes = consumes
+        if produces:
+            lesson.produces = produces
+
+
 def parse_course(course_slug: str) -> FileCourse | None:
     """Parse a course directory into a FileCourse object"""
     course_path = _get_safe_course_dir(course_slug)
@@ -609,6 +708,9 @@ def parse_course(course_slug: str) -> FileCourse | None:
     meta = _read_json_object(course_path / "metadata.json")
     modalities = _detect_course_modalities(course_path)
     is_generated = _is_course_generated(course_slug)
+    is_project = is_project_course(course_path)
+    if is_project:
+        _apply_project_contracts(course_path, lessons)
     return FileCourse(
         slug=course_slug,
         title=_course_title(meta, course_path, course_slug),
@@ -617,6 +719,7 @@ def parse_course(course_slug: str) -> FileCourse | None:
         skills=_course_skills(meta, lessons),
         modalities=modalities,
         is_generated=is_generated,
+        is_project=is_project,
     )
 
 
@@ -726,6 +829,7 @@ def _build_course_summary(
         skills=skills,
         modalities=_detect_course_modalities(course_dir),
         is_generated=_is_course_generated(course_slug),
+        is_project=is_project_course(course_dir),
     )
 
 
@@ -888,6 +992,10 @@ def _lesson_to_export_bundle(course_path: Path, lesson: FileLesson) -> ExportLes
         stroke_width=lesson.stroke_width,
         hints=lesson.hints,
         sheet_cells=lesson.sheet_cells,
+        board_theme=lesson.board_theme,
+        drawing_prompt=lesson.drawing_prompt,
+        solution_diagram=lesson.solution_diagram,
+        solution_explanation=lesson.solution_explanation,
         question_image_base64=q_img,
         solution_image_base64=s_img,
     )
@@ -957,6 +1065,18 @@ def _write_lesson_bundle_files(lesson_dir: Path, lesson: ExportLessonBundle) -> 
         "stroke_width": lesson.stroke_width,
         "hints": lesson.hints,
     }
+    if lesson.board_theme and lesson.board_theme != "default":
+        meta["board_theme"] = lesson.board_theme
+    if lesson.drawing_prompt or lesson.solution_diagram or lesson.solution_explanation:
+        meta["drawing"] = {
+            k: v
+            for k, v in [
+                ("prompt_text", lesson.drawing_prompt),
+                ("solution_diagram", lesson.solution_diagram),
+                ("solution_explanation", lesson.solution_explanation),
+            ]
+            if v
+        }
     if lesson.sheet_cells:
         meta["sheet"] = {"cells": lesson.sheet_cells}
     (lesson_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -1217,10 +1337,63 @@ def delete_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(
     )
 
 
+def _apply_lesson_locks(course: FileCourse, username: str, course_dir: Path) -> None:
+    if not course.is_project:
+        return
+    steps = [
+        {"slug": lesson.slug, "consumes": lesson.consumes, "produces": lesson.produces}
+        for lesson in course.lessons
+    ]
+    locks = check_step_unlock_status(username, course.slug, steps, course_dir=course_dir)
+    for lesson in course.lessons:
+        lesson.is_locked = locks.get(lesson.slug, False)
+
+
+def _build_project_artifacts_response(
+    course_slug: str,
+    course_dir: Path,
+    username: str,
+) -> ProjectArtifactsResponse:
+    artifacts = sorted(get_user_artifacts(username, course_slug))
+    course = parse_course(course_slug)
+    steps = [
+        {"slug": lesson.slug, "consumes": lesson.consumes, "produces": lesson.produces}
+        for lesson in (course.lessons if course else [])
+    ]
+    step_locks = check_step_unlock_status(username, course_slug, steps, course_dir=course_dir)
+    return ProjectArtifactsResponse(
+        is_project=True,
+        artifacts=artifacts,
+        step_locks=step_locks,
+    )
+
+
+@router.get("/{course_slug}/artifacts", response_model=ProjectArtifactsResponse)
+def get_project_artifacts(
+    course_slug: str,
+    user: User | None = Depends(get_optional_user),
+):
+    """Return the user's generated project artifacts and step locks for a project course."""
+    if not _validate_slug(course_slug):
+        raise HTTPException(status_code=400, detail="Invalid course slug format")
+    course_dir = _get_safe_course_dir(course_slug)
+    if not course_dir:
+        raise HTTPException(status_code=404, detail=f"Course '{course_slug}' not found")
+    if not is_project_course(course_dir):
+        return ProjectArtifactsResponse(is_project=False)
+
+    username = user.username if user else "anonymous"
+    return _build_project_artifacts_response(course_slug, course_dir, username)
+
+
 @router.get("/{course_slug}", response_model=FileCourse)
 def get_file_course(course_slug: str, user: User = Depends(get_current_user)):
     """Get a specific file-based course with all its lessons"""
-    return _get_course_or_404(course_slug)
+    course = _get_course_or_404(course_slug)
+    course_dir = _get_safe_course_dir(course_slug)
+    if course_dir is not None:
+        _apply_lesson_locks(course, user.username, course_dir)
+    return course
 
 
 @router.get("/{course_slug}/{lesson_slug}", response_model=FileLesson)
@@ -1228,6 +1401,9 @@ def get_file_lesson(course_slug: str, lesson_slug: str, user: User = Depends(get
     """Get a specific lesson from a file-based course"""
     _require_valid_slugs(course_slug, lesson_slug)
     course = _get_course_or_404(course_slug)
+    course_dir = _get_safe_course_dir(course_slug)
+    if course_dir is not None:
+        _apply_lesson_locks(course, user.username, course_dir)
     return _find_lesson_in_course_or_404(course, lesson_slug)
 
 
@@ -1316,13 +1492,17 @@ def _decode_sketch_image(raw_image_data: str) -> bytes:
         raise HTTPException(status_code=400, detail=f"Invalid image data: {e}") from e
 
 
-def _load_drawing_context_files(lesson_dir: Path) -> tuple[str, bytes, bytes | None]:
-    """Load instructions, question image, and optional solution image."""
+def _load_drawing_context_files(
+    lesson_dir: Path, meta: LessonMeta | None = None
+) -> tuple[str, bytes | None, bytes | None]:
+    """Load instructions, optional question image, and optional solution image."""
     readme_path = lesson_dir / "README.md"
     instructions = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
 
     question_path = lesson_dir / "question.png"
     if not question_path.exists():
+        if meta and meta.board_theme == "chalkboard":
+            return instructions, None, None
         raise HTTPException(status_code=500, detail="Lesson diagram missing (question.png)")
     question_img_bytes = question_path.read_bytes()
 
@@ -1339,10 +1519,27 @@ def submit_drawing(
     submission: DrawingSubmission,
     user: User = Depends(get_current_user),
 ):
-    """Evaluate a drawing submission using AI, returning structured rubric feedback."""
+    """Evaluate a drawing submission using AI, or provide self-evaluation feedback."""
     lesson_dir = _get_safe_lesson_dir_or_404(course_slug, lesson_slug)
-    instructions, question_bytes, solution_bytes = _load_drawing_context_files(lesson_dir)
+    meta = _extract_metadata(lesson_dir)
+    instructions, question_bytes, solution_bytes = _load_drawing_context_files(lesson_dir, meta)
     sketch_bytes = _decode_sketch_image(submission.image_data)
+
+    # Chalkboard / hand-drawn lessons without a base diagram run in self-evaluation mode.
+    if meta.board_theme == "chalkboard" and not question_bytes:
+        return {
+            "passed": False,
+            "self_eval": True,
+            "score": 1.0,
+            "message": "Self-evaluation mode: review your chalk drawing against the reference solution on the right, then mark it complete.",
+            "checks": [
+                {
+                    "label": "Self-evaluation active",
+                    "passed": True,
+                    "feedback": "Compare your sketch with the reference solution on the right.",
+                }
+            ],
+        }
 
     result = ai_service.evaluate_drawing(instructions, question_bytes, sketch_bytes, solution_bytes)
     if "error" in result:
@@ -1389,9 +1586,7 @@ def _get_service_account_path() -> str:
     return sa_file
 
 
-def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: str) -> str:
-    """Drive-copy a provisioned template; return the new spreadsheet id."""
-    sa_file = _get_service_account_path()
+def _drive_copy_file(sa_file: str, file_id: str | None, title: str) -> str:
     try:
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
@@ -1399,26 +1594,35 @@ def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: s
         raise HTTPException(
             status_code=501, detail="googleapiclient not installed on server"
         ) from None
-    try:
-        creds = Credentials.from_service_account_file(
-            sa_file, scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        drive = build("drive", "v3", credentials=creds)
-        new_title = f"{course_slug}-{lesson_slug}-copy-{int(time.time())}"
-        copied = (
-            drive.files().copy(fileId=lesson.google_sheet_id, body={"name": new_title}).execute()
-        )
-        new_id = copied.get("id")
-        if not new_id:
-            raise HTTPException(status_code=500, detail="Drive copy returned no id")
-        from spreadsheet_verification import share_sheet_anyone_with_link
 
-        share_sheet_anyone_with_link(new_id, creds)
-        return new_id
+    from spreadsheet_verification import share_sheet_anyone_with_link
+
+    creds = Credentials.from_service_account_file(
+        sa_file, scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    drive = build("drive", "v3", credentials=creds)
+    copied = drive.files().copy(fileId=file_id, body={"name": title}).execute()
+    new_id = copied.get("id")
+    if not new_id:
+        raise HTTPException(status_code=500, detail="Drive copy returned no id")
+    share_sheet_anyone_with_link(new_id, creds)
+    return new_id
+
+
+def _safe_drive_copy(sa_file: str, sheet_id: str | None, title: str) -> str:
+    try:
+        return _drive_copy_file(sa_file, sheet_id, title)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {e}") from e
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to create sheet copy: {exc}") from exc
+
+
+def _copy_existing_template(lesson: FileLesson, course_slug: str, lesson_slug: str) -> str:
+    """Drive-copy a provisioned template; return the new spreadsheet id."""
+    sa_file = _get_service_account_path()
+    new_title = f"{course_slug}-{lesson_slug}-copy-{int(time.time())}"
+    return _safe_drive_copy(sa_file, lesson.google_sheet_id, new_title)
 
 
 @router.post("/{course_slug}/{lesson_slug}/copy-sheet")
@@ -1485,6 +1689,37 @@ class ProvisionSheetResponse(BaseModel):
     cells: int
 
 
+def _validate_provisionable_lesson(lesson: FileLesson) -> None:
+    if lesson.exercise_type != "spreadsheet":
+        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise.")
+    if lesson.google_sheet_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Lesson already has a template sheet. Clear google_sheet_id to re-provision.",
+        )
+    if not lesson.sheet_cells:
+        raise HTTPException(
+            status_code=400,
+            detail="Lesson defines no sheet.cells template to provision from.",
+        )
+
+
+def _persist_provisioned_sheet_id(course_slug: str, lesson_slug: str, spreadsheet_id: str) -> None:
+    course_path = _get_safe_course_dir(course_slug)
+    lesson_dir = _find_lesson_in_course_dir(course_path, lesson_slug) if course_path else None
+    if lesson_dir is None:
+        raise HTTPException(status_code=404, detail="Lesson directory not found.")
+    meta_path = lesson_dir / "metadata.json"
+    meta = _read_json_object(meta_path)
+    meta["google_sheet_id"] = spreadsheet_id
+    try:
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Sheet created but id could not be saved: {exc}"
+        ) from exc
+
+
 @router.post(
     "/{course_slug}/{lesson_slug}/provision-sheet",
     response_model=ProvisionSheetResponse,
@@ -1504,18 +1739,7 @@ def provision_sheet(
     _require_valid_slugs(course_slug, lesson_slug)
     course = _get_course_or_404(course_slug)
     lesson = _find_lesson_in_course_or_404(course, lesson_slug)
-    if lesson.exercise_type != "spreadsheet":
-        raise HTTPException(status_code=400, detail="Lesson is not a spreadsheet exercise.")
-    if lesson.google_sheet_id:
-        raise HTTPException(
-            status_code=409,
-            detail="Lesson already has a template sheet. Clear google_sheet_id to re-provision.",
-        )
-    if not lesson.sheet_cells:
-        raise HTTPException(
-            status_code=400,
-            detail="Lesson defines no sheet.cells template to provision from.",
-        )
+    _validate_provisionable_lesson(lesson)
     try:
         spreadsheet_id = provision_sheet_template(
             lesson.sheet_cells, title=f"{course.title} - {lesson.title}"
@@ -1525,19 +1749,7 @@ def provision_sheet(
     except SheetReadError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    course_path = _get_safe_course_dir(course_slug)
-    lesson_dir = _find_lesson_in_course_dir(course_path, lesson_slug) if course_path else None
-    if lesson_dir is None:
-        raise HTTPException(status_code=404, detail="Lesson directory not found.")
-    meta_path = lesson_dir / "metadata.json"
-    meta = _read_json_object(meta_path)
-    meta["google_sheet_id"] = spreadsheet_id
-    try:
-        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    except OSError as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Sheet created but id could not be saved: {exc}"
-        ) from exc
+    _persist_provisioned_sheet_id(course_slug, lesson_slug, spreadsheet_id)
     _COURSE_SUMMARY_CACHE.pop(course_slug, None)
     return ProvisionSheetResponse(
         google_sheet_id=spreadsheet_id,

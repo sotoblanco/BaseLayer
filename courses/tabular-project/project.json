@@ -1,0 +1,32 @@
+{
+  "is_project": true,
+  "title": "Tabular Data Pipeline",
+  "description": "Build an end-to-end data pipeline: raw ingest, feature scaling, and model prediction.",
+  "skills": [
+    "data-pipeline",
+    "feature-scaling",
+    "linear-regression"
+  ],
+  "steps": [
+    {
+      "slug": "step01-ingest",
+      "consumes": [],
+      "produces": "dataset.csv"
+    },
+    {
+      "slug": "step02-scale",
+      "consumes": [
+        "dataset.csv"
+      ],
+      "produces": "scaled_data.py"
+    },
+    {
+      "slug": "step03-predict",
+      "consumes": [
+        "dataset.csv",
+        "scaled_data.py"
+      ],
+      "produces": "predictions.csv"
+    }
+  ]
+}

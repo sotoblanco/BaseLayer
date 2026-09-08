@@ -87,6 +87,7 @@ export interface UseLessonPlayerReturn {
   showDrawingSolution: boolean;
   setShowDrawingSolution: (show: boolean) => void;
   handleDrawingSubmit: () => Promise<void>;
+  handleManualDrawingPass: () => void;
 
   // Spreadsheet
   isSpreadsheetLesson: boolean;
@@ -309,10 +310,17 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     }
   }, [lesson, slug]);
 
-  const selectLesson = useCallback((chapterIndex: number, lessonIndex: number) => {
-    setCurrentChapterIndex(chapterIndex);
-    setCurrentLessonIndex(lessonIndex);
-  }, []);
+  const selectLesson = useCallback(
+    (chapterIndex: number, lessonIndex: number) => {
+      const targetLesson = chapters[chapterIndex]?.lessons[lessonIndex];
+      if (course?.is_project && targetLesson?.is_locked) {
+        return;
+      }
+      setCurrentChapterIndex(chapterIndex);
+      setCurrentLessonIndex(lessonIndex);
+    },
+    [chapters, course]
+  );
 
   useLessonUrlSync({
     courseSlug: slug,
@@ -332,9 +340,13 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
   const handleNext = useCallback(() => {
     if (currentGlobalIndex < allLessons.length - 1) {
       const next = allLessons[currentGlobalIndex + 1];
+      if (course?.is_project && next.lesson?.is_locked) {
+        return;
+      }
       selectLesson(next.chapterIndex, next.lessonIndex);
     }
-  }, [currentGlobalIndex, allLessons, selectLesson]);
+  }, [currentGlobalIndex, allLessons, selectLesson, course]);
+
 
   const pushOutput = useCallback((msg: Omit<OutputMessage, 'id' | 'timestamp'>) => {
     setOutputs((prev) => [
@@ -390,7 +402,22 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
           : course.skills || [],
       });
     }
-  }, [lesson, course, xpPenalty, completedIds, allLessons.length]);
+
+    if (course.is_project) {
+      fetch(`${API_BASE_URL}/file-courses/${slug}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((updated: FileCourse | null) => {
+          if (updated) {
+            setCourse(updated);
+            setChapters(groupLessonsIntoChapters(updated.lessons));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [lesson, course, xpPenalty, completedIds, allLessons.length, slug, token]);
+
 
   const openShare = useCallback((kind: 'course' | 'lesson') => {
     if (!course || !lesson) return;
@@ -567,10 +594,14 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
         score: data.score,
         message: data.message || (data.passed ? 'Your drawing passed.' : 'Your drawing needs work.'),
         checks: Array.isArray(data.checks) ? data.checks : undefined,
+        self_eval: !!data.self_eval,
       };
       setDrawingFeedback(feedback);
       setDrawingOutput(feedback.message);
       setDrawingChecks(feedback.checks || []);
+      if (data.self_eval) {
+        setShowDrawingSolution(true);
+      }
       if (feedback.passed) {
         recordLessonPass('drawing');
         triggerSuccess(feedback.message);
@@ -583,6 +614,12 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
       setIsSubmittingDrawing(false);
     }
   }, [lesson, slug, token, xpPenalty, logout, recordLessonPass, triggerSuccess]);
+
+  const handleManualDrawingPass = useCallback(() => {
+    if (!lesson || !course) return;
+    recordLessonPass('drawing');
+    triggerSuccess('Drawing exercise marked complete.');
+  }, [lesson, course, recordLessonPass, triggerSuccess]);
 
   const handleMakeSheetCopy = useCallback(async () => {
     if (!lesson || !slug) return;
@@ -782,6 +819,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     showDrawingSolution,
     setShowDrawingSolution,
     handleDrawingSubmit,
+    handleManualDrawingPass,
 
     isSpreadsheetLesson,
     userSheetUrl,

@@ -3,6 +3,7 @@ import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
 import DrawingCanvas from '../components/DrawingCanvas';
+import ChalkboardSolution from '../components/ChalkboardSolution';
 import SheetTemplatePreview from '../components/SheetTemplatePreview';
 import {
   Play,
@@ -18,10 +19,12 @@ import {
   Sparkles,
   Compass,
   Check,
+  Lock,
   FileText,
   FlaskConical,
   Table,
 } from 'lucide-react';
+
 import { API_BASE_URL, APP_VERSION } from '../config';
 import { buildTutorContext } from '../tutorContext';
 import { Panel, Group, Separator } from 'react-resizable-panels';
@@ -181,21 +184,26 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     <div className="flex flex-col gap-2">
                         {currentChapter?.lessons.map((les, idx) => {
                             const isDone = completedSlugs.has(les.slug);
+                            const isLocked = Boolean(course?.is_project && les.is_locked);
                             return (
                             <div
                                 key={les.slug}
-                                onClick={() => selectLesson(currentChapterIndex, idx)}
+                                onClick={() => {
+                                    if (!isLocked) selectLesson(currentChapterIndex, idx);
+                                }}
                                 className={`
-                            w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors font-bold text-sm
-                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : isDone ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/40' : 'hover:bg-slate-800 text-slate-400'}
+                            w-10 h-10 rounded-lg flex items-center justify-center transition-colors font-bold text-sm
+                            ${isLocked ? 'cursor-not-allowed opacity-40 bg-slate-900/60 text-slate-500 border border-slate-800' : 'cursor-pointer'}
+                            ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : isDone ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/40' : isLocked ? '' : 'hover:bg-slate-800 text-slate-400'}
                         `}
-                                title={isDone ? `${les.title} (completed)` : les.title}
+                                title={isLocked ? `${les.title} (Locked - complete prior steps)` : isDone ? `${les.title} (completed)` : les.title}
                             >
-                                {isDone ? <Check size={16} /> : idx + 1}
+                                {isLocked ? <Lock size={14} /> : isDone ? <Check size={16} /> : idx + 1}
                             </div>
                             );
                         })}
                     </div>
+
 
                     {/* Next Chapter Button */}
                     {chapters.length > 1 && (
@@ -343,30 +351,49 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                 <>
                                                     <div className={`${showDrawingSolution ? 'w-1/2' : 'w-full'} border-r border-[#333] transition-all duration-300 min-h-0`}>
                                                         <DrawingCanvas
-                                                            imageUrl={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/image${imageAuthQuery}`}
-                                                            strokeColor={lesson.stroke_color}
-                                                            strokeWidth={lesson.stroke_width}
+                                                            imageUrl={lesson?.image_url === '__chalkboard__' ? '' : `${API_BASE_URL}/file-courses/${slug}/${lesson?.slug}/image${imageAuthQuery}`}
+                                                            strokeColor={lesson?.stroke_color}
+                                                            strokeWidth={lesson?.stroke_width}
+                                                            boardTheme={lesson?.board_theme || (lesson?.image_url === '__chalkboard__' ? 'chalkboard' : 'default')}
+                                                            promptText={lesson?.drawing_prompt || lesson?.title}
                                                             onCanvasRef={(ref) => { drawingCanvasRef.current = ref; }}
                                                         />
                                                     </div>
                                                     {showDrawingSolution && (
-                                                        <div className="w-1/2 bg-slate-900/30 overflow-hidden flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
-                                                            <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-slate-700/40">
-                                                                <h3 className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
-                                                                    <Lightbulb size={14} className="fill-yellow-500/20" />
-                                                                    Reference Solution
-                                                                </h3>
-                                                                <span className="text-[10px] text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/30">
-                                                                    Compare with your drawing
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
-                                                                <img
-                                                                    src={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/solution${imageAuthQuery}`}
-                                                                    alt="Solution"
-                                                                    className="max-w-full max-h-full object-contain rounded-lg border border-yellow-700/30 shadow-2xl shadow-black/40"
+                                                        <div className="w-1/2 bg-[#11221a] overflow-hidden flex flex-col p-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                                                            {lesson?.solution_diagram || lesson?.solution_explanation ? (
+                                                                <ChalkboardSolution
+                                                                    title={`${lesson.title} - Solution`}
+                                                                    diagram={lesson.solution_diagram}
+                                                                    explanation={lesson.solution_explanation}
+                                                                    imageUrl={
+                                                                        lesson.image_url !== '__chalkboard__'
+                                                                            ? `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/solution${imageAuthQuery}`
+                                                                            : undefined
+                                                                    }
+                                                                    onMarkComplete={player.handleManualDrawingPass}
+                                                                    isComplete={completedSlugs.has(lesson.slug)}
                                                                 />
-                                                            </div>
+                                                            ) : (
+                                                                <div className="flex flex-col h-full bg-slate-900/30">
+                                                                    <div className="flex items-center justify-between px-4 py-2 shrink-0 border-b border-slate-700/40">
+                                                                        <h3 className="text-xs font-bold text-yellow-500 uppercase tracking-widest flex items-center gap-2">
+                                                                            <Lightbulb size={14} className="fill-yellow-500/20" />
+                                                                            Reference Solution
+                                                                        </h3>
+                                                                        <span className="text-[10px] text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded border border-slate-700/30">
+                                                                            Compare with your drawing
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex-1 overflow-hidden flex items-center justify-center p-3 min-h-0">
+                                                                        <img
+                                                                            src={`${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/solution${imageAuthQuery}`}
+                                                                            alt="Solution"
+                                                                            className="max-w-full max-h-full object-contain rounded-lg border border-yellow-700/30 shadow-2xl shadow-black/40"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </>
@@ -416,6 +443,18 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                                 </li>
                                                             ))}
                                                         </ul>
+                                                    )}
+                                                    {drawingFeedback?.self_eval && (
+                                                        <div className="pt-2">
+                                                            <button
+                                                                onClick={player.handleManualDrawingPass}
+                                                                disabled={completedSlugs.has(lesson?.slug || '')}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-xs font-bold transition-all shadow"
+                                                            >
+                                                                <Check size={13} />
+                                                                {completedSlugs.has(lesson?.slug || '') ? 'Completed ✓' : 'I evaluated my drawing — mark complete'}
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </>
                                             ) : (

@@ -737,9 +737,7 @@ class TestCoursePlanAndPreviewFlow:
         courses_dir.mkdir()
         monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
         monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
-        monkeypatch.setattr(
-            AIService, "complete", lambda self, prompt: _llm_plan_json("tensors")
-        )
+        monkeypatch.setattr(AIService, "complete", lambda self, prompt: _llm_plan_json("tensors"))
 
         with patch("routers.ai.COURSES_DIR", courses_dir):
             plan_res = client.post(
@@ -780,7 +778,9 @@ class TestCoursePlanAndPreviewFlow:
             assert (course_dir / "chapter1" / "lesson01").is_dir()
             assert not (course_dir / "chapter1" / "lesson02").exists()
 
-            readme = (course_dir / "chapter1" / "lesson01" / "README.md").read_text(encoding="utf-8")
+            readme = (course_dir / "chapter1" / "lesson01" / "README.md").read_text(
+                encoding="utf-8"
+            )
             assert "Renamed Broadcast Lesson" in readme
             assert "New custom objective" in readme
 
@@ -934,12 +934,12 @@ class TestCoursePlanAndPreviewFlow:
             assert res400.status_code == 400
 
             # Unexpected error -> 500
-            with patch("agentic_workflow.materialize_planned_course", side_effect=RuntimeError("disk full")):
+            with patch(
+                "agentic_workflow.materialize_planned_course", side_effect=RuntimeError("disk full")
+            ):
                 res500 = client.post(
                     "/ai/learning-path/approve",
                     json={"plan_id": plan_id},
                     headers=auth_headers,
                 )
                 assert res500.status_code == 500
-
-
