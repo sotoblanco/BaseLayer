@@ -26,6 +26,10 @@ export interface FileLesson {
   success_cells?: SheetTargetCell[];
   hints?: string[];
   sheet_cells?: Record<string, string | number | boolean>;
+  board_theme?: 'default' | 'chalkboard';
+  drawing_prompt?: string;
+  solution_diagram?: string;
+  solution_explanation?: string;
   produces?: string;
   consumes?: string[];
   is_locked?: boolean;
@@ -88,6 +92,7 @@ export interface DrawingFeedback {
   score?: number;
   message: string;
   checks?: DrawingRubricCheck[];
+  self_eval?: boolean;
 }
 
 export interface SheetCellCheck {

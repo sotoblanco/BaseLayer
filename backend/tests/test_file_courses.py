@@ -764,6 +764,42 @@ class TestFileCoursesEndpoints:
         assert res.status_code == 400
         assert "Invalid image data" in res.json()["detail"]
 
+    def test_submit_drawing_chalkboard_self_eval_without_question_png(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+
+        course_dir = courses_dir / "chalk_course"
+        course_dir.mkdir()
+        lesson_dir = course_dir / "lesson1"
+        lesson_dir.mkdir()
+        (lesson_dir / "README.md").write_text("# Draw on chalkboard")
+        (lesson_dir / "metadata.json").write_text(
+            json.dumps(
+                {
+                    "exercise_type": "drawing",
+                    "board_theme": "chalkboard",
+                    "drawing": {
+                        "prompt_text": "Draw vector A and vector B",
+                        "solution_diagram": "A -> B",
+                        "solution_explanation": "Vector A points to B",
+                    },
+                }
+            )
+        )
+
+        res = client.post(
+            "/file-courses/chalk_course/lesson1/submit-drawing",
+            json={"image_data": "data:image/png;base64,aGVsbG8="},
+            headers=auth_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["self_eval"] is True
+        assert "Self-evaluation" in data["message"]
+
     def test_create_sheet_copy_not_spreadsheet(
         self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
     ):

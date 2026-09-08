@@ -2,28 +2,143 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { Pencil, Eraser, Trash2, Undo2, ZoomIn, ZoomOut, ArrowRight, Type, GripHorizontal } from 'lucide-react';
 
 interface DrawingCanvasProps {
-    imageUrl: string;
+    imageUrl?: string;
     strokeColor?: string;
     strokeWidth?: number;
+    boardTheme?: 'default' | 'chalkboard';
+    promptText?: string;
     onCanvasRef?: (ref: HTMLCanvasElement | null) => void;
 }
 
 type Tool = 'pencil' | 'eraser' | 'arrow' | 'text';
 
+const CHALK_COLORS = [
+    { label: 'White', color: '#f8fafc' },
+    { label: 'Yellow', color: '#fde047' },
+    { label: 'Cyan', color: '#7dd3fc' },
+    { label: 'Pink', color: '#f472b6' },
+    { label: 'Mint', color: '#86efac' },
+    { label: 'Orange', color: '#fb923c' },
+];
+
+function renderChalkboard(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    promptText?: string
+) {
+    // 1. Base dark green chalkboard slate gradient
+    const gradient = ctx.createRadialGradient(
+        width / 2, height / 2, Math.min(width, height) * 0.2,
+        width / 2, height / 2, Math.max(width, height) * 0.75
+    );
+    gradient.addColorStop(0, '#234735');
+    gradient.addColorStop(0.65, '#1b3829');
+    gradient.addColorStop(1, '#11251b');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Faint grid guide lines for coordinate / diagram precision
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.lineWidth = 1;
+    const gridSize = 40;
+    ctx.beginPath();
+    for (let x = gridSize; x < width; x += gridSize) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+    }
+    for (let y = gridSize; y < height; y += gridSize) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+    }
+    ctx.stroke();
+
+    // 3. Realistic soft chalk dust & eraser smudge clouds
+    for (let i = 0; i < 7; i++) {
+        const y = height * (0.12 + i * 0.13);
+        const smudgeGrad = ctx.createLinearGradient(0, y - 28, 0, y + 28);
+        smudgeGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        smudgeGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.025)');
+        smudgeGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = smudgeGrad;
+        ctx.fillRect(20, y - 28, width - 40, 56);
+    }
+
+    // 4. Subtle chalk dust speckles
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+    const seed = 53;
+    for (let i = 0; i < 220; i++) {
+        const sx = ((Math.sin(seed + i * 19) + 1) / 2) * (width - 40) + 20;
+        const sy = ((Math.cos(seed + i * 29) + 1) / 2) * (height - 40) + 20;
+        const r = ((Math.sin(i * 3) + 1) / 2) * 1.5 + 0.5;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 5. Wooden chalkboard frame (inner border + beveled depth)
+    const frameW = 16;
+    ctx.fillStyle = '#3f2516'; // rich wood tone
+    ctx.fillRect(0, 0, width, frameW);
+    ctx.fillRect(0, height - frameW - 6, width, frameW + 6);
+    ctx.fillRect(0, 0, frameW, height);
+    ctx.fillRect(width - frameW, 0, frameW, height);
+
+    // Inner highlight / bevel
+    ctx.strokeStyle = '#5a3821';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(frameW, frameW, width - frameW * 2, height - frameW * 2 - 6);
+
+    // Inner shadow into the board
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(frameW + 1, frameW + 1, width - frameW * 2 - 2, height - frameW * 2 - 8);
+
+    // Chalk tray ledge at bottom
+    ctx.fillStyle = '#2f1b0e';
+    ctx.fillRect(frameW, height - frameW - 6, width - frameW * 2, 4);
+
+    // Chalk pieces resting on the bottom tray
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(frameW + 40, height - frameW - 4, 30, 4);
+    ctx.fillStyle = '#fde047';
+    ctx.fillRect(frameW + 80, height - frameW - 4, 25, 4);
+    ctx.fillStyle = '#7dd3fc';
+    ctx.fillRect(frameW + 115, height - frameW - 4, 28, 4);
+
+    // 6. Header / Prompt text on the board
+    if (promptText && promptText.trim()) {
+        ctx.font = 'bold 15px "Chalkboard SE", "Comic Sans MS", "Caveat", cursive, sans-serif';
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.9)';
+        ctx.shadowColor = 'rgba(254, 240, 138, 0.35)';
+        ctx.shadowBlur = 2;
+        ctx.fillText(`✎ ${promptText.trim()}`, frameW + 16, frameW + 24);
+    }
+    ctx.restore();
+}
+
 export default function DrawingCanvas({
     imageUrl,
     strokeColor = '#e11d48',
     strokeWidth = 4,
+    boardTheme = 'default',
+    promptText,
     onCanvasRef,
 }: DrawingCanvasProps) {
+    const isChalkboard = boardTheme === 'chalkboard' || !imageUrl || imageUrl.includes('__chalkboard__');
     const containerRef = useRef<HTMLDivElement>(null);
-    const bgCanvasRef = useRef<HTMLCanvasElement>(null);  // background image
-    const drawCanvasRef = useRef<HTMLCanvasElement>(null); // user strokes
+    const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+    const drawCanvasRef = useRef<HTMLCanvasElement>(null);
     const [activeTool, setActiveTool] = useState<Tool>('pencil');
-    const [currentColor, setCurrentColor] = useState(strokeColor);
-    const [currentWidth, setCurrentWidth] = useState(strokeWidth);
+    const [currentColor, setCurrentColor] = useState(
+        isChalkboard && strokeColor === '#e11d48' ? '#f8fafc' : strokeColor
+    );
+    const [currentWidth, setCurrentWidth] = useState(
+        isChalkboard && strokeWidth === 4 ? 3 : strokeWidth
+    );
     const [history, setHistory] = useState<ImageData[]>([]);
-    const [aspectRatio, setAspectRatio] = useState<number | undefined>();
+    const [aspectRatio, setAspectRatio] = useState<number | undefined>(isChalkboard ? 1000 / 650 : undefined);
     const [scale, setScale] = useState<number>(1);
     const [textInput, setTextInput] = useState<{ x: number; y: number; value: string } | null>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
@@ -33,11 +148,24 @@ export default function DrawingCanvas({
     const isDraggingText = useRef(false);
     const dragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-    // Load background image
+    // Load background image or render realistic chalkboard
     useEffect(() => {
         const bgCanvas = bgCanvasRef.current;
         const drawCanvas = drawCanvasRef.current;
         if (!bgCanvas || !drawCanvas) return;
+
+        if (isChalkboard || !imageUrl || imageUrl.includes('__chalkboard__')) {
+            const width = 1000;
+            const height = 650;
+            bgCanvas.width = width;
+            bgCanvas.height = height;
+            drawCanvas.width = width;
+            drawCanvas.height = height;
+            setAspectRatio(width / height);
+            const ctx = bgCanvas.getContext('2d')!;
+            renderChalkboard(ctx, width, height, promptText);
+            return;
+        }
 
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -51,9 +179,20 @@ export default function DrawingCanvas({
             const ctx = bgCanvas.getContext('2d')!;
             ctx.drawImage(img, 0, 0);
         };
-        img.onerror = () => console.error('Failed to load image:', imageUrl);
+        img.onerror = () => {
+            console.warn('Could not load base image, rendering chalkboard background');
+            const width = 1000;
+            const height = 650;
+            bgCanvas.width = width;
+            bgCanvas.height = height;
+            drawCanvas.width = width;
+            drawCanvas.height = height;
+            setAspectRatio(width / height);
+            const ctx = bgCanvas.getContext('2d')!;
+            renderChalkboard(ctx, width, height, promptText);
+        };
         img.src = imageUrl;
-    }, [imageUrl]);
+    }, [imageUrl, isChalkboard, promptText]);
 
     // Expose the draw canvas ref for submission
     useEffect(() => {
@@ -139,6 +278,8 @@ export default function DrawingCanvas({
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.shadowBlur = isChalkboard && activeTool !== 'eraser' ? 1.5 : 0;
+        ctx.shadowColor = currentColor;
 
         if (activeTool === 'arrow' && startPos.current) {
             if (history.length > 0) {
@@ -244,18 +385,32 @@ export default function DrawingCanvas({
 
                 <div className="w-px h-6 bg-slate-700" />
 
-                <label title="Stroke color" className="flex items-center gap-1 cursor-pointer">
-                    <div
-                        className="w-6 h-6 rounded border-2 border-slate-600"
-                        style={{ backgroundColor: currentColor }}
-                    />
-                    <input
-                        type="color"
-                        value={currentColor}
-                        onChange={e => setCurrentColor(e.target.value)}
-                        className="sr-only"
-                    />
-                </label>
+                {/* Chalk Palette Swatches */}
+                <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60">
+                    {CHALK_COLORS.map(c => (
+                        <button
+                            key={c.color}
+                            title={`${c.label} chalk`}
+                            onClick={() => setCurrentColor(c.color)}
+                            className={`w-4 h-4 rounded-full border transition-transform ${
+                                currentColor === c.color ? 'scale-125 border-white ring-2 ring-emerald-500/50' : 'border-transparent hover:scale-110'
+                            }`}
+                            style={{ backgroundColor: c.color }}
+                        />
+                    ))}
+                    <label title="Custom color" className="flex items-center ml-1 cursor-pointer">
+                        <div
+                            className="w-4 h-4 rounded-full border border-slate-600"
+                            style={{ backgroundColor: currentColor }}
+                        />
+                        <input
+                            type="color"
+                            value={currentColor}
+                            onChange={e => setCurrentColor(e.target.value)}
+                            className="sr-only"
+                        />
+                    </label>
+                </div>
 
                 <label title="Stroke width" className="flex items-center gap-2 text-slate-400 text-xs">
                     <span>Size</span>
@@ -293,15 +448,20 @@ export default function DrawingCanvas({
                     <Undo2 size={16} />
                 </button>
                 <button
-                    title="Clear canvas"
+                    title={isChalkboard ? "Wipe Chalkboard" : "Clear canvas"}
                     onClick={handleClear}
                     className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-700 transition-all"
                 >
                     <Trash2 size={16} />
                 </button>
 
-                <span className="ml-auto text-xs text-slate-500 italic">
-                    {activeTool === 'text' ? '⌨️ Text' : activeTool === 'arrow' ? '↗️ Arrow' : activeTool === 'eraser' ? '🧹 Erasing' : '✏️ Drawing'}
+                <span className="ml-auto text-xs text-slate-500 italic flex items-center gap-2">
+                    {isChalkboard && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#162c20] text-emerald-300 border border-emerald-800/60 font-mono">
+                            Green Board
+                        </span>
+                    )}
+                    {activeTool === 'text' ? '⌨️ Chalk Text' : activeTool === 'arrow' ? '↗️ Vector Arrow' : activeTool === 'eraser' ? '🧹 Chalk Eraser' : '✏️ Chalk'}
                 </span>
             </div>
 
@@ -309,16 +469,17 @@ export default function DrawingCanvas({
             <div
                 ref={containerRef}
                 className="flex-1 overflow-auto p-2 min-h-0 flex"
-                style={{ background: 'repeating-conic-gradient(#1e1e2e 0% 25%, #252535 0% 50%) 0 0 / 20px 20px' }}
+                style={{ background: isChalkboard ? '#0c1a13' : 'repeating-conic-gradient(#1e1e2e 0% 25%, #252535 0% 50%) 0 0 / 20px 20px' }}
             >
                 <div 
-                    className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden flex-shrink-0 bg-white" 
+                    className="relative shadow-2xl rounded-xl overflow-hidden flex-shrink-0" 
                     style={{ 
                         margin: 'auto',
                         width: scale > 1 ? `${scale * 100}%` : undefined,
                         maxWidth: scale <= 1 ? '100%' : 'none', 
                         maxHeight: scale <= 1 ? '100%' : 'none',
                         aspectRatio: aspectRatio,
+                        boxShadow: isChalkboard ? '0 25px 60px -15px rgba(0, 0, 0, 0.8), inset 0 0 15px rgba(0,0,0,0.5)' : '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
                     }}
                 >
                     {/* Background image canvas */}
