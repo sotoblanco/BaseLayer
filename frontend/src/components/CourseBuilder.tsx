@@ -13,11 +13,19 @@ import {
   ArrowRight,
   MessageSquareText,
   AlertTriangle,
+  Edit2,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import {
-  buildLearningCourse,
+  planLearningCourse,
+  approveLearningCourse,
   getAiStatus,
-  type BuildCourseResult,
+  type CoursePlanPreviewResult,
+  type LessonPreview,
 } from '../services/aiService';
 import { getLearningProfile } from '../services/profileService';
 import ChatCourseImport from './ChatCourseImport';
@@ -63,9 +71,14 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
   const [topic, setTopic] = useState('');
   const [referenceText, setReferenceText] = useState('');
   const [error, setError] = useState('');
-  const [isBuilding, setIsBuilding] = useState(false);
+  const [isPlanning, setIsPlanning] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
-  const [completedResult, setCompletedResult] = useState<BuildCourseResult | null>(null);
+  const [plannedCourse, setPlannedCourse] = useState<CoursePlanPreviewResult | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [editedLessons, setEditedLessons] = useState<LessonPreview[]>([]);
+  const [isApproving, setIsApproving] = useState(false);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [stylePreferences, setStylePreferences] = useState<CourseStylePreferences>({
@@ -78,21 +91,23 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
-    if (isBuilding && !completedResult) {
+    if (isPlanning && !plannedCourse) {
       timer = setInterval(() => {
         setActiveStepIndex((prev) => (prev < 3 ? prev + 1 : prev));
       }, 1200);
     }
     return () => clearInterval(timer);
-  }, [isBuilding, completedResult]);
+  }, [isPlanning, plannedCourse]);
 
   // On every open: refresh AI status, load learner profile preferences,
   // and pick the tab that actually works for this learner.
   useEffect(() => {
     if (!isOpen) return;
     setError('');
-    setCompletedResult(null);
-    setIsBuilding(false);
+    setPlannedCourse(null);
+    setIsPlanning(false);
+    setIsApproving(false);
+    setIsEditing(false);
     setActiveStepIndex(0);
     setAiLoading(true);
 
@@ -135,8 +150,8 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handlePlanCourse = async (event?: React.FormEvent) => {
+    if (event) event.preventDefault();
     if (!topic.trim()) {
       setError('Tell me what you want to learn.');
       return;
@@ -151,35 +166,112 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     }
 
     setError('');
-    setIsBuilding(true);
+    setIsPlanning(true);
     setActiveStepIndex(0);
-    setCompletedResult(null);
+    setPlannedCourse(null);
+    setIsEditing(false);
 
     try {
-      const result = await buildLearningCourse(topic, referenceText, {
+      const plan = await planLearningCourse(topic, referenceText, {
         preferred_modalities: stylePreferences.modalities,
         exercise_format: stylePreferences.scaffold,
         explanation_length: stylePreferences.explanationLength,
         tutor_style: stylePreferences.tutorStyle,
         understanding_level: stylePreferences.level,
       });
-      setCompletedResult(result);
+      setPlannedCourse(plan);
+      setEditedTitle(plan.title);
+      setEditedDescription(plan.narrative_arc || plan.description || '');
+      setEditedLessons(plan.lessons);
       setActiveStepIndex(4);
-    } catch (buildError) {
-      setError(buildError instanceof Error ? buildError.message : 'Could not build the course.');
-      setIsBuilding(false);
+    } catch (planError) {
+      setError(planError instanceof Error ? planError.message : 'Could not plan the course.');
+    } finally {
+      setIsPlanning(false);
     }
   };
 
-  const handleLaunchCourse = () => {
-    if (completedResult) {
-      onBuilt(completedResult.slug);
+  const handleApproveCourse = async () => {
+    if (!plannedCourse) return;
+    setError('');
+    setIsApproving(true);
+
+    try {
+      const result = await approveLearningCourse({
+        plan_id: plannedCourse.plan_id,
+        title: editedTitle.trim() || plannedCourse.title,
+        description: editedDescription.trim() || plannedCourse.description,
+        lessons: editedLessons.map((lesson, idx) => ({
+          order: idx + 1,
+          original_order: lesson.original_order ?? lesson.order,
+          title: lesson.title,
+          objective: lesson.objective,
+          toy_data: lesson.toy_data,
+          expected_result: lesson.expected_result,
+          micro_task: lesson.micro_task,
+          inspect_prompt: lesson.inspect_prompt,
+          curiosity_prompt: lesson.curiosity_prompt,
+        })),
+      });
+
+      // Fast-track learner directly to course lesson 1
+      onBuilt(result.slug);
+    } catch (approveError) {
+      setError(
+        approveError instanceof Error
+          ? approveError.message
+          : 'Could not approve and materialize course.',
+      );
+      setIsApproving(false);
     }
+  };
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    setEditedLessons((prev) => {
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[index - 1];
+      next[index - 1] = temp;
+      return next;
+    });
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === editedLessons.length - 1) return;
+    setEditedLessons((prev) => {
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[index + 1];
+      next[index + 1] = temp;
+      return next;
+    });
+  };
+
+  const handleDropLesson = (index: number) => {
+    if (editedLessons.length <= 1) return;
+    setEditedLessons((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleLessonChange = (index: number, field: 'title' | 'objective', value: string) => {
+    setEditedLessons((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleResetEdits = () => {
+    if (!plannedCourse) return;
+    setEditedTitle(plannedCourse.title);
+    setEditedDescription(plannedCourse.narrative_arc || plannedCourse.description || '');
+    setEditedLessons(plannedCourse.lessons);
+    setIsEditing(false);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-start justify-between border-b border-slate-800 p-6 bg-slate-900/90">
           <div className="flex gap-3">
@@ -190,7 +282,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
               <h2 className="text-xl font-bold text-white">Build a course</h2>
               <p className="mt-1 text-xs text-slate-400">
                 {activeTab === 'agentic'
-                  ? 'Agentic 4-step builder (needs an AI key configured here)'
+                  ? 'Plan and preview curriculum before anything is written to disk'
                   : 'Copy one prompt into any chat - no API key required'}
               </p>
             </div>
@@ -280,105 +372,13 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                 </div>
               )}
 
-              {!isBuilding && !completedResult ? (
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div>
-                    <label
-                      htmlFor="course-topic"
-                      className="mb-2 block text-sm font-semibold text-slate-200"
-                    >
-                      What do you want to learn?
-                    </label>
-                    <input
-                      id="course-topic"
-                      autoFocus
-                      value={topic}
-                      onChange={(event) => setTopic(event.target.value)}
-                      placeholder="e.g. NumPy broadcasting and matrix multiplication"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 text-sm"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="course-reference"
-                      className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"
-                    >
-                      <FileText size={15} /> Optional notes, code, or documentation
-                    </label>
-                    <textarea
-                      id="course-reference"
-                      value={referenceText}
-                      onChange={(event) => setReferenceText(event.target.value)}
-                      placeholder="Paste relevant documentation excerpts, formulas, or code snippets to ground your lessons..."
-                      rows={4}
-                      className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-xs text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 font-mono"
-                    />
-                  </div>
-
-                  {/* Tailor course mini-form */}
-                  <CourseStyleMiniForm
-                    preferences={stylePreferences}
-                    onChange={setStylePreferences}
-                    defaultExpanded={true}
-                  />
-
-                  {/* Agentic workflow step preview */}
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2.5 text-xs text-slate-400">
-                    <div className="flex items-center gap-2 font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
-                      <Sparkles size={13} className="text-emerald-400" />
-                      <span>Agent Workflow Pipeline (4 Tool Calls)</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-emerald-400 font-bold">1. Learning Intent</span>
-                        <p className="text-slate-500 mt-0.5">Extracts concepts & course anchors</p>
-                      </div>
-                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-blue-400 font-bold">2. Learner Profile</span>
-                        <p className="text-slate-500 mt-0.5">Personalizes level & preferred modality</p>
-                      </div>
-                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-amber-400 font-bold">3. Platform Tools</span>
-                        <p className="text-slate-500 mt-0.5">Code, Sheets, and Hand Drawing</p>
-                      </div>
-                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
-                        <span className="text-purple-400 font-bold">4. Solveit Curation</span>
-                        <p className="text-slate-500 mt-0.5">Toy data, 1-3 line tasks, live inspect</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {error && (
-                    <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
-                      {error}
-                    </p>
-                  )}
-
-                  <div className="flex justify-end gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="rounded-lg px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex items-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition-colors"
-                    >
-                      <Sparkles size={15} />
-                      <span>Build my course</span>
-                    </button>
-                  </div>
-                </form>
-              ) : isBuilding && !completedResult ? (
-                /* Active Agentic Workflow Progress View */
+              {/* View 1: Active Planning Tool Progress */}
+              {isPlanning && (
                 <div className="py-4 space-y-6">
                   <div className="text-center space-y-1">
-                    <h3 className="text-base font-bold text-white">Agent is Crafting Your Course</h3>
+                    <h3 className="text-base font-bold text-white">Agent is Planning Your Course</h3>
                     <p className="text-xs text-slate-400">
-                      Running tool calls to ground and personalize your curriculum...
+                      Running tool calls to structure curriculum before materializing to disk...
                     </p>
                   </div>
 
@@ -432,42 +432,365 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
 
                   <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-center text-xs text-slate-400">
                     <BookOpen size={14} className="inline mr-1.5 text-emerald-400" />
-                    Solveit ensures no 50-line code dumps: each lesson is a 1-3 line micro-step verified on toy data.
+                    Preview gate: nothing is written to disk until you confirm the planned lessons.
                   </div>
                 </div>
-              ) : (
-                /* Completed Course Ready View */
-                <div className="py-2 space-y-5">
-                  <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 space-y-2">
-                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                      <CheckCircle2 size={18} />
-                      <span>Course Successfully Built & Materialized!</span>
-                    </div>
-                    <h3 className="text-lg font-extrabold text-white">{completedResult?.title}</h3>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      {completedResult?.narrative_arc || completedResult?.description}
+              )}
+
+              {/* View 2: Active Approving & Materializing */}
+              {isApproving && (
+                <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+                  <div className="rounded-full bg-emerald-500/10 p-4 text-emerald-400">
+                    <Loader size={32} className="animate-spin text-emerald-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-white">Materializing Your Course</h3>
+                    <p className="text-xs text-slate-400">
+                      Writing verified lessons to disk and fast-tracking to lesson 1...
                     </p>
-                    <div className="pt-2 flex items-center gap-3 text-xs text-emerald-300 font-mono">
-                      <span>{completedResult?.lesson_count} Micro-Lessons</span>
-                      <span>•</span>
-                      <span>Solveit Verified</span>
+                  </div>
+                </div>
+              )}
+
+              {/* View 3: Course Plan Preview Gate */}
+              {!isPlanning && !isApproving && plannedCourse && (
+                <div className="space-y-5">
+                  {/* Preview Banner */}
+                  <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-blue-400 font-bold text-xs">
+                        <Sparkles size={16} />
+                        <span>Planned Course Preview</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-blue-300/80 bg-blue-900/40 px-2 py-0.5 rounded border border-blue-700/50">
+                        Not yet written to disk
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      {isEditing ? (
+                        <div className="space-y-3 pt-1">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                              Course Title
+                            </label>
+                            <input
+                              value={editedTitle}
+                              onChange={(e) => setEditedTitle(e.target.value)}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                              Description & Why
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={editedDescription}
+                              onChange={(e) => setEditedDescription(e.target.value)}
+                              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="text-base font-extrabold text-white">{editedTitle}</h3>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {editedDescription}
+                          </p>
+                        </>
+                      )}
+
+                      <div className="pt-2 flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-400">
+                        <span className="text-emerald-400 font-semibold">
+                          {editedLessons.length} Micro-Lessons
+                        </span>
+                        <span>•</span>
+                        <span>Solveit Verified</span>
+                        <span>•</span>
+                        <span className="text-slate-500 truncate max-w-xs">
+                          Target: courses/{plannedCourse.slug}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {completedResult?.tool_traces && completedResult.tool_traces.length > 0 && (
-                    <div className="border border-slate-800 bg-slate-950/50 rounded-xl p-4 space-y-2">
+                  {/* Lessons List Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Agent Execution Trace
+                        Proposed Lessons ({editedLessons.length})
                       </h4>
-                      <div className="space-y-1.5 text-[11px] font-mono">
-                        {completedResult.tool_traces.map((trace, i) => (
-                          <div key={i} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex items-start gap-2">
-                            <span className="text-emerald-400 font-bold shrink-0">{trace.tool_name}:</span>
-                            <span className="text-slate-300 truncate">{trace.output_summary}</span>
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(true)}
+                          className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-semibold"
+                        >
+                          <Edit2 size={13} />
+                          <span>Edit plan</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                      {editedLessons.map((lesson, idx) => (
+                        <div
+                          key={lesson.original_order ?? idx}
+                          className="rounded-xl border border-slate-800 bg-slate-950/70 p-3.5 space-y-2.5 transition-all"
+                        >
+                          {/* Lesson Header */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 shrink-0">
+                                Lesson {idx + 1}
+                              </span>
+                              {!isEditing && (
+                                <span className="text-xs font-bold text-white truncate">
+                                  {lesson.title}
+                                </span>
+                              )}
+                            </div>
+
+                            {isEditing ? (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveUp(idx)}
+                                  disabled={idx === 0}
+                                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                                  title="Move up"
+                                >
+                                  <ArrowUp size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveDown(idx)}
+                                  disabled={idx === editedLessons.length - 1}
+                                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                                  title="Move down"
+                                >
+                                  <ArrowDown size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDropLesson(idx)}
+                                  disabled={editedLessons.length <= 1}
+                                  className="p-1 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 disabled:opacity-30 disabled:pointer-events-none"
+                                  title="Drop lesson"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="rounded bg-slate-900 border border-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-400 uppercase">
+                                {lesson.modality}
+                              </span>
+                            )}
                           </div>
-                        ))}
+
+                          {/* Lesson Content / Edit Fields */}
+                          {isEditing ? (
+                            <div className="space-y-2 pt-1">
+                              <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                  Title
+                                </label>
+                                <input
+                                  value={lesson.title}
+                                  onChange={(e) => handleLessonChange(idx, 'title', e.target.value)}
+                                  className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-emerald-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                  Objective
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={lesson.objective}
+                                  onChange={(e) =>
+                                    handleLessonChange(idx, 'objective', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-xs text-slate-300 leading-relaxed">
+                                <span className="text-slate-500 font-semibold">Objective: </span>
+                                {lesson.objective}
+                              </p>
+
+                              <div className="rounded-lg bg-slate-900 border border-slate-800/80 p-2 text-[11px] font-mono space-y-1">
+                                <div className="text-slate-300">
+                                  <span className="text-emerald-400 font-semibold">Toy data: </span>
+                                  <span className="text-slate-200">{lesson.toy_data}</span>
+                                </div>
+                                {lesson.expected_result && (
+                                  <div className="text-slate-400">
+                                    <span className="text-blue-400 font-semibold">Expected: </span>
+                                    <span>{lesson.expected_result}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                <div className="p-2 rounded bg-slate-900/60 border border-slate-800/70">
+                                  <span className="text-slate-400 font-semibold block mb-0.5">
+                                    Micro-Step
+                                  </span>
+                                  <span className="text-slate-300">{lesson.micro_task}</span>
+                                </div>
+                                <div className="p-2 rounded bg-slate-900/60 border border-slate-800/70">
+                                  <span className="text-slate-400 font-semibold block mb-0.5">
+                                    Live Inspection
+                                  </span>
+                                  <span className="text-slate-300">{lesson.inspect_prompt}</span>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {error && (
+                    <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+                      {error}
+                    </p>
+                  )}
+
+                  {/* Actions Footer */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                    {isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResetEdits}
+                          className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white"
+                        >
+                          Discard edits
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(false)}
+                          className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+                        >
+                          <Check size={14} />
+                          <span>Done editing</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setPlannedCourse(null)}
+                          className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                        >
+                          Change topic
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePlanCourse()}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                        >
+                          <RotateCcw size={13} />
+                          <span>Regenerate</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {!isEditing && (
+                      <button
+                        type="button"
+                        onClick={handleApproveCourse}
+                        className="flex items-center gap-2 rounded-lg bg-emerald-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/10"
+                      >
+                        <CheckCircle2 size={15} />
+                        <span>Approve & build</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* View 4: Initial Input Form */}
+              {!isPlanning && !isApproving && !plannedCourse && (
+                <form onSubmit={handlePlanCourse} className="space-y-5">
+                  <div>
+                    <label
+                      htmlFor="course-topic"
+                      className="mb-2 block text-sm font-semibold text-slate-200"
+                    >
+                      What do you want to learn?
+                    </label>
+                    <input
+                      id="course-topic"
+                      autoFocus
+                      value={topic}
+                      onChange={(event) => setTopic(event.target.value)}
+                      placeholder="e.g. NumPy broadcasting and matrix multiplication"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="course-reference"
+                      className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"
+                    >
+                      <FileText size={15} /> Optional notes, code, or documentation
+                    </label>
+                    <textarea
+                      id="course-reference"
+                      value={referenceText}
+                      onChange={(event) => setReferenceText(event.target.value)}
+                      placeholder="Paste relevant documentation excerpts, formulas, or code snippets to ground your lessons..."
+                      rows={4}
+                      className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-xs text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  {/* Tailor course mini-form */}
+                  <CourseStyleMiniForm
+                    preferences={stylePreferences}
+                    onChange={setStylePreferences}
+                    defaultExpanded={true}
+                  />
+
+                  {/* Agentic workflow step preview */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2.5 text-xs text-slate-400">
+                    <div className="flex items-center gap-2 font-semibold text-slate-300 uppercase tracking-wider text-[11px]">
+                      <Sparkles size={13} className="text-emerald-400" />
+                      <span>Agent Workflow Pipeline (Preview Gate)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-emerald-400 font-bold">1. Learning Intent</span>
+                        <p className="text-slate-500 mt-0.5">Extracts concepts & course anchors</p>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-blue-400 font-bold">2. Learner Profile</span>
+                        <p className="text-slate-500 mt-0.5">Personalizes level & preferred modality</p>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-amber-400 font-bold">3. Platform Tools</span>
+                        <p className="text-slate-500 mt-0.5">Code, Sheets, and Hand Drawing</p>
+                      </div>
+                      <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                        <span className="text-purple-400 font-bold">4. Solveit Curation</span>
+                        <p className="text-slate-500 mt-0.5">Toy data, 1-3 line tasks, live inspect</p>
                       </div>
                     </div>
+                  </div>
+
+                  {error && (
+                    <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+                      {error}
+                    </p>
                   )}
 
                   <div className="flex justify-end gap-3 pt-2">
@@ -476,18 +799,17 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                       onClick={onClose}
                       className="rounded-lg px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
                     >
-                      Back to Courses
+                      Cancel
                     </button>
                     <button
-                      type="button"
-                      onClick={handleLaunchCourse}
-                      className="flex items-center gap-2 rounded-lg bg-emerald-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition-colors"
+                      type="submit"
+                      className="flex items-center gap-2 rounded-lg bg-emerald-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition-colors"
                     >
-                      <span>Start Learning</span>
-                      <ArrowRight size={14} />
+                      <Sparkles size={15} />
+                      <span>Plan my course</span>
                     </button>
                   </div>
-                </div>
+                </form>
               )}
             </>
           )}

@@ -72,9 +72,84 @@ def _extract_json_from_llm(text: str) -> dict[str, Any]:
     return json.loads(json_str)
 
 
+def _validate_code_only_lessons(lessons: list[CuratedLessonBlueprint]) -> None:
+    for lesson in lessons:
+        if lesson.modality != "code":
+            raise CourseGenerationError(
+                f"Cannot publish lesson {lesson.order} ('{lesson.title}'): "
+                f"{lesson.modality} exercises need platform-owned assets that a "
+                "generated course cannot supply. No course was written to disk."
+            )
+
+
+def _resolve_course_directory(courses_dir: Path, slug: str, overwrite: bool) -> Path:
+    course_path = courses_dir / slug
+    protected_courses = {"tinytorch", "data-modeling", "pytorch", "llms-from-scratch"}
+    if not course_path.exists():
+        course_path.mkdir(parents=True, exist_ok=True)
+        return course_path
+
+    if overwrite and slug not in protected_courses:
+        import shutil
+
+        shutil.rmtree(course_path)
+    else:
+        timestamp_suffix = int(time.time()) % 10000
+        course_path = courses_dir / f"{slug}-{timestamp_suffix}"
+
+    course_path.mkdir(parents=True, exist_ok=True)
+    return course_path
+
+
+def _write_lesson_files(lesson_dir: Path, lesson: CuratedLessonBlueprint) -> None:
+    lesson_dir.mkdir(exist_ok=True)
+    lesson_readme = (
+        f"# Lesson {lesson.order}: {lesson.title}\n\n"
+        f"## Objective\n{lesson.objective}\n\n"
+        "## 1. Toy Data (Predict First)\n"
+        "Before writing any code or changing formulas, examine this minimal sample:\n"
+        f"```text\n{lesson.toy_data}\n```\n\n"
+        f"**Expected Outcome:** `{lesson.expected_result}`\n\n"
+        "## 2. Your Micro-Step (1 to 3 Lines)\n"
+        f"{lesson.micro_task}\n\n"
+        "## 3. Live Inspection\n"
+        f"{lesson.inspect_prompt}\n\n"
+        "## 4. Curiosity & Simplification\n"
+        f"{lesson.curiosity_prompt}\n\n"
+        "---\n"
+        f"*Modality: {lesson.modality.title()} | Pedagogy: Solveit (Fast.ai / Answer.AI)*\n"
+    )
+    (lesson_dir / "README.md").write_text(lesson_readme, encoding="utf-8")
+
+    metadata: dict[str, Any] = {
+        "exercise_type": lesson.modality,
+        "skills": list(lesson.skills),
+    }
+
+    if lesson.modality == "code":
+        metadata["language"] = lesson.language
+        (lesson_dir / "main.py").write_text(lesson.starter_code, encoding="utf-8")
+        (lesson_dir / "test.py").write_text(lesson.test_code, encoding="utf-8")
+        (lesson_dir / "solution.py").write_text(lesson.solution_code, encoding="utf-8")
+
+    (lesson_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+
+def _collect_course_skills(lessons: list[CuratedLessonBlueprint]) -> list[str]:
+    seen: set[str] = set()
+    skills: list[str] = []
+    for lesson in lessons:
+        for skill in lesson.skills:
+            if skill and skill not in seen:
+                seen.add(skill)
+                skills.append(skill)
+    return skills
+
+
 def materialize_curated_course(
     curated: CuratedCourseResult,
     courses_dir: Path,
+    overwrite: bool = True,
 ) -> Path:
     """Writes a curated course into the filesystem for immediate execution by BaseLayer.
 
@@ -84,29 +159,10 @@ def materialize_curated_course(
       - README.md (Solveit instructions)
       - metadata.json (exercise_type configuration)
       - main.py, test.py, solution.py (for code exercises)
-
-    Generated courses publish code lessons only. Spreadsheet and drawing lessons
-    require platform-owned assets (a real template sheet id, a real question.png)
-    that a generative builder cannot fabricate, so they are refused up-front
-    before anything is written to disk.
     """
-    for lesson in curated.lessons:
-        if lesson.modality != "code":
-            raise CourseGenerationError(
-                f"Cannot publish lesson {lesson.order} ('{lesson.title}'): "
-                f"{lesson.modality} exercises need platform-owned assets that a "
-                "generated course cannot supply. No course was written to disk."
-            )
+    _validate_code_only_lessons(curated.lessons)
+    course_path = _resolve_course_directory(courses_dir, curated.slug, overwrite)
 
-    course_path = courses_dir / curated.slug
-    if course_path.exists():
-        # Add timestamp suffix if collision occurs
-        timestamp_suffix = int(time.time()) % 10000
-        course_path = courses_dir / f"{curated.slug}-{timestamp_suffix}"
-
-    course_path.mkdir(parents=True, exist_ok=True)
-
-    # Write Course Overview README
     overview_text = (
         f"# {curated.title}\n\n"
         f"{curated.description}\n\n"
@@ -125,53 +181,127 @@ def materialize_curated_course(
     chapter_dir.mkdir(exist_ok=True)
 
     for lesson in curated.lessons:
-        lesson_dir = chapter_dir / f"lesson{lesson.order:02d}"
-        lesson_dir.mkdir(exist_ok=True)
+        _write_lesson_files(chapter_dir / f"lesson{lesson.order:02d}", lesson)
 
-        # Build Solveit README
-        lesson_readme = (
-            f"# Lesson {lesson.order}: {lesson.title}\n\n"
-            f"## Objective\n{lesson.objective}\n\n"
-            "## 1. Toy Data (Predict First)\n"
-            "Before writing any code or changing formulas, examine this minimal sample:\n"
-            f"```text\n{lesson.toy_data}\n```\n\n"
-            f"**Expected Outcome:** `{lesson.expected_result}`\n\n"
-            "## 2. Your Micro-Step (1 to 3 Lines)\n"
-            f"{lesson.micro_task}\n\n"
-            "## 3. Live Inspection\n"
-            f"{lesson.inspect_prompt}\n\n"
-            "## 4. Curiosity & Simplification\n"
-            f"{lesson.curiosity_prompt}\n\n"
-            "---\n"
-            f"*Modality: {lesson.modality.title()} | Pedagogy: Solveit (Fast.ai / Answer.AI)*\n"
-        )
-        (lesson_dir / "README.md").write_text(lesson_readme, encoding="utf-8")
-
-        # Metadata configuration
-        metadata: dict[str, Any] = {
-            "exercise_type": lesson.modality,
-            "skills": list(lesson.skills),
-        }
-
-        if lesson.modality == "code":
-            metadata["language"] = lesson.language
-            (lesson_dir / "main.py").write_text(lesson.starter_code, encoding="utf-8")
-            (lesson_dir / "test.py").write_text(lesson.test_code, encoding="utf-8")
-            (lesson_dir / "solution.py").write_text(lesson.solution_code, encoding="utf-8")
-
-        (lesson_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-
-    course_skills: list[str] = []
-    for lesson in curated.lessons:
-        for skill in lesson.skills:
-            if skill and skill not in course_skills:
-                course_skills.append(skill)
     (course_path / "metadata.json").write_text(
-        json.dumps({"title": curated.title, "skills": course_skills}, indent=2),
+        json.dumps(
+            {"title": curated.title, "skills": _collect_course_skills(curated.lessons)},
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
     return course_path
+
+
+def _apply_lesson_override(
+    blueprint: CuratedLessonBlueprint, override: dict[str, Any]
+) -> CuratedLessonBlueprint:
+    cur = blueprint.model_copy(deep=True)
+    text_fields = (
+        "title",
+        "objective",
+        "toy_data",
+        "expected_result",
+        "micro_task",
+        "inspect_prompt",
+        "curiosity_prompt",
+    )
+    for field in text_fields:
+        val = override.get(field)
+        if val:
+            setattr(cur, field, str(val).strip() if field in ("title", "objective") else str(val))
+    if override.get("order") is not None:
+        cur.order = int(override["order"])
+    return cur
+
+
+def _find_override_blueprint(
+    orig_map: dict[int, CuratedLessonBlueprint], item: dict[str, Any]
+) -> CuratedLessonBlueprint | None:
+    key = item.get("original_order") or item.get("order")
+    if key in orig_map:
+        return _apply_lesson_override(orig_map[key], item)
+    return None
+
+
+def _renumber_lessons(lessons: list[CuratedLessonBlueprint]) -> list[CuratedLessonBlueprint]:
+    lessons.sort(key=lambda l: l.order)
+    for idx, lesson in enumerate(lessons, start=1):
+        lesson.order = idx
+    return lessons
+
+
+def _collect_overridden_lessons(
+    plan_lessons: list[CuratedLessonBlueprint], overrides: list[dict[str, Any]]
+) -> list[CuratedLessonBlueprint]:
+    orig_map = {l.order: l for l in plan_lessons}
+    result = [
+        bp for item in overrides if (bp := _find_override_blueprint(orig_map, item)) is not None
+    ]
+    if not result:
+        raise CourseGenerationError("Cannot approve a course with no valid lessons.")
+    return result
+
+
+def _resolve_overridden_lessons(
+    plan_lessons: list[CuratedLessonBlueprint],
+    overrides: list[dict[str, Any]] | None,
+) -> list[CuratedLessonBlueprint]:
+    if not overrides:
+        return plan_lessons
+    return _renumber_lessons(_collect_overridden_lessons(plan_lessons, overrides))
+
+
+def materialize_planned_course(
+    plan: AgenticWorkflowResult,
+    courses_dir: Path,
+    title_override: str | None = None,
+    description_override: str | None = None,
+    lessons_override: list[dict[str, Any]] | None = None,
+    overwrite: bool = True,
+) -> AgenticWorkflowResult:
+    """Materializes a previously planned course, applying any user-approved edits."""
+    title = (title_override or "").strip() or plan.title
+    description = (
+        plan.description if description_override is None else description_override.strip()
+    )
+    final_lessons = _resolve_overridden_lessons(plan.lessons, lessons_override)
+
+    curated = CuratedCourseResult(
+        slug=plan.slug,
+        title=title,
+        description=description,
+        narrative_arc=plan.narrative_arc,
+        lesson_count=len(final_lessons),
+        lessons=final_lessons,
+        solveit_compliance=plan.solveit_compliance,
+        grounded_in=plan.grounded_in,
+    )
+
+    written_path = materialize_curated_course(curated, courses_dir, overwrite=overwrite)
+    traces = list(plan.tool_traces)
+    traces.append(
+        ToolTrace(
+            tool_name="materialize_course",
+            status="completed",
+            input_summary=f"Destination: {written_path.name}",
+            output_summary=f"Successfully materialized {len(final_lessons)} lesson files under courses/{written_path.name}",
+            details={"course_slug": written_path.name},
+        )
+    )
+
+    return AgenticWorkflowResult(
+        slug=written_path.name,
+        title=title,
+        description=description,
+        narrative_arc=plan.narrative_arc,
+        lesson_count=len(final_lessons),
+        lessons=final_lessons,
+        tool_traces=traces,
+        grounded_in=plan.grounded_in,
+        solveit_compliance=plan.solveit_compliance,
+    )
 
 
 class AgenticCourseWorkflow:
@@ -189,20 +319,19 @@ class AgenticCourseWorkflow:
         self.courses_dir = courses_dir or Path(__file__).parent.parent / "courses"
         self.data_dir = data_dir or Path(__file__).parent.parent / "data"
 
-    def execute(
+    def plan(
         self,
         topic: str,
         materials: str = "",
         username: str = "",
         course_preferences: dict[str, Any] | None = None,
     ) -> AgenticWorkflowResult:
-        """Executes the complete 4-step agentic workflow:
+        """Executes the 4 planning tool calls without writing anything to disk:
 
         1. Tool 1: get_learning_intent
         2. Tool 2: get_context_learning
         3. Tool 3: get_platform_content_tools
         4. Tool 4: curate_solveit_course
-        5. Materialize to filesystem.
         """
         traces: list[ToolTrace] = []
 
@@ -476,23 +605,8 @@ Return a JSON object with this exact shape:
             )
         )
 
-        # -------------------------------------------------------------------
-        # Materialization: Write course to courses/ directory
-        # -------------------------------------------------------------------
-        written_path = materialize_curated_course(curated, self.courses_dir)
-
-        traces.append(
-            ToolTrace(
-                tool_name="materialize_course",
-                status="completed",
-                input_summary=f"Destination: {written_path.name}",
-                output_summary=f"Successfully materialized {curated.lesson_count} lesson files under courses/{written_path.name}",
-                details={"course_slug": written_path.name},
-            )
-        )
-
         return AgenticWorkflowResult(
-            slug=written_path.name,
+            slug=curated.slug,
             title=curated.title,
             description=curated.description,
             narrative_arc=curated.narrative_arc,
@@ -501,4 +615,25 @@ Return a JSON object with this exact shape:
             tool_traces=traces,
             grounded_in=curated.grounded_in,
             solveit_compliance=curated.solveit_compliance,
+        )
+
+    def execute(
+        self,
+        topic: str,
+        materials: str = "",
+        username: str = "",
+        course_preferences: dict[str, Any] | None = None,
+        overwrite: bool = True,
+    ) -> AgenticWorkflowResult:
+        """Executes the complete workflow: plans the course and materializes it to disk."""
+        planned = self.plan(
+            topic=topic,
+            materials=materials,
+            username=username,
+            course_preferences=course_preferences,
+        )
+        return materialize_planned_course(
+            plan=planned,
+            courses_dir=self.courses_dir,
+            overwrite=overwrite,
         )

@@ -236,6 +236,109 @@ export const buildLearningCourse = async (
     return response.json();
 };
 
+export interface LessonPreview {
+    order: number;
+    original_order?: number;
+    title: string;
+    modality: string;
+    objective: string;
+    toy_data: string;
+    expected_result?: string;
+    micro_task?: string;
+    inspect_prompt?: string;
+    curiosity_prompt?: string;
+    skills?: string[];
+}
+
+export interface CoursePlanPreviewResult {
+    plan_id: string;
+    slug: string;
+    title: string;
+    description?: string;
+    narrative_arc?: string;
+    lesson_count: number;
+    grounded_in: string[];
+    tool_traces?: ToolTraceItem[];
+    solveit_compliance?: Record<string, boolean>;
+    lessons: LessonPreview[];
+}
+
+export interface ApproveLessonEdit {
+    order: number;
+    original_order?: number;
+    title?: string;
+    objective?: string;
+    toy_data?: string;
+    expected_result?: string;
+    micro_task?: string;
+    inspect_prompt?: string;
+    curiosity_prompt?: string;
+}
+
+export interface ApproveCoursePayload {
+    plan_id: string;
+    title?: string;
+    description?: string;
+    lessons?: ApproveLessonEdit[];
+}
+
+export const planLearningCourse = async (
+    topic: string,
+    referenceText?: string,
+    coursePreferences?: CoursePreferences,
+): Promise<CoursePlanPreviewResult> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Please start a learner session before planning a course.');
+    }
+
+    const resources = referenceText?.trim()
+        ? [{ kind: 'pasted-notes', name: 'Learner-provided notes', text: referenceText.trim() }]
+        : [];
+    const response = await fetch(`${API_BASE_URL}/ai/learning-path/plan`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+            topic: topic.trim(),
+            resources,
+            course_preferences: coursePreferences,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Could not plan the learning course');
+    }
+    return response.json();
+};
+
+export const approveLearningCourse = async (
+    payload: ApproveCoursePayload,
+): Promise<BuildCourseResult> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Please start a learner session before approving a course.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/ai/learning-path/approve`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Could not materialize the approved course');
+    }
+    return response.json();
+};
+
 export interface CourseInstructionsResult {
     instructions: string;
     personalization?: {
