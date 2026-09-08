@@ -1,524 +1,100 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import MarkdownViewer from '../components/MarkdownViewer';
 import { CodeEditor } from '../components/CodeEditor';
 import AIChatPanel from '../components/AIChatPanel';
 import DrawingCanvas from '../components/DrawingCanvas';
-import { Play, RotateCw, ChevronLeft, ChevronRight, FolderCode, Lightbulb, Link, Trash2, ExternalLink, Send, Sparkles, Compass, Check } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import confetti from 'canvas-confetti';
-import { API_BASE_URL, APP_VERSION } from "../config";
+import SheetTemplatePreview from '../components/SheetTemplatePreview';
+import {
+  Play,
+  RotateCw,
+  ChevronLeft,
+  ChevronRight,
+  FolderCode,
+  Lightbulb,
+  Link,
+  Trash2,
+  ExternalLink,
+  Send,
+  Sparkles,
+  Compass,
+  Check,
+  FileText,
+  FlaskConical,
+  Table,
+} from 'lucide-react';
+import { API_BASE_URL, APP_VERSION } from '../config';
 import { buildTutorContext } from '../tutorContext';
-import { testsToRun } from '../testsToRun';
-import { Panel, Group, Separator } from "react-resizable-panels";
+import { Panel, Group, Separator } from 'react-resizable-panels';
 import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
-import { fetchSolutionCode } from '../solutionApi';
-import { emitLearnerEvent, fetchMyProgress } from '../services/profileService';
-import { executeCode, preloadPyodide } from '../services/codeRunner';
 import { ShareAchievement } from '../ux-light/components/ShareAchievement';
 import { isAuthorRole, studentTestsPlaceholder } from '../testVisibility';
-import type { SharePayload } from '../ux-light/shareCard';
-import { findLessonPosition, useLessonUrlSync } from '../lessonUrl';
-import SheetTemplatePreview, { cellsToTsv } from '../components/SheetTemplatePreview';
-import { isLocalHost } from '../isLocalHost';
-interface Lesson {
-    slug: string;
-    title: string;
-    description: string;
-    initial_code: string;
-    test_code: string;
-    solution_code?: string;
-    has_solution?: boolean;
-    order: number;
-    language: string;
-    chapter?: string;
-    exercise_type?: "code" | "spreadsheet" | "drawing";
-    google_sheet_id?: string;
-    copy_on_open?: boolean;
-    image_url?: string;
-    stroke_color?: string;
-    stroke_width?: number;
-    skills?: string[];
-    success_cells?: { cell: string; expected: string }[];
-    hints?: string[];
-    sheet_cells?: Record<string, string | number | boolean>;
-}
-
-interface Chapter {
-    name: string;
-    lessons: Lesson[];
-}
-
-interface FileCourse {
-    slug: string;
-    title: string;
-    description: string;
-    lessons: Lesson[];
-    skills?: string[];
-}
+import { useLessonPlayer } from '../player/useLessonPlayer';
 
 export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void }) {
-    const { slug, lessonSlug } = useParams();
-    const navigate = useNavigate();
-    const [course, setCourse] = useState<FileCourse | null>(null);
-    const [chapters, setChapters] = useState<Chapter[]>([]);
-    const [currentChapterIndex, setCurrentChapterIndex] = useState(0);
-    const [currentLessonIndex, setCurrentLessonIndex] = useState(0);
+    const player = useLessonPlayer();
     const [editorTab, setEditorTab] = useState<'main' | 'tests' | 'solution'>('main');
-    const [showSolution, setShowSolution] = useState(false);
-    const [loadedSolution, setLoadedSolution] = useState('');
-
-    const [code, setCode] = useState<string>("");
-    const [output, setOutput] = useState<string>("");
-    const [isRunning, setIsRunning] = useState(false);
-    const [drawingOutput, setDrawingOutput] = useState<string>("");
-    const [drawingChecks, setDrawingChecks] = useState<{ label: string; passed: boolean; feedback?: string }[]>([]);
-    const [isSubmittingDrawing, setIsSubmittingDrawing] = useState(false);
-    const [showDrawingSolution, setShowDrawingSolution] = useState(false);
-    const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const { token, isAuthenticated, logout, user } = useAuth();
-    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
-    const [courseError, setCourseError] = useState<string | null>(null);
-    const [userSheetUrl, setUserSheetUrl] = useState<string>("");
-    const [sheetVerification, setSheetVerification] = useState<{ passed: boolean; message: string; checks: { cell: string; expected: string; actual: string | null; ok: boolean }[] } | null>(null);
-    const [sheetVerifyError, setSheetVerifyError] = useState<string | null>(null);
-    const [isVerifyingSheet, setIsVerifyingSheet] = useState(false);
-    const [isCopyingSheet, setIsCopyingSheet] = useState(false);
-    const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
     const instructionScrollRef = useRef<HTMLDivElement>(null);
-    // Server-stored completions (LEARNING.md via GET /me/progress), hydrated on
-    // load so refresh never loses checkmarks. Mirrors UXLight completedIds.
-    const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
-    const markLessonComplete = (lessonSlug: string) => {
-        setCompletedSlugs((prev) => new Set(prev).add(lessonSlug));
-    };
-
-
-    // Extract chapters from lessons
-    const extractChapters = (lessons: Lesson[]): Chapter[] => {
-        if (lessons.length === 0) return [];
-
-        // Check if lessons have chapter information
-        const hasChapters = lessons.some(l => l.chapter);
-
-        if (hasChapters) {
-            // Group lessons by chapter
-            const chapterMap = new Map<string, Lesson[]>();
-            lessons.forEach(lesson => {
-                const chapter = lesson.chapter || "default";
-                if (!chapterMap.has(chapter)) {
-                    chapterMap.set(chapter, []);
-                }
-                chapterMap.get(chapter)!.push(lesson);
-            });
-
-            // Convert to array and sort by chapter name
-            return Array.from(chapterMap.entries())
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([name, lessons]) => ({ name, lessons }));
-        } else {
-            // No chapters, treat all lessons as one group
-            return [{ name: "Lessons", lessons }];
-        }
-    };
-
-    // Fetch Course Data
-    useEffect(() => {
-        const fetchCourse = async () => {
-            if (!isAuthenticated || !token) {
-                if (!isLocalHost()) {
-                    setIsAuthModalOpen(true);
-                    return;
-                }
-            }
-            setCourseError(null);
-            try {
-                const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-                const [res, progress] = await Promise.all([
-                    fetch(`${API_BASE_URL}/file-courses/${slug}`, { headers }),
-                    fetchMyProgress(),
-                ]);
-                if (res.status === 401) {
-                    if (!isLocalHost()) {
-                        logout();
-                        setIsAuthModalOpen(true);
-                        setCourseError('Your session has expired. Please sign in again.');
-                        return;
-                    }
-                }
-                if (res.ok) {
-                    const data = await res.json();
-                    const extractedChapters = extractChapters(data.lessons);
-                    setCourse(data);
-                    setChapters(extractedChapters);
-
-                    // Prefer the lesson named in the URL, else the learner's last lesson, else lesson 1.
-                    const courseProgress = progress.find((p) => p.course_slug === slug);
-                    // Hydrate server-stored completions so dots survive refresh.
-                    setCompletedSlugs(new Set(courseProgress?.completed_lessons ?? []));
-                    const target =
-                        findLessonPosition(extractedChapters, lessonSlug) ??
-                        findLessonPosition(extractedChapters, courseProgress?.resume_lesson ?? null);
-                    if (target) {
-                        setCurrentChapterIndex(target.chapterIndex);
-                        setCurrentLessonIndex(target.lessonIndex);
-                    }
-                } else {
-                    setCourseError(res.status === 404 ? 'Course not found.' : 'Unable to load this course.');
-                }
-            } catch (err) {
-                console.error(err);
-                setCourseError('Unable to connect to the course service.');
-            }
-        }
-        fetchCourse();
-    }, [slug, token, isAuthenticated, logout]);
-
-    // Handle Lesson Change
-    const currentChapter = chapters[currentChapterIndex];
-    const lesson = currentChapter?.lessons[currentLessonIndex];
 
     useEffect(() => {
-        if (lesson && slug) {
-            const draftKey = `code_draft_${slug}_${lesson.slug}`;
-            const uxKey = `uxlight_code_${slug}_${lesson.slug}`;
-            const saved = localStorage.getItem(draftKey) ?? localStorage.getItem(uxKey);
-            setCode(saved !== null ? saved : (lesson.initial_code || ""));
-            setOutput("");
-            setDrawingOutput("");
-            setDrawingChecks([]);
-            setSheetVerification(null);
-            setSheetVerifyError(null);
-            setEditorTab('main');
-            setShowSolution(false);
-            setLoadedSolution('');
-            setShowDrawingSolution(false);
-            // Load saved spreadsheet URL if any
-            const savedUrl = localStorage.getItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
-            setUserSheetUrl(savedUrl || "");
+        setEditorTab('main');
+    }, [player.lesson?.slug]);
 
-            // Record lesson opened in learner profile. No `ui` field here:
-            // preferred_ui is only set by the explicit player switch
-            // (FileCourseRouter), never by whichever player opened a lesson.
-            emitLearnerEvent('lesson_opened', {
-                course_slug: slug,
-                lesson_slug: lesson.slug,
-            });
-
-            // Reset scroll position to top
-            if (instructionScrollRef.current) {
-                instructionScrollRef.current.scrollTop = 0;
-            }
-        }
-    }, [lesson, slug]);
-
-    const handleCodeChange = (newCode?: string) => {
-        const val = newCode || "";
-        setCode(val);
-        if (slug && lesson) {
-            localStorage.setItem(`code_draft_${slug}_${lesson.slug}`, val);
-            localStorage.setItem(`uxlight_code_${slug}_${lesson.slug}`, val);
-        }
-    };
-
-    const handleResetCode = () => {
-        if (!lesson || !slug) return;
-        if (window.confirm("Are you sure you want to reset your code to the starter code? Current edits will be lost.")) {
-            localStorage.removeItem(`code_draft_${slug}_${lesson.slug}`);
-            localStorage.removeItem(`uxlight_code_${slug}_${lesson.slug}`);
-            setCode(lesson.initial_code || '');
-            setOutput('');
-            emitLearnerEvent('reset', {
-                course_slug: slug,
-                lesson_slug: lesson.slug,
-            });
-        }
-    };
-
-    // Save spreadsheet URL when it changes
-    useEffect(() => {
-        if (lesson && userSheetUrl) {
-            localStorage.setItem(`spreadsheet_copy_${slug}_${lesson.slug}`, userSheetUrl);
-        } else if (lesson) {
-            localStorage.removeItem(`spreadsheet_copy_${slug}_${lesson.slug}`);
-        }
-    }, [userSheetUrl, lesson, slug]);
-
-    useEffect(() => {
-        preloadPyodide();
-    }, []);
-
-    const extractSheetId = (url: string) => {
-        const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-        return match ? match[1] : null;
-    };
-
-    const displaySheetId = userSheetUrl ? extractSheetId(userSheetUrl) : lesson?.google_sheet_id;
-    const isUsingPersonalCopy = !!(userSheetUrl && extractSheetId(userSheetUrl));
-    const hasSheetChecks = (lesson?.success_cells ?? []).length > 0;
-    const hasSheetCopyLink = !!(userSheetUrl && extractSheetId(userSheetUrl));
-    const sheetPassed = sheetVerification?.passed ?? false;
-    const sheetMode = 'edit';
-    const iframeUrl = displaySheetId
-        ? `https://docs.google.com/spreadsheets/d/${displaySheetId}/${sheetMode}?usp=sharing`
-        : "";
-
-    const handleRun = async (isSubmit: boolean = false) => {
-        if (!lesson) return;
-
-        setIsRunning(true);
-        setOutput(isSubmit ? "Running all tests..." : "Running preliminary tests...");
-
-        try {
-            const data = await executeCode({
-                code,
-                test_code: testsToRun(lesson.test_code, lesson.language || 'python', isSubmit),
-                language: lesson.language || "python",
-                token,
-                onStatusUpdate: (msg) => setOutput(msg),
-                isSubmit,
-                courseSlug: slug,
-                lessonSlug: lesson.slug,
-            });
-
-            if (data.exit_code === 0) {
-                setOutput(data.stdout || "Success!");
-                if (isSubmit) {
-                    confetti({
-                        particleCount: 100,
-                        spread: 70,
-                        origin: { y: 0.6 }
-                    });
-                    if (course && lesson) {
-                        emitLearnerEvent('lesson_passed', {
-                            course_slug: slug,
-                            lesson_slug: lesson.slug,
-                            modality: 'code',
-                            xp: 35,
-                        });
-                        markLessonComplete(lesson.slug);
-                        setSharePayload({
-                            kind: 'lesson',
-                            courseTitle: course.title,
-                            lessonTitle: lesson.title,
-                            skills: lesson.skills?.length ? lesson.skills : course.skills || [],
-                        });
-                    }
-                }
-            } else {
-                const errorMsg = data.stderr ? `Error:\n${data.stderr}` : "";
-                const outputMsg = data.stdout ? `\nOutput:\n${data.stdout}` : "";
-                setOutput(`${errorMsg}${outputMsg}`.trim() || `Process exited with code ${data.exit_code}`);
-            }
-        } catch (err: any) {
-            if (err?.message === 'AUTH_401') {
-                logout();
-                setIsAuthModalOpen(true);
-                setOutput("Session expired. Please sign in again.");
-            } else {
-                setOutput("Failed to execute code: " + (err?.message || "Unknown error"));
-            }
-        } finally {
-            setIsRunning(false);
-        }
-    };
-
-    const handleDrawingSubmit = async () => {
-        if (!lesson || !drawingCanvasRef.current) return;
-        setIsSubmittingDrawing(true);
-        setDrawingOutput('Evaluating your drawing...');
-        setDrawingChecks([]);
-        try {
-            const imageData = drawingCanvasRef.current.toDataURL('image/png');
-            const response = await fetch(
-                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/submit-drawing`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    },
-                    body: JSON.stringify({ image_data: imageData }),
-                }
-            );
-            if (response.status === 401) {
-                logout();
-                setIsAuthModalOpen(true);
-                setDrawingOutput('Your session has expired. Please sign in again.');
-                return;
-            }
-            const data = await response.json();
-            setDrawingOutput(data.message);
-            setDrawingChecks(Array.isArray(data.checks) ? data.checks : []);
-            if (data.passed) {
-                confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-                if (course && lesson) {
-                    // Server records lesson_passed in submit-drawing; mirror it
-                    // locally so the dot checks immediately.
-                    markLessonComplete(lesson.slug);
-                    setSharePayload({
-                        kind: 'lesson',
-                        courseTitle: course.title,
-                        lessonTitle: lesson.title,
-                        skills: lesson.skills?.length ? lesson.skills : course.skills || [],
-                    });
-                }
-            }
-        } catch {
-            setDrawingOutput('Failed to submit drawing.');
-        } finally {
-            setIsSubmittingDrawing(false);
-        }
-    };
-
-    const handleMakeSheetCopy = async () => {
-        if (!lesson || !slug) return;
-        setIsCopyingSheet(true);
-        setSheetVerifyError(null);
-        try {
-            const response = await fetch(
-                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/copy-sheet`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    },
-                }
-            );
-            if (response.status === 401) {
-                logout();
-                setIsAuthModalOpen(true);
-                setSheetVerifyError('Your session has expired. Please sign in again.');
-                return;
-            }
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                // If cloud service account is not configured, fall back to clipboard TSV + sheets.new
-                if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
-                    try {
-                        const tsv = cellsToTsv(lesson.sheet_cells);
-                        await navigator.clipboard.writeText(tsv);
-                        window.open('https://sheets.new', '_blank');
-                        setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
-                        return;
-                    } catch {
-                        // fallthrough
-                    }
-                }
-                setSheetVerifyError(data.detail || 'Could not create a private copy of this sheet.');
-                return;
-            }
-            if (data.url) {
-                setUserSheetUrl(data.url);
-                window.open(data.url, '_blank');
-            }
-        } catch {
-            if (lesson.sheet_cells && Object.keys(lesson.sheet_cells).length > 0) {
-                try {
-                    const tsv = cellsToTsv(lesson.sheet_cells);
-                    await navigator.clipboard.writeText(tsv);
-                    window.open('https://sheets.new', '_blank');
-                    setSheetVerifyError('Copied template to clipboard! Paste it into cell A1 in your new sheet (Cmd+V/Ctrl+V), then paste your sheet link above.');
-                    return;
-                } catch {
-                    // fallthrough
-                }
-            }
-            setSheetVerifyError('Failed to reach the sheet service.');
-        } finally {
-            setIsCopyingSheet(false);
-        }
-    };
-
-    const handleSheetVerify = async (sheetUrl: string) => {
-        if (!lesson) return;
-        setSheetVerification(null);
-        setSheetVerifyError(null);
-        setIsVerifyingSheet(true);
-        try {
-            const response = await fetch(
-                `${API_BASE_URL}/file-courses/${slug}/${lesson.slug}/verify-sheet`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                    },
-                    body: JSON.stringify({ sheet_id: sheetUrl, xp: 35 }),
-                }
-            );
-            if (response.status === 401) {
-                logout();
-                setIsAuthModalOpen(true);
-                setSheetVerifyError('Your session has expired. Please sign in again.');
-                return;
-            }
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) {
-                setSheetVerifyError(data.detail || 'Could not verify your sheet. Please try again.');
-                return;
-            }
-            setSheetVerification(data);
-            if (data.passed) {
-                confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-                if (course && lesson) {
-                    // Server records lesson_passed in verify-sheet; mirror it
-                    // locally so the dot checks immediately.
-                    markLessonComplete(lesson.slug);
-                    setSharePayload({
-                        kind: 'lesson',
-                        courseTitle: course.title,
-                        lessonTitle: lesson.title,
-                        skills: lesson.skills?.length ? lesson.skills : course.skills || [],
-                    });
-                }
-            }
-        } catch {
-            setSheetVerifyError('Failed to reach the verification service.');
-        } finally {
-            setIsVerifyingSheet(false);
-        }
-    };
-
-    const handleManualSheetPass = () => {
-        if (!course || !lesson) return;
-        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-        markLessonComplete(lesson.slug);
-        emitLearnerEvent('lesson_passed', {
-            course_slug: slug,
-            lesson_slug: lesson.slug,
-            modality: 'spreadsheet',
-            xp: 35,
-        });
-        setSharePayload({
-            kind: 'lesson',
-            courseTitle: course.title,
-            lessonTitle: lesson.title,
-            skills: lesson.skills?.length ? lesson.skills : course.skills || [],
-        });
-        setSheetVerification({
-            passed: true,
-            message: 'Spreadsheet exercise marked complete.',
-            checks: [],
-        });
-        setSheetVerifyError(null);
-    };
-
-    const selectLesson = useCallback((chapterIndex: number, lessonIndex: number) => {
-        setCurrentChapterIndex(chapterIndex);
-        setCurrentLessonIndex(lessonIndex);
-    }, []);
-
-    useLessonUrlSync({
-        courseSlug: slug,
+    const {
+        slug,
+        course,
         chapters,
         currentChapterIndex,
         currentLessonIndex,
-        onSelectLesson: selectLesson,
-    });
+        currentChapter,
+        lesson,
+        code,
+        handleCodeChange,
+        handleResetCode,
+        showSolution,
+        setShowSolution,
+        loadedSolution,
+        toggleSolution,
+        isRunning,
+        output,
+        handleRun,
+        drawingCanvasRef,
+        drawingOutput,
+        drawingChecks,
+        isSubmittingDrawing,
+        showDrawingSolution,
+        setShowDrawingSolution,
+        handleDrawingSubmit,
+        userSheetUrl,
+        setUserSheetUrl,
+        isCopyingSheet,
+        handleMakeSheetCopy,
+        isVerifyingSheet,
+        sheetVerification,
+        sheetVerifyError,
+        handleVerifySheet,
+        handleManualSheetPass,
+        isUsingPersonalCopy,
+        hasSheetChecks,
+        hasSheetCopyLink,
+        sheetPassed,
+        iframeUrl,
+        completedSlugs,
+        courseError,
+        isAuthModalOpen,
+        setIsAuthModalOpen,
+        sharePayload,
+        setSharePayload,
+        currentLang,
+        isAuthenticated,
+        token,
+        user,
+        navigate,
+        selectLesson,
+        handleNext,
+        handlePrevious,
+    } = player;
 
     if (!course || chapters.length === 0) {
         return (
@@ -559,7 +135,6 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         );
     }
 
-    const currentLang = lesson?.language || "python";
     const mainFilename = currentLang === "rust" ? "main.rs" : "main.py";
     const testsFilename = currentLang === "rust" ? "tests.rs" : "tests.py";
     // Students never see the answer-key assertions; authors (admins) still can.
@@ -584,10 +159,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     {/* Previous Chapter Button */}
                     {chapters.length > 1 && (
                         <button
-                            onClick={() => {
-                                setCurrentChapterIndex(Math.max(0, currentChapterIndex - 1));
-                                setCurrentLessonIndex(0);
-                            }}
+                            onClick={() => selectLesson(Math.max(0, currentChapterIndex - 1), 0)}
                             disabled={currentChapterIndex === 0}
                             className="p-2 rounded text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             title="Previous Chapter"
@@ -599,7 +171,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     {/* Chapter Name */}
                     {chapters.length > 1 && currentChapter && (
                         <div className="text-xs font-semibold text-slate-400 text-center px-2 py-1">
-                            {currentChapter.name.replace('chapter', 'Ch ')}
+                            {(currentChapter.name || currentChapter.title).replace('chapter', 'Ch ')}
                         </div>
                     )}
 
@@ -610,7 +182,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                             return (
                             <div
                                 key={les.slug}
-                                onClick={() => setCurrentLessonIndex(idx)}
+                                onClick={() => selectLesson(currentChapterIndex, idx)}
                                 className={`
                             w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-colors font-bold text-sm
                             ${currentLessonIndex === idx ? 'bg-slate-700 text-white' : isDone ? 'bg-emerald-900/40 text-emerald-300 hover:bg-emerald-800/40' : 'hover:bg-slate-800 text-slate-400'}
@@ -626,10 +198,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     {/* Next Chapter Button */}
                     {chapters.length > 1 && (
                         <button
-                            onClick={() => {
-                                setCurrentChapterIndex(Math.min(chapters.length - 1, currentChapterIndex + 1));
-                                setCurrentLessonIndex(0);
-                            }}
+                            onClick={() => selectLesson(Math.min(chapters.length - 1, currentChapterIndex + 1), 0)}
                             disabled={currentChapterIndex === chapters.length - 1}
                             className="p-2 rounded text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors mt-2"
                             title="Next Chapter"
@@ -657,15 +226,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => {
-                                if (currentLessonIndex > 0) {
-                                    setCurrentLessonIndex(currentLessonIndex - 1);
-                                } else if (currentChapterIndex > 0) {
-                                    setCurrentChapterIndex(currentChapterIndex - 1);
-                                    const prevChapter = chapters[currentChapterIndex - 1];
-                                    setCurrentLessonIndex(prevChapter.lessons.length - 1);
-                                }
-                            }}
+                            onClick={handlePrevious}
                             disabled={currentChapterIndex === 0 && currentLessonIndex === 0}
                             className="p-2 rounded hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
@@ -675,21 +236,14 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                             {currentChapter ? (
                                 <>
                                     {currentLessonIndex + 1} / {currentChapter.lessons.length}
-                                    {chapters.length > 1 && ` • ${currentChapter.name.replace('chapter', 'Ch ')}`}
+                                    {chapters.length > 1 && ` • ${(currentChapter.name || currentChapter.title).replace('chapter', 'Ch ')}`}
                                 </>
                             ) : (
                                 '0 / 0'
                             )}
                         </span>
                         <button
-                            onClick={() => {
-                                if (currentChapter && currentLessonIndex < currentChapter.lessons.length - 1) {
-                                    setCurrentLessonIndex(currentLessonIndex + 1);
-                                } else if (currentChapterIndex < chapters.length - 1) {
-                                    setCurrentChapterIndex(currentChapterIndex + 1);
-                                    setCurrentLessonIndex(0);
-                                }
-                            }}
+                            onClick={handleNext}
                             disabled={currentChapterIndex === chapters.length - 1 && currentChapter && currentLessonIndex === currentChapter.lessons.length - 1}
                             className="p-2 rounded hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
@@ -891,7 +445,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                 <div className="flex-1 flex flex-col overflow-hidden">
                                     <div className="h-12 border-b border-[#333] flex items-center px-4 bg-[#252526] justify-between gap-4">
                                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                                            <span className="text-sm text-slate-400 whitespace-nowrap">📊 {isUsingPersonalCopy ? 'My Copy' : 'Template'}</span>
+                                            <span className="text-sm text-slate-400 whitespace-nowrap flex items-center gap-1.5">
+                                                <Table size={15} /> {isUsingPersonalCopy ? 'My Copy' : 'Template'}
+                                            </span>
 
                                             <div className="flex-1 max-w-lg flex items-center gap-2 bg-[#1e1e1e] border border-[#444] rounded px-2 py-1">
                                                 <Link size={14} className="text-slate-500" />
@@ -926,7 +482,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                             )}
                                             {hasSheetChecks && (
                                                 <button
-                                                    onClick={() => handleSheetVerify(userSheetUrl)}
+                                                    onClick={() => handleVerifySheet()}
                                                     disabled={isVerifyingSheet || !hasSheetCopyLink || sheetPassed}
                                                     title={hasSheetCopyLink ? 'Verify the target cells in your copy' : 'Paste your copy link first'}
                                                     className="flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-all border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
@@ -1017,7 +573,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                         : 'border-transparent hover:bg-[#2d2d2d]'
                                                         }`}
                                                 >
-                                                    📄 {mainFilename}
+                                                    <FileText size={14} /> {mainFilename}
                                                 </button>
                                                 <button
                                                     onClick={() => setEditorTab('tests')}
@@ -1026,20 +582,16 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                                         : 'border-transparent hover:bg-[#2d2d2d]'
                                                         }`}
                                                 >
-                                                    🧪 {testsFilename}
+                                                    <FlaskConical size={14} /> {testsFilename}
                                                 </button>
                                                 {lesson?.has_solution && (
                                                     <button
                                                         onClick={async () => {
-                                                            if (!loadedSolution && slug && lesson && token) {
-                                                                try {
-                                                                    const text = await fetchSolutionCode(slug, lesson.slug, token);
-                                                                    setLoadedSolution(text);
-                                                                } catch {
-                                                                    setLoadedSolution('Unable to load solution.');
-                                                                }
+                                                            if (!loadedSolution) {
+                                                                await toggleSolution();
+                                                            } else {
+                                                                setShowSolution(true);
                                                             }
-                                                            setShowSolution(true);
                                                             setEditorTab('solution');
                                                         }}
                                                         className={`flex items-center gap-1.5 px-3 py-1 rounded border transition-colors ${editorTab === 'solution'

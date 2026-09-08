@@ -3,7 +3,7 @@ export type PlayerUI = 'classic' | 'light';
 const STORAGE_KEY = 'baselayer_player_ui';
 
 export function getSavedPlayerUI(): PlayerUI {
-  return localStorage.getItem(STORAGE_KEY) === 'light' ? 'light' : 'classic';
+  return localStorage.getItem(STORAGE_KEY) === 'classic' ? 'classic' : 'light';
 }
 
 export function savePlayerUI(ui: PlayerUI): void {
