@@ -51,6 +51,52 @@ export const discussImplementation = async (
     return response.json();
 };
 
+export interface BreakdownSubStep {
+    step_number: number;
+    title: string;
+    toy_data: string;
+    target: string;
+    inspect_prompt: string;
+}
+
+export interface BreakdownResponse {
+    lesson_title: string;
+    intro: string;
+    sub_steps: BreakdownSubStep[];
+}
+
+export const requestBreakdown = async (
+    context: string,
+    courseSlug?: string,
+    lessonSlug?: string,
+): Promise<BreakdownResponse> => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        throw new Error('Please sign in to use the tutor.');
+    }
+    const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+    };
+
+    const response = await fetch(`${API_BASE_URL}/ai/breakdown`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            context,
+            course_slug: courseSlug,
+            lesson_slug: lessonSlug,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Failed to generate lesson breakdown' }));
+        throw new Error(errorData.detail || 'Failed to generate lesson breakdown');
+    }
+
+    return response.json();
+};
+
 export interface AIProviderInfo {
     id: string;
     name: string;

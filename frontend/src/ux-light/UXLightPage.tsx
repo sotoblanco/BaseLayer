@@ -83,6 +83,7 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
     activeConsoleTab,
     setActiveConsoleTab,
     handleRunCode,
+    runCount,
     drawingCanvasRef,
     drawingFeedback,
     isSubmittingDrawing,
@@ -136,6 +137,9 @@ export default function UXLightPage({ onSwitchUi }: { onSwitchUi?: () => void })
       xpPenalty={xpPenalty}
       onTakeHint={() => setXpPenalty((p) => Math.min(p + 10, 25))}
       code={code}
+      courseSlug={slug}
+      runCount={runCount}
+      onRunCode={() => handleRunCode()}
     />
   );
 

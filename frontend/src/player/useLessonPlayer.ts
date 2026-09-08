@@ -75,6 +75,7 @@ export interface UseLessonPlayerReturn {
   setActiveConsoleTab: (tab: ConsoleTab) => void;
   handleRunCode: (customCommand?: string, isSubmit?: boolean) => Promise<void>;
   handleRun: (isSubmit?: boolean) => Promise<void>;
+  runCount: number;
 
   // Drawing
   isDrawingLesson: boolean;
@@ -152,6 +153,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
   const [gradingResult, setGradingResult] = useState<GradingResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [runCount, setRunCount] = useState(0);
 
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [totalXp, setTotalXp] = useState(0);
@@ -491,6 +493,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
       } finally {
         setIsRunning(false);
         setIsSubmitting(false);
+        setRunCount((c) => c + 1);
       }
     },
     [lesson, code, token, slug, logout, recordLessonPass, triggerSuccess, triggerFailure, pushOutput]
@@ -768,6 +771,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     setActiveConsoleTab,
     handleRunCode,
     handleRun,
+    runCount,
 
     isDrawingLesson,
     isSubmittingDrawing,
