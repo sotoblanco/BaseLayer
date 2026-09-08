@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.59](https://github.com/sotoblanco/BaseLayer/compare/v0.1.58...v0.1.59) (2026-09-08)
+
+
+### Features
+
+* realistic chalkboard view and self-evaluating hand-drawn lessons ([#5](https://github.com/sotoblanco/BaseLayer/issues/5)) ([#119](https://github.com/sotoblanco/BaseLayer/issues/119)) ([3e63cca](https://github.com/sotoblanco/BaseLayer/commit/3e63cca646185fab1cc3a192fd2016b41edc795a)), closes [#87](https://github.com/sotoblanco/BaseLayer/issues/87)
+
 ### [0.1.58](https://github.com/sotoblanco/BaseLayer/compare/v0.1.57...v0.1.58) (2026-09-08)
 
 
