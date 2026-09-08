@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.54](https://github.com/sotoblanco/BaseLayer/compare/v0.1.53...v0.1.54) (2026-09-08)
+
+
+### Features
+
+* declarative sheet.cells templates with provision + preview ([#108](https://github.com/sotoblanco/BaseLayer/issues/108)) ([#113](https://github.com/sotoblanco/BaseLayer/issues/113)) ([6d19615](https://github.com/sotoblanco/BaseLayer/commit/6d196158bd79b4d01e2ce173343e8da02f1f1357)), closes [#2](https://github.com/sotoblanco/BaseLayer/issues/2)
+
 ### [0.1.53](https://github.com/sotoblanco/BaseLayer/compare/v0.1.52...v0.1.53) (2026-09-07)
 
 
