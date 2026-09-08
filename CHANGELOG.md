@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.58](https://github.com/sotoblanco/BaseLayer/compare/v0.1.57...v0.1.58) (2026-09-08)
+
+
+### Features
+
+* add in-lesson micro-step breakdown gate ([#86](https://github.com/sotoblanco/BaseLayer/issues/86)) ([#117](https://github.com/sotoblanco/BaseLayer/issues/117)) ([d7d4349](https://github.com/sotoblanco/BaseLayer/commit/d7d4349b2055c2f7437f55b92828ee67c058c48d))
+
 ### [0.1.57](https://github.com/sotoblanco/BaseLayer/compare/v0.1.56...v0.1.57) (2026-09-08)
 
 

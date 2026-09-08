@@ -1,7 +1,7 @@
 {
   "name": "baselayer-root",
   "private": true,
-  "version": "0.1.57",
+  "version": "0.1.58",
   "description": "Root orchestrator for BaseLayer App",
   "scripts": {
     "release": "standard-version"
