@@ -75,6 +75,7 @@ def _extract_json_from_llm(text: str) -> dict[str, Any]:
 def materialize_curated_course(
     curated: CuratedCourseResult,
     courses_dir: Path,
+    overwrite: bool = True,
 ) -> Path:
     """Writes a curated course into the filesystem for immediate execution by BaseLayer.
 
@@ -99,10 +100,16 @@ def materialize_curated_course(
             )
 
     course_path = courses_dir / curated.slug
+    protected_courses = {"tinytorch", "data-modeling", "pytorch", "llms-from-scratch"}
     if course_path.exists():
-        # Add timestamp suffix if collision occurs
-        timestamp_suffix = int(time.time()) % 10000
-        course_path = courses_dir / f"{curated.slug}-{timestamp_suffix}"
+        if overwrite and curated.slug not in protected_courses:
+            import shutil
+
+            shutil.rmtree(course_path)
+        else:
+            # Add timestamp suffix if collision occurs
+            timestamp_suffix = int(time.time()) % 10000
+            course_path = courses_dir / f"{curated.slug}-{timestamp_suffix}"
 
     course_path.mkdir(parents=True, exist_ok=True)
 
@@ -174,6 +181,96 @@ def materialize_curated_course(
     return course_path
 
 
+def materialize_planned_course(
+    plan: AgenticWorkflowResult,
+    courses_dir: Path,
+    title_override: str | None = None,
+    description_override: str | None = None,
+    lessons_override: list[dict[str, Any]] | None = None,
+    overwrite: bool = True,
+) -> AgenticWorkflowResult:
+    """Materializes a previously planned course, applying any user-approved edits."""
+    title = title_override.strip() if (title_override and title_override.strip()) else plan.title
+    description = (
+        description_override.strip()
+        if (description_override is not None and description_override.strip())
+        else plan.description
+    )
+
+    if lessons_override is not None and len(lessons_override) > 0:
+        orig_by_order = {l.order: l for l in plan.lessons}
+        new_lessons: list[CuratedLessonBlueprint] = []
+        for item in lessons_override:
+            orig_order = item.get("original_order")
+            if orig_order is None:
+                orig_order = item.get("order")
+            if orig_order in orig_by_order:
+                cur = orig_by_order[orig_order].model_copy(deep=True)
+                if item.get("order") is not None:
+                    cur.order = int(item["order"])
+                if item.get("title"):
+                    cur.title = str(item["title"]).strip()
+                if item.get("objective"):
+                    cur.objective = str(item["objective"]).strip()
+                if item.get("toy_data"):
+                    cur.toy_data = str(item["toy_data"])
+                if item.get("expected_result"):
+                    cur.expected_result = str(item["expected_result"])
+                if item.get("micro_task"):
+                    cur.micro_task = str(item["micro_task"])
+                if item.get("inspect_prompt"):
+                    cur.inspect_prompt = str(item["inspect_prompt"])
+                if item.get("curiosity_prompt"):
+                    cur.curiosity_prompt = str(item["curiosity_prompt"])
+                new_lessons.append(cur)
+
+        if not new_lessons:
+            raise CourseGenerationError("Cannot approve a course with no valid lessons.")
+
+        # Sort and renumber order 1..N
+        new_lessons.sort(key=lambda l: l.order)
+        for idx, l in enumerate(new_lessons, start=1):
+            l.order = idx
+        final_lessons = new_lessons
+    else:
+        final_lessons = plan.lessons
+
+    curated = CuratedCourseResult(
+        slug=plan.slug,
+        title=title,
+        description=description,
+        narrative_arc=plan.narrative_arc,
+        lesson_count=len(final_lessons),
+        lessons=final_lessons,
+        solveit_compliance=plan.solveit_compliance,
+        grounded_in=plan.grounded_in,
+    )
+
+    written_path = materialize_curated_course(curated, courses_dir, overwrite=overwrite)
+    traces = list(plan.tool_traces)
+    traces.append(
+        ToolTrace(
+            tool_name="materialize_course",
+            status="completed",
+            input_summary=f"Destination: {written_path.name}",
+            output_summary=f"Successfully materialized {len(final_lessons)} lesson files under courses/{written_path.name}",
+            details={"course_slug": written_path.name},
+        )
+    )
+
+    return AgenticWorkflowResult(
+        slug=written_path.name,
+        title=title,
+        description=description,
+        narrative_arc=plan.narrative_arc,
+        lesson_count=len(final_lessons),
+        lessons=final_lessons,
+        tool_traces=traces,
+        grounded_in=plan.grounded_in,
+        solveit_compliance=plan.solveit_compliance,
+    )
+
+
 class AgenticCourseWorkflow:
     """Agentic orchestrator executing the 4 tool calls to generate Solveit courses."""
 
@@ -189,20 +286,19 @@ class AgenticCourseWorkflow:
         self.courses_dir = courses_dir or Path(__file__).parent.parent / "courses"
         self.data_dir = data_dir or Path(__file__).parent.parent / "data"
 
-    def execute(
+    def plan(
         self,
         topic: str,
         materials: str = "",
         username: str = "",
         course_preferences: dict[str, Any] | None = None,
     ) -> AgenticWorkflowResult:
-        """Executes the complete 4-step agentic workflow:
+        """Executes the 4 planning tool calls without writing anything to disk:
 
         1. Tool 1: get_learning_intent
         2. Tool 2: get_context_learning
         3. Tool 3: get_platform_content_tools
         4. Tool 4: curate_solveit_course
-        5. Materialize to filesystem.
         """
         traces: list[ToolTrace] = []
 
@@ -476,23 +572,8 @@ Return a JSON object with this exact shape:
             )
         )
 
-        # -------------------------------------------------------------------
-        # Materialization: Write course to courses/ directory
-        # -------------------------------------------------------------------
-        written_path = materialize_curated_course(curated, self.courses_dir)
-
-        traces.append(
-            ToolTrace(
-                tool_name="materialize_course",
-                status="completed",
-                input_summary=f"Destination: {written_path.name}",
-                output_summary=f"Successfully materialized {curated.lesson_count} lesson files under courses/{written_path.name}",
-                details={"course_slug": written_path.name},
-            )
-        )
-
         return AgenticWorkflowResult(
-            slug=written_path.name,
+            slug=curated.slug,
             title=curated.title,
             description=curated.description,
             narrative_arc=curated.narrative_arc,
@@ -501,4 +582,25 @@ Return a JSON object with this exact shape:
             tool_traces=traces,
             grounded_in=curated.grounded_in,
             solveit_compliance=curated.solveit_compliance,
+        )
+
+    def execute(
+        self,
+        topic: str,
+        materials: str = "",
+        username: str = "",
+        course_preferences: dict[str, Any] | None = None,
+        overwrite: bool = True,
+    ) -> AgenticWorkflowResult:
+        """Executes the complete workflow: plans the course and materializes it to disk."""
+        planned = self.plan(
+            topic=topic,
+            materials=materials,
+            username=username,
+            course_preferences=course_preferences,
+        )
+        return materialize_planned_course(
+            plan=planned,
+            courses_dir=self.courses_dir,
+            overwrite=overwrite,
         )

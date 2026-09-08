@@ -230,6 +230,27 @@ class AIService:
                 ) from exc
             raise
 
+    def plan_agentic_course(
+        self,
+        topic: str,
+        materials: str = "",
+        username: str = "",
+        courses_dir: Any = None,
+        course_preferences: dict[str, Any] | None = None,
+    ) -> Any:
+        from agentic_workflow import AgenticCourseWorkflow
+
+        workflow = AgenticCourseWorkflow(
+            generate_text=self.complete if self.is_configured else None,
+            courses_dir=courses_dir,
+        )
+        return workflow.plan(
+            topic=topic,
+            materials=materials,
+            username=username,
+            course_preferences=course_preferences,
+        )
+
     def run_agentic_course_builder(
         self,
         topic: str,

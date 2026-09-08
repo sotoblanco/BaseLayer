@@ -171,6 +171,51 @@ class BuildCourseResponse(BaseModel):
     solveit_compliance: dict[str, bool] = Field(default_factory=dict)
 
 
+class LessonPreviewRead(BaseModel):
+    order: int
+    title: str
+    modality: str = "code"
+    objective: str
+    toy_data: str
+    expected_result: str = ""
+    micro_task: str = ""
+    inspect_prompt: str = ""
+    curiosity_prompt: str = ""
+    skills: list[str] = Field(default_factory=list)
+
+
+class CoursePlanPreviewResponse(BaseModel):
+    plan_id: str
+    slug: str
+    title: str
+    description: str = ""
+    narrative_arc: str = ""
+    lesson_count: int
+    grounded_in: list[str] = Field(default_factory=list)
+    tool_traces: list[ToolTraceRead] = Field(default_factory=list)
+    solveit_compliance: dict[str, bool] = Field(default_factory=dict)
+    lessons: list[LessonPreviewRead] = Field(default_factory=list)
+
+
+class ApproveLessonEdit(BaseModel):
+    order: int
+    original_order: int | None = None
+    title: str | None = None
+    objective: str | None = None
+    toy_data: str | None = None
+    expected_result: str | None = None
+    micro_task: str | None = None
+    inspect_prompt: str | None = None
+    curiosity_prompt: str | None = None
+
+
+class ApproveCourseRequest(BaseModel):
+    plan_id: str
+    title: str | None = None
+    description: str | None = None
+    lessons: list[ApproveLessonEdit] | None = None
+
+
 class CourseInstructionsRequest(BaseModel):
     topic: str = Field(default="", max_length=500)
     resources: list[LearningResource] = Field(default_factory=list, max_length=5)
@@ -320,6 +365,165 @@ def test_connection_endpoint(request: Request, body: TestConnectionRequest):
         message=msg,
         provider=settings.provider,
         model=settings.model,
+    )
+
+
+@router.post("/learning-path/plan", response_model=CoursePlanPreviewResponse)
+def plan_learning_path(request: BuildCourseRequest, user: User = Depends(get_current_user)):
+    """Plan a course without writing anything to disk. Returns safe preview metadata stripped of code answers."""
+    topic = request.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=422, detail="A learning topic is required")
+
+    materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
+
+    course_pref_dict = (
+        request.course_preferences.model_dump(exclude_none=True)
+        if request.course_preferences
+        else None
+    )
+
+    # Blend course mini-form preferences into LEARNING.md ("update as we go")
+    if course_pref_dict:
+        try:
+            from learner_profile import apply_course_builder_preferences
+
+            apply_course_builder_preferences(
+                username=user.username,
+                topic=topic,
+                preferences=course_pref_dict,
+            )
+        except Exception:
+            pass
+
+    try:
+        plan_result = ai_service.plan_agentic_course(
+            topic=topic,
+            materials=materials,
+            username=user.username,
+            courses_dir=COURSES_DIR,
+            course_preferences=course_pref_dict,
+        )
+    except CourseGenerationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Agentic course planning failed: {exc}"
+        ) from exc
+
+    from course_plans import plan_store
+
+    plan_id = plan_store.save(plan_result, username=user.username)
+
+    safe_lessons = [
+        LessonPreviewRead(
+            order=l.order,
+            title=l.title,
+            modality=l.modality,
+            objective=l.objective,
+            toy_data=l.toy_data,
+            expected_result=l.expected_result,
+            micro_task=l.micro_task,
+            inspect_prompt=l.inspect_prompt,
+            curiosity_prompt=l.curiosity_prompt,
+            skills=l.skills,
+        )
+        for l in plan_result.lessons
+    ]
+
+    return CoursePlanPreviewResponse(
+        plan_id=plan_id,
+        slug=plan_result.slug,
+        title=plan_result.title,
+        description=plan_result.description,
+        narrative_arc=plan_result.narrative_arc,
+        lesson_count=plan_result.lesson_count,
+        grounded_in=plan_result.grounded_in,
+        tool_traces=[
+            ToolTraceRead(
+                tool_name=t.tool_name,
+                status=t.status,
+                input_summary=t.input_summary,
+                output_summary=t.output_summary,
+                details=t.details,
+            )
+            for t in plan_result.tool_traces
+        ],
+        solveit_compliance=plan_result.solveit_compliance,
+        lessons=safe_lessons,
+    )
+
+
+@router.post("/learning-path/approve", response_model=BuildCourseResponse)
+@router.post("/learning-path/confirm", response_model=BuildCourseResponse)
+def approve_learning_path(request: ApproveCourseRequest, user: User = Depends(get_current_user)):
+    """Approve and materialize a previously planned course to disk."""
+    from course_plans import plan_store
+    from agentic_workflow import materialize_planned_course
+
+    stored = plan_store.get(request.plan_id)
+    if not stored:
+        raise HTTPException(
+            status_code=404,
+            detail="Course plan not found or expired. Please generate a fresh plan.",
+        )
+
+    lessons_override = (
+        [l.model_dump(exclude_none=True) for l in request.lessons]
+        if request.lessons is not None
+        else None
+    )
+
+    try:
+        result = materialize_planned_course(
+            plan=stored.plan,
+            courses_dir=COURSES_DIR,
+            title_override=request.title,
+            description_override=request.description,
+            lessons_override=lessons_override,
+            overwrite=True,
+        )
+    except CourseGenerationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to materialize approved course: {exc}"
+        ) from exc
+
+    # Record course authorship into LEARNING.md
+    try:
+        from learner_profile import record_learner_event
+
+        record_learner_event(
+            username=user.username,
+            event_type="course_authored",
+            payload={
+                "course_slug": result.slug,
+                "title": result.title,
+                "lesson_count": result.lesson_count,
+            },
+        )
+    except Exception:
+        pass
+
+    return BuildCourseResponse(
+        slug=result.slug,
+        title=result.title,
+        description=result.description,
+        narrative_arc=result.narrative_arc,
+        lesson_count=result.lesson_count,
+        grounded_in=result.grounded_in,
+        tool_traces=[
+            ToolTraceRead(
+                tool_name=t.tool_name,
+                status=t.status,
+                input_summary=t.input_summary,
+                output_summary=t.output_summary,
+                details=t.details,
+            )
+            for t in result.tool_traces
+        ],
+        solveit_compliance=result.solveit_compliance,
     )
 
 

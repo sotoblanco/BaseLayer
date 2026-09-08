@@ -639,3 +639,206 @@ class TestAgenticWorkflowExecution:
         context_trace = next(t for t in result.tool_traces if t.tool_name == "get_context_learning")
         assert context_trace.details["preferred_modalities"] == ["code", "spreadsheet"]
         assert context_trace.details["understanding_level"] == "Beginner"
+
+
+class TestCoursePlanAndPreviewFlow:
+    def test_plan_does_not_touch_courses_dir_and_strips_code(
+        self, client, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(
+            AIService, "complete", lambda self, prompt: _llm_plan_json("matrix shapes")
+        )
+
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            response = client.post(
+                "/ai/learning-path/plan",
+                json={
+                    "topic": "Matrix Shapes and Broadcasting",
+                    "resources": [],
+                },
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert "plan_id" in data
+        assert data["slug"].startswith("generated-")
+        assert data["lesson_count"] >= 2
+        assert len(data["lessons"]) >= 2
+
+        # Verify answer-key security / hygiene: absolutely no code fields exposed in preview
+        forbidden_keys = {"starter_code", "test_code", "solution_code"}
+        assert forbidden_keys.isdisjoint(set(data.keys()))
+        for lesson in data["lessons"]:
+            assert forbidden_keys.isdisjoint(set(lesson.keys()))
+            assert "objective" in lesson
+            assert "toy_data" in lesson
+            assert "title" in lesson
+
+        # Verify courses_dir was completely untouched during planning
+        assert list(courses_dir.iterdir()) == []
+
+    def test_approve_materializes_course_and_records_authorship(
+        self, client, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(
+            AIService, "complete", lambda self, prompt: _llm_plan_json("vector dot products")
+        )
+
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            plan_res = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Vector Dot Products", "resources": []},
+                headers=auth_headers,
+            )
+            assert plan_res.status_code == 200
+            plan_id = plan_res.json()["plan_id"]
+            slug = plan_res.json()["slug"]
+
+            # Confirm courses_dir still untouched
+            assert list(courses_dir.iterdir()) == []
+
+            # Now approve the plan
+            approve_res = client.post(
+                "/ai/learning-path/approve",
+                json={"plan_id": plan_id},
+                headers=auth_headers,
+            )
+            assert approve_res.status_code == 200
+            app_data = approve_res.json()
+            assert app_data["slug"] == slug
+
+            # Verify course directory was created
+            course_dir = courses_dir / slug
+            assert course_dir.is_dir()
+            assert (course_dir / "README.md").is_file()
+            assert (course_dir / "metadata.json").is_file()
+
+            # Verify lesson files exist
+            lesson1 = course_dir / "chapter1" / "lesson01"
+            assert lesson1.is_dir()
+            assert (lesson1 / "README.md").is_file()
+            assert (lesson1 / "main.py").is_file()
+            assert (lesson1 / "test.py").is_file()
+            assert (lesson1 / "solution.py").is_file()
+
+    def test_approve_with_edits_renaming_and_dropping_lessons(
+        self, client, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(
+            AIService, "complete", lambda self, prompt: _llm_plan_json("tensors")
+        )
+
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            plan_res = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Tensors and Matrix Multiplication", "resources": []},
+                headers=auth_headers,
+            )
+            assert plan_res.status_code == 200
+            plan_data = plan_res.json()
+            plan_id = plan_data["plan_id"]
+            slug = plan_data["slug"]
+            assert len(plan_data["lessons"]) == 2
+
+            # Edit: drop lesson 1, keep lesson 2 as new lesson 1 with custom title
+            approve_res = client.post(
+                "/ai/learning-path/approve",
+                json={
+                    "plan_id": plan_id,
+                    "title": "Custom Tensors Masterclass",
+                    "description": "Custom edited description.",
+                    "lessons": [
+                        {
+                            "original_order": 2,
+                            "order": 1,
+                            "title": "Renamed Broadcast Lesson",
+                            "objective": "New custom objective",
+                        }
+                    ],
+                },
+                headers=auth_headers,
+            )
+            assert approve_res.status_code == 200
+            app_data = approve_res.json()
+            assert app_data["title"] == "Custom Tensors Masterclass"
+            assert app_data["lesson_count"] == 1
+
+            course_dir = courses_dir / slug
+            assert (course_dir / "chapter1" / "lesson01").is_dir()
+            assert not (course_dir / "chapter1" / "lesson02").exists()
+
+            readme = (course_dir / "chapter1" / "lesson01" / "README.md").read_text(encoding="utf-8")
+            assert "Renamed Broadcast Lesson" in readme
+            assert "New custom objective" in readme
+
+    def test_reapproval_overwrites_slug_without_suffix_or_conflict(
+        self, client, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        monkeypatch.setattr(AIService, "is_configured", property(lambda self: True))
+        monkeypatch.setattr(
+            AIService, "complete", lambda self, prompt: _llm_plan_json("neural network weights")
+        )
+
+        with patch("routers.ai.COURSES_DIR", courses_dir):
+            # First plan and approve
+            plan1 = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Neural Network Weights", "resources": []},
+                headers=auth_headers,
+            ).json()
+            app1 = client.post(
+                "/ai/learning-path/approve",
+                json={"plan_id": plan1["plan_id"], "title": "Version 1"},
+                headers=auth_headers,
+            ).json()
+            slug1 = app1["slug"]
+
+            course_dirs = [p.name for p in courses_dir.iterdir() if p.is_dir()]
+            assert course_dirs == [slug1]
+            assert "Version 1" in (courses_dir / slug1 / "README.md").read_text(encoding="utf-8")
+
+            # Second plan on the same topic and re-approve
+            plan2 = client.post(
+                "/ai/learning-path/plan",
+                json={"topic": "Neural Network Weights", "resources": []},
+                headers=auth_headers,
+            ).json()
+            app2 = client.post(
+                "/ai/learning-path/approve",
+                json={"plan_id": plan2["plan_id"], "title": "Version 2 (Overwritten)"},
+                headers=auth_headers,
+            ).json()
+
+            # Must reuse the same slug without timestamp suffix or 409
+            assert app2["slug"] == slug1
+            course_dirs_after = [p.name for p in courses_dir.iterdir() if p.is_dir()]
+            assert course_dirs_after == [slug1]
+            assert "Version 2 (Overwritten)" in (courses_dir / slug1 / "README.md").read_text(
+                encoding="utf-8"
+            )
+
+    def test_approve_nonexistent_plan_returns_404(self, client, auth_headers):
+        response = client.post(
+            "/ai/learning-path/approve",
+            json={"plan_id": "non-existent-plan-id"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
