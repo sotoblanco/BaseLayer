@@ -210,11 +210,12 @@ class TestChatHistoryAndTestLeak:
 
 
 class TestDiscussEndpoint:
-    def test_discuss_requires_auth(self, client: TestClient):
+    @patch("routers.ai.ai_service.chat", return_value="hint")
+    def test_discuss_unauthenticated_resolves_local_learner(self, mock_chat, client: TestClient):
         response = client.post(
             "/ai/discuss", json={"messages": [{"role": "user", "content": "help"}]}
         )
-        assert response.status_code == 401
+        assert response.status_code == 200
 
     @patch("routers.ai.ai_service.chat", return_value="hint")
     def test_discuss_authenticated(self, mock_chat, client: TestClient, auth_headers):
@@ -369,12 +370,16 @@ class TestDrawingRubricParsing:
 
 
 class TestBreakdownEndpoint:
-    def test_breakdown_requires_auth(self, client: TestClient):
+    def test_breakdown_unauthenticated_resolves_local_learner(self, client: TestClient):
         response = client.post(
             "/ai/breakdown",
-            json={"context": "## Lesson: Tensors"},
+            json={
+                "context": "## Lesson: Tensor Operations\n### Assignment\nImplement 2D tensor dot product.",
+                "course_slug": "tinytorch",
+                "lesson_slug": "lesson02",
+            },
         )
-        assert response.status_code == 401
+        assert response.status_code == 200
 
     def test_breakdown_requires_context(self, client: TestClient, auth_headers):
         response = client.post(

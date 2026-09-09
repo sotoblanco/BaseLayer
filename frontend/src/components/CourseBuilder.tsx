@@ -39,6 +39,23 @@ interface CourseBuilderProps {
 
 type BuilderTab = 'agentic' | 'chat';
 
+// Editable text mirrors for spreadsheet lessons: the API stores
+// sheet_cells/success_cells as maps, but humans edit `A1=value` lines.
+const formatCells = (cells?: Record<string, string | number | boolean>) =>
+  Object.entries(cells || {})
+    .map(([cell, value]) => `${cell}=${value}`)
+    .join('\n');
+const formatTargets = (targets?: Array<Record<string, unknown>>) =>
+  (targets || [])
+    .map((t) => `${t.cell}=${t.expected}`)
+    .join('\n');
+const withEditableText = (lessons: LessonPreview[]): LessonPreview[] =>
+  lessons.map((lesson) => ({
+    ...lesson,
+    sheet_text: lesson.sheet_text ?? formatCells(lesson.sheet_cells),
+    target_text: lesson.target_text ?? formatTargets(lesson.success_cells),
+  }));
+
 const AGENT_WORKFLOW_STEPS = [
   {
     tool_name: 'get_learning_intent',
@@ -61,7 +78,7 @@ const AGENT_WORKFLOW_STEPS = [
   {
     tool_name: 'curate_solveit_course',
     label: '4. Solveit Curation',
-    desc: 'Applying micro-steps (1-3 lines), toy data, and narrative arc',
+    desc: 'Applying micro-steps (1-3 lines), sample data, and narrative arc',
     icon: GraduationCap,
   },
 ];
@@ -70,6 +87,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
   const [activeTab, setActiveTab] = useState<BuilderTab>('agentic');
   const [topic, setTopic] = useState('');
   const [referenceText, setReferenceText] = useState('');
+  const [outline, setOutline] = useState('');
   const [error, setError] = useState('');
   const [isPlanning, setIsPlanning] = useState(false);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
@@ -87,6 +105,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     explanationLength: 'short',
     tutorStyle: 'solveit',
     level: 'intermediate',
+    depth: 'auto',
   });
 
   useEffect(() => {
@@ -130,6 +149,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
             level:
               (fm.understanding_level as 'beginner' | 'intermediate' | 'advanced') ||
               'intermediate',
+            depth: 'auto',
           });
         }
       })
@@ -178,11 +198,12 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
         explanation_length: stylePreferences.explanationLength,
         tutor_style: stylePreferences.tutorStyle,
         understanding_level: stylePreferences.level,
-      });
+        course_depth: stylePreferences.depth,
+      }, outline);
       setPlannedCourse(plan);
       setEditedTitle(plan.title);
       setEditedDescription(plan.narrative_arc || plan.description || '');
-      setEditedLessons(plan.lessons);
+      setEditedLessons(withEditableText(plan.lessons));
       setActiveStepIndex(4);
     } catch (planError) {
       setError(planError instanceof Error ? planError.message : 'Could not plan the course.');
@@ -205,12 +226,17 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
           order: idx + 1,
           original_order: lesson.original_order ?? lesson.order,
           title: lesson.title,
+          modality: lesson.modality,
           objective: lesson.objective,
+          explanation: lesson.explanation || '',
           toy_data: lesson.toy_data,
           expected_result: lesson.expected_result,
           micro_task: lesson.micro_task,
           inspect_prompt: lesson.inspect_prompt,
           curiosity_prompt: lesson.curiosity_prompt,
+          drawing_prompt: lesson.drawing_prompt || '',
+          sheet_cells: lesson.sheet_text ?? '',
+          success_cells: lesson.target_text ?? '',
         })),
       });
 
@@ -253,7 +279,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     setEditedLessons((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleLessonChange = (index: number, field: 'title' | 'objective', value: string) => {
+  const handleLessonChange = (index: number, field: 'title' | 'modality' | 'objective' | 'explanation' | 'toy_data' | 'expected_result' | 'micro_task' | 'inspect_prompt' | 'drawing_prompt' | 'sheet_text' | 'target_text', value: string) => {
     setEditedLessons((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -265,7 +291,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
     if (!plannedCourse) return;
     setEditedTitle(plannedCourse.title);
     setEditedDescription(plannedCourse.narrative_arc || plannedCourse.description || '');
-    setEditedLessons(plannedCourse.lessons);
+    setEditedLessons(withEditableText(plannedCourse.lessons));
     setIsEditing(false);
   };
 
@@ -508,6 +534,17 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                         <span>•</span>
                         <span>Solveit Verified</span>
                         <span>•</span>
+                        {(plannedCourse.suggested_lesson_count || plannedCourse.course_depth) && (
+                          <>
+                            <span className="rounded bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 text-emerald-300">
+                              AI suggested {plannedCourse.suggested_lesson_count || editedLessons.length} lessons
+                              {plannedCourse.course_depth && plannedCourse.course_depth !== 'auto'
+                                ? ` (${plannedCourse.course_depth})`
+                                : ' (auto)'}
+                            </span>
+                            <span>•</span>
+                          </>
+                        )}
                         <span className="text-slate-500 truncate max-w-xs">
                           Target: courses/{plannedCourse.slug}
                         </span>
@@ -594,7 +631,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                             <div className="space-y-2 pt-1">
                               <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
-                                  Title
+                                  Topic (title)
                                 </label>
                                 <input
                                   value={lesson.title}
@@ -603,11 +640,55 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                                 />
                               </div>
                               <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-1">
+                                  Modality
+                                </label>
+                                <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                                  {[
+                                    { id: 'code', label: 'Code' },
+                                    { id: 'spreadsheet', label: 'Sheets' },
+                                    { id: 'drawing', label: 'Drawing' },
+                                  ].map((item) => {
+                                    const active = (lesson.modality || 'code') === item.id;
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() =>
+                                          handleLessonChange(idx, 'modality', item.id)
+                                        }
+                                        className={`py-1 px-2 rounded text-[11px] font-medium transition-colors text-center ${
+                                          active
+                                            ? 'bg-emerald-500 text-slate-950 font-semibold'
+                                            : 'text-slate-400 hover:text-white'
+                                        }`}
+                                      >
+                                        {item.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                  Explanation (concept first — lesson 1 must teach, not just assign)
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  value={lesson.explanation || ''}
+                                  onChange={(e) =>
+                                    handleLessonChange(idx, 'explanation', e.target.value)
+                                  }
+                                  placeholder="What this concept is and why it matters..."
+                                  className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                                />
+                              </div>
+                              <div>
                                 <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
                                   Objective
                                 </label>
                                 <textarea
-                                  rows={2}
+                                  rows={1}
                                   value={lesson.objective}
                                   onChange={(e) =>
                                     handleLessonChange(idx, 'objective', e.target.value)
@@ -615,19 +696,163 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                                   className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
                                 />
                               </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                    Example data
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={lesson.toy_data}
+                                    onChange={(e) =>
+                                      handleLessonChange(idx, 'toy_data', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                    Expected result
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={lesson.expected_result || ''}
+                                    onChange={(e) =>
+                                      handleLessonChange(idx, 'expected_result', e.target.value)
+                                    }
+                                    className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                  Assignment (micro-task, 1-3 lines)
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={lesson.micro_task || ''}
+                                  onChange={(e) =>
+                                    handleLessonChange(idx, 'micro_task', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                  Inspect prompt
+                                </label>
+                                <input
+                                  value={lesson.inspect_prompt || ''}
+                                  onChange={(e) =>
+                                    handleLessonChange(idx, 'inspect_prompt', e.target.value)
+                                  }
+                                  className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                                />
+                              </div>
+                              {lesson.modality === 'drawing' && (
+                                <div>
+                                  <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                    Canvas task (drawing prompt)
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={lesson.drawing_prompt || ''}
+                                    onChange={(e) =>
+                                      handleLessonChange(idx, 'drawing_prompt', e.target.value)
+                                    }
+                                    placeholder="What to sketch and how success is judged..."
+                                    className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
+                                  />
+                                </div>
+                              )}
+                              {lesson.modality === 'spreadsheet' && (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                      Sheet template (A1=value lines)
+                                    </label>
+                                    <textarea
+                                      rows={3}
+                                      value={lesson.sheet_text || ''}
+                                      onChange={(e) =>
+                                        handleLessonChange(idx, 'sheet_text', e.target.value)
+                                      }
+                                      placeholder={'A1=Label\nB2=3\nG2==ROWS(B2:D4)'}
+                                      className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-emerald-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                                      Graded targets (CELL=expected)
+                                    </label>
+                                    <textarea
+                                      rows={3}
+                                      value={lesson.target_text || ''}
+                                      onChange={(e) =>
+                                        handleLessonChange(idx, 'target_text', e.target.value)
+                                      }
+                                      placeholder={'G2=3x3\nG3=9'}
+                                      className="w-full rounded border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-emerald-500"
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <>
-                              <p className="text-xs text-slate-300 leading-relaxed">
+                              <p className="text-xs font-bold text-white leading-relaxed">
+                                <span className="text-slate-500 font-semibold"># Topic: </span>
+                                {lesson.title}
+                              </p>
+                              {lesson.explanation && (
+                                <p className="text-xs text-slate-300 leading-relaxed rounded-lg bg-slate-900/60 border border-slate-800/70 p-2">
+                                  <span className="text-emerald-400 font-semibold block mb-0.5">
+                                    Explanation
+                                  </span>
+                                  {lesson.explanation}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-400 leading-relaxed">
                                 <span className="text-slate-500 font-semibold">Objective: </span>
                                 {lesson.objective}
                               </p>
 
                               <div className="rounded-lg bg-slate-900 border border-slate-800/80 p-2 text-[11px] font-mono space-y-1">
+                                <div className="text-[10px] uppercase font-bold text-slate-500"># Example</div>
                                 <div className="text-slate-300">
-                                  <span className="text-emerald-400 font-semibold">Toy data: </span>
+                                  <span className="text-emerald-400 font-semibold">Sample data: </span>
                                   <span className="text-slate-200">{lesson.toy_data}</span>
                                 </div>
+                                {lesson.modality === 'spreadsheet' &&
+                                  lesson.sheet_cells &&
+                                  Object.keys(lesson.sheet_cells).length > 0 && (
+                                    <div className="text-slate-400 pt-1">
+                                      <span className="text-blue-400 font-semibold">Sheet template: </span>
+                                      <span>
+                                        {Object.entries(lesson.sheet_cells)
+                                          .map(([cell, value]) => `${cell}=${value}`)
+                                          .join(', ')}
+                                      </span>
+                                    </div>
+                                  )}
+                                {lesson.modality === 'spreadsheet' &&
+                                  lesson.success_cells &&
+                                  lesson.success_cells.length > 0 && (
+                                    <div className="text-slate-400">
+                                      <span className="text-blue-400 font-semibold">Graded targets: </span>
+                                      <span>
+                                        {lesson.success_cells
+                                          .map((t) => `${t.cell}=${t.expected}`)
+                                          .join(', ')}
+                                      </span>
+                                    </div>
+                                  )}
+                                {lesson.modality === 'drawing' && lesson.drawing_prompt && (
+                                  <div className="text-slate-300 font-sans pt-1">
+                                    <span className="text-emerald-400 font-semibold">Canvas task: </span>
+                                    <span className="text-slate-200">{lesson.drawing_prompt}</span>
+                                  </div>
+                                )}
                                 {lesson.expected_result && (
                                   <div className="text-slate-400">
                                     <span className="text-blue-400 font-semibold">Expected: </span>
@@ -639,7 +864,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                               <div className="grid grid-cols-2 gap-2 text-[11px]">
                                 <div className="p-2 rounded bg-slate-900/60 border border-slate-800/70">
                                   <span className="text-slate-400 font-semibold block mb-0.5">
-                                    Micro-Step
+                                    # Assignment
                                   </span>
                                   <span className="text-slate-300">{lesson.micro_task}</span>
                                 </div>
@@ -749,9 +974,29 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                       value={referenceText}
                       onChange={(event) => setReferenceText(event.target.value)}
                       placeholder="Paste relevant documentation excerpts, formulas, or code snippets to ground your lessons..."
-                      rows={4}
+                      rows={3}
                       className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-xs text-white outline-none placeholder:text-slate-600 focus:border-emerald-500 font-mono"
                     />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="course-outline"
+                      className="mb-2 block text-sm font-semibold text-slate-200"
+                    >
+                      Build for yourself — what must this course cover?
+                    </label>
+                    <textarea
+                      id="course-outline"
+                      value={outline}
+                      onChange={(event) => setOutline(event.target.value)}
+                      placeholder="One must-cover point per line, e.g.&#10;what BM25 is and why it beats plain counting&#10;term frequency saturation&#10;score a tiny doc set by hand"
+                      rows={3}
+                      className="w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-xs text-white outline-none placeholder:text-slate-600 focus:border-emerald-500"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      The AI must follow these points in order when possible. Leave empty for a fully automatic outline.
+                    </p>
                   </div>
 
                   {/* Tailor course mini-form */}
@@ -782,7 +1027,7 @@ export default function CourseBuilder({ isOpen, onClose, onBuilt }: CourseBuilde
                       </div>
                       <div className="p-2 rounded bg-slate-900 border border-slate-800">
                         <span className="text-purple-400 font-bold">4. Solveit Curation</span>
-                        <p className="text-slate-500 mt-0.5">Toy data, 1-3 line tasks, live inspect</p>
+                        <p className="text-slate-500 mt-0.5">Sample data, 1-3 line tasks, live inspect</p>
                       </div>
                     </div>
                   </div>

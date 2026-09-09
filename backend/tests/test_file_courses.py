@@ -453,9 +453,10 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "README.md").write_text("# Img")
         (lesson_dir / "question.png").write_bytes(b"fake_image_bytes")
 
-        # Unauthenticated request is rejected (Issue #28)
+        # Unauthenticated request in local mode succeeds
         unauth = client.get("/file-courses/c_img/l_img/image")
-        assert unauth.status_code == 401
+        assert unauth.status_code == 200
+        assert unauth.content == b"fake_image_bytes"
 
         # Found with auth headers
         res = client.get("/file-courses/c_img/l_img/image", headers=auth_headers)
@@ -494,9 +495,10 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "README.md").write_text("# Sol")
         (lesson_dir / "solution.png").write_bytes(b"fake_sol_bytes")
 
-        # Unauthenticated request is rejected (Issue #28)
+        # Unauthenticated request in local mode succeeds
         unauth = client.get("/file-courses/c_sol/l_sol/solution")
-        assert unauth.status_code == 401
+        assert unauth.status_code == 200
+        assert unauth.content == b"fake_sol_bytes"
 
         # Found with auth headers
         res = client.get("/file-courses/c_sol/l_sol/solution", headers=auth_headers)
@@ -593,8 +595,9 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "main.py").write_text("pass")
         (lesson_dir / "solution.py").write_text("SECRET_ANSWER = 42\n")
 
-        denied = client.get("/file-courses/c_secret/l1/solution-code")
-        assert denied.status_code == 401
+        unauth = client.get("/file-courses/c_secret/l1/solution-code")
+        assert unauth.status_code == 200
+        assert unauth.json()["solution_code"] == "SECRET_ANSWER = 42\n"
 
         ok = client.get("/file-courses/c_secret/l1/solution-code", headers=auth_headers)
         assert ok.status_code == 200
@@ -991,7 +994,9 @@ class TestSpreadsheetVerification:
             {"cell": "C5", "expected": "3x3"},
         ]
 
-    def test_verify_sheet_requires_auth(self, client: TestClient, tmp_path: Path, monkeypatch):
+    def test_verify_sheet_unauthenticated_resolves_local_learner(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
         self._write_lesson(
             tmp_path,
             monkeypatch,
@@ -1000,7 +1005,8 @@ class TestSpreadsheetVerification:
         res = client.post(
             "/file-courses/c_sheet/l_sheet/verify-sheet", json={"sheet_id": "sheet_abc123"}
         )
-        assert res.status_code == 401
+        # Auth passes, reaches sheet credentials check
+        assert res.status_code == 501
 
     def test_verify_sheet_not_spreadsheet(
         self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch

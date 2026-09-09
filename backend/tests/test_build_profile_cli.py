@@ -1,11 +1,11 @@
 from pathlib import Path
 
 try:
-    from backend.scripts.build_profile import build_profile_cli, prompt_interactive_questionnaire
     from backend.learner_profile import get_or_create_profile
+    from backend.scripts.build_profile import build_profile_cli, prompt_interactive_questionnaire
 except ModuleNotFoundError:
-    from scripts.build_profile import build_profile_cli, prompt_interactive_questionnaire
     from learner_profile import get_or_create_profile
+    from scripts.build_profile import build_profile_cli, prompt_interactive_questionnaire
 
 
 def test_build_profile_cli_non_interactive(tmp_path: Path):

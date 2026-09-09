@@ -1,7 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { jwtDecode } from "jwt-decode";
+import React, { createContext, useContext, useState, type ReactNode } from 'react';
 import { API_BASE_URL } from '../config';
-import { isLocalHost } from '../isLocalHost';
 
 interface User {
     username: string;
@@ -14,6 +12,7 @@ interface AuthContextType {
     login: (token: string) => void;
     googleLogin: (credential: string) => Promise<void>;
     localWelcome: (name: string) => Promise<void>;
+    setLearner: (name: string) => Promise<void>;
     logout: () => void;
     isAuthenticated: boolean;
 }
@@ -21,76 +20,86 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
-    const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+    const [savedName, setSavedName] = useState<string>(() => {
+        return localStorage.getItem('baselayer_learner_name') || 'Local Learner';
+    });
+    const [token, setToken] = useState<string | null>(() => {
+        return localStorage.getItem('token') || 'local-session-token';
+    });
 
-    useEffect(() => {
-        if (token) {
-            try {
-                const decoded: any = jwtDecode(token);
-                setUser({ username: decoded.sub, role: decoded.role });
-                localStorage.setItem('token', token);
-            } catch (e) {
-                console.error("Invalid token", e);
-                logout();
-            }
-        } else {
-            localStorage.removeItem('token');
-            setUser(null);
-            // On localhost, auto-initialize a local session using saved machine profile handle
-            if (isLocalHost()) {
-                const savedName = localStorage.getItem('baselayer_learner_name') || 'Local Learner';
-                localWelcome(savedName).catch(() => {});
-            }
-        }
-    }, [token]);
+    const user: User = {
+        username: savedName,
+        role: 'admin',
+    };
 
     const login = (newToken: string) => {
         setToken(newToken);
+        localStorage.setItem('token', newToken);
     };
 
-    const googleLogin = async (credential: string) => {
+    const setLearner = async (name: string) => {
+        const cleanName = name.trim() || 'Local Learner';
+        localStorage.setItem('baselayer_learner_name', cleanName);
+        setSavedName(cleanName);
         try {
-            const response = await fetch(`${API_BASE_URL}/auth/google`, {
+            const res = await fetch(`${API_BASE_URL}/auth/active-learner`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ credential }),
+                body: JSON.stringify({ username: cleanName }),
             });
-            if (response.ok) {
-                const data = await response.json();
-                login(data.access_token);
-            } else {
-                const error = await response.json();
-                throw new Error(error.detail || 'Google Login failed');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.username) {
+                    setSavedName(data.username);
+                    localStorage.setItem('baselayer_learner_name', data.username);
+                }
             }
-        } catch (err) {
-            console.error("Google Login Error:", err);
-            throw err;
+        } catch {
+            // Local fallback
         }
     };
 
     const localWelcome = async (name: string) => {
-        const response = await fetch(`${API_BASE_URL}/auth/local-welcome`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name.trim() }),
-        });
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Could not start' }));
-            throw new Error(error.detail || 'Could not start');
+        await setLearner(name);
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/local-welcome`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name.trim() }),
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.access_token) {
+                    login(data.access_token);
+                }
+            }
+        } catch {
+            // Non-blocking in local mode
         }
-        const data = await response.json();
-        login(data.access_token);
+    };
+
+    const googleLogin = async () => {
+        // No-op in local-first setup
     };
 
     const logout = () => {
-        setToken(null);
-        localStorage.removeItem('token');
-        setUser(null);
+        setSavedName('Local Learner');
+        localStorage.setItem('baselayer_learner_name', 'Local Learner');
     };
 
     return (
-        <AuthContext.Provider value={{ user, token, login, googleLogin, localWelcome, logout, isAuthenticated: !!user }}>
+        <AuthContext.Provider
+            value={{
+                user,
+                token,
+                login,
+                googleLogin,
+                localWelcome,
+                setLearner,
+                logout,
+                isAuthenticated: true,
+            }}
+        >
             {children}
         </AuthContext.Provider>
     );

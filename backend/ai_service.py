@@ -353,6 +353,7 @@ class AIService:
         username: str = "",
         courses_dir: Any = None,
         course_preferences: dict[str, Any] | None = None,
+        outline: str = "",
     ) -> Any:
         from agentic_workflow import AgenticCourseWorkflow
 
@@ -365,6 +366,7 @@ class AIService:
             materials=materials,
             username=username,
             course_preferences=course_preferences,
+            outline=outline,
         )
 
     def run_agentic_course_builder(
@@ -374,6 +376,7 @@ class AIService:
         username: str = "",
         courses_dir: Any = None,
         course_preferences: dict[str, Any] | None = None,
+        outline: str = "",
     ) -> Any:
         from agentic_workflow import AgenticCourseWorkflow
 
@@ -386,6 +389,7 @@ class AIService:
             materials=materials,
             username=username,
             course_preferences=course_preferences,
+            outline=outline,
         )
 
     def chat(

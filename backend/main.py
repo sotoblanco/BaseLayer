@@ -1,10 +1,9 @@
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from auth import auth_router, get_current_user
@@ -41,7 +40,6 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5174",
-    "https://sotoblanco263542--code-app-fastapi-app.modal.run",
 ] + env_origins
 
 
@@ -67,26 +65,7 @@ class CodeSubmission(BaseModel):
 
 @app.get("/")
 async def read_root():
-    if os.path.exists("/assets/index.html"):
-        return FileResponse("/assets/index.html")
     return {"status": "ok", "message": "BaseLayer App Backend Running"}
-
-
-def _run_in_modal(submission: CodeSubmission) -> dict:
-
-    try:
-        from modal_app import run_in_sandbox
-
-        result = run_in_sandbox.remote(
-            submission.code, submission.language, submission.test_code or ""
-        )
-        if (submission.test_code or "").strip() and result.get("exit_code") not in (-1, 124):
-            result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
-        return result
-    except ImportError:
-        raise HTTPException(status_code=500, detail="Modal backend not found") from None
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _record_run_event(user_username: str, submission: CodeSubmission, result: dict) -> None:
@@ -108,6 +87,33 @@ def _record_run_event(user_username: str, submission: CodeSubmission, result: di
         pass
 
 
+def _should_sanitize_stderr(exit_code: Any, test_code: str | None) -> bool:
+    if exit_code in (-1, 124):
+        return False
+    return bool(test_code and test_code.strip())
+
+
+def _apply_stderr_sanitization(result: dict, test_code: str | None) -> None:
+    if _should_sanitize_stderr(result.get("exit_code"), test_code):
+        result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
+
+
+def _execute_local_submission(submission: CodeSubmission, setup_ws: Any, inspect_ws: Any) -> dict:
+    try:
+        result = execute_docker(
+            submission.code,
+            submission.language,
+            submission.test_code or "",
+            setup_workspace=setup_ws,
+            inspect_workspace=inspect_ws,
+        )
+    except SandboxUnavailableError as exc:
+        return {"stdout": "", "stderr": str(exc), "exit_code": -1}
+
+    _apply_stderr_sanitization(result, submission.test_code)
+    return result
+
+
 @app.post("/run")
 def run_code(submission: CodeSubmission, user: User = Depends(get_current_user)):
     enforce_run_limits(
@@ -122,47 +128,6 @@ def run_code(submission: CodeSubmission, user: User = Depends(get_current_user))
     if lock_error is not None:
         return lock_error
 
-    execution_env = os.environ.get("EXECUTION_ENV", "docker")
-    if execution_env == "modal":
-        return _run_in_modal(submission)
-
-    # Default: Use local Docker (shared executor, identical resource caps/cleanup).
-    try:
-        result = execute_docker(
-            submission.code,
-            submission.language,
-            submission.test_code or "",
-            setup_workspace=setup_ws,
-            inspect_workspace=inspect_ws,
-        )
-    except SandboxUnavailableError as exc:
-        return {"stdout": "", "stderr": str(exc), "exit_code": -1}
-
-    if result.get("exit_code") in (-1, 124):
-        return result
-
-    if (submission.test_code or "").strip():
-        result["stderr"] = sanitize_run_stderr(result.get("stderr", ""))
-
+    result = _execute_local_submission(submission, setup_ws, inspect_ws)
     _record_run_event(user.username, submission, result)
     return result
-
-
-# Serve static assets (JS, CSS, images)
-# Check if /assets exists (it will in Modal, but maybe not locally without mount)
-if os.path.exists("/assets"):
-    app.mount("/assets", StaticFiles(directory="/assets/assets"), name="assets")
-
-    # Catch-all for SPA routing (serving index.html)
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        # Allow API routes to pass through if they weren't caught above
-        if (
-            full_path.startswith("api/")
-            or full_path.startswith("docs")
-            or full_path.startswith("openapi.json")
-        ):
-            raise HTTPException(status_code=404, detail="Not Found")
-
-        # Serve index.html for any other route (React Router handles the rest)
-        return FileResponse("/assets/index.html")

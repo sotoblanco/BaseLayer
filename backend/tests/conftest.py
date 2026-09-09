@@ -81,51 +81,65 @@ ADMIN_USER = {
 
 
 @pytest.fixture(name="registered_user")
-def registered_user_fixture(client: TestClient):
-    """Register VALID_USER and return its data."""
-    response = client.post("/auth/signup", json=VALID_USER)
-    assert response.status_code == 200, response.text
+def registered_user_fixture():
+    """Ensure VALID_USER exists in database and return its data."""
+    from sqlmodel import select
+
+    from models import User
+
+    with Session(test_engine) as session:
+        user = session.exec(select(User).where(User.username == VALID_USER["username"])).first()
+        if not user:
+            user = User(
+                username=VALID_USER["username"],
+                email=VALID_USER["email"],
+                hashed_password="local_no_password",
+                role="student",
+            )
+            session.add(user)
+            session.commit()
     return VALID_USER
 
 
 @pytest.fixture(name="auth_token")
-def auth_token_fixture(client: TestClient, registered_user):
-    """Log in VALID_USER and return a valid Bearer token string."""
-    response = client.post(
-        "/auth/login",
-        data={"username": registered_user["email"], "password": registered_user["password"]},
-    )
-    assert response.status_code == 200, response.text
-    return response.json()["access_token"]
+def auth_token_fixture(registered_user):
+    """Return a valid Bearer token for the registered test user."""
+    from auth import create_access_token
+
+    return create_access_token(data={"sub": registered_user["username"], "role": "student"})
 
 
 @pytest.fixture(name="auth_headers")
 def auth_headers_fixture(auth_token: str):
-    """Return headers dict with Authorization Bearer token."""
-    return {"Authorization": f"Bearer {auth_token}"}
+    """Return headers dict with Authorization Bearer token and X-Learner-Name."""
+    return {
+        "Authorization": f"Bearer {auth_token}",
+        "X-Learner-Name": "testuser",
+    }
 
 
 @pytest.fixture(name="admin_headers")
-def admin_headers_fixture(client: TestClient):
-    """Insert ADMIN_USER directly (public signup cannot grant admin),
-    then log in and return headers."""
+def admin_headers_fixture():
+    """Ensure ADMIN_USER exists directly and return admin auth headers."""
+    from sqlmodel import select
+
+    from auth import create_access_token
+    from models import User
+
     with Session(test_engine) as session:
-        from auth import get_password_hash
-        from models import User
+        user = session.exec(select(User).where(User.username == ADMIN_USER["username"])).first()
+        if not user:
+            user = User(
+                username=ADMIN_USER["username"],
+                email=ADMIN_USER["email"],
+                hashed_password="local_no_password",
+                role="admin",
+            )
+            session.add(user)
+            session.commit()
 
-        user = User(
-            username=ADMIN_USER["username"],
-            email=ADMIN_USER["email"],
-            hashed_password=get_password_hash(ADMIN_USER["password"]),
-            role="admin",
-        )
-        session.add(user)
-        session.commit()
-
-    response = client.post(
-        "/auth/login",
-        data={"username": ADMIN_USER["username"], "password": ADMIN_USER["password"]},
-    )
-    assert response.status_code == 200, response.text
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+    token = create_access_token(data={"sub": ADMIN_USER["username"], "role": "admin"})
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Learner-Name": ADMIN_USER["username"],
+    }

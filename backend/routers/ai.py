@@ -166,12 +166,14 @@ class CoursePreferencesPayload(BaseModel):
     explanation_length: Literal["short", "thorough"] | None = None
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"] | None = None
     understanding_level: Literal["beginner", "intermediate", "advanced"] | None = None
+    course_depth: Literal["auto", "short", "standard", "deep"] | None = None
 
 
 class BuildCourseRequest(BaseModel):
     topic: str = Field(..., min_length=3, max_length=500)
     resources: list[LearningResource] = Field(default_factory=list, max_length=5)
     course_preferences: CoursePreferencesPayload | None = None
+    outline: str = Field(default="", max_length=2000)
 
 
 class ToolTraceRead(BaseModel):
@@ -198,11 +200,15 @@ class LessonPreviewRead(BaseModel):
     title: str
     modality: str = "code"
     objective: str
+    explanation: str = ""
     toy_data: str
     expected_result: str = ""
     micro_task: str = ""
     inspect_prompt: str = ""
     curiosity_prompt: str = ""
+    sheet_cells: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    success_cells: list[dict[str, Any]] = Field(default_factory=list)
+    drawing_prompt: str = ""
     skills: list[str] = Field(default_factory=list)
 
 
@@ -213,6 +219,8 @@ class CoursePlanPreviewResponse(BaseModel):
     description: str = ""
     narrative_arc: str = ""
     lesson_count: int
+    suggested_lesson_count: int = 0
+    course_depth: str = "auto"
     grounded_in: list[str] = Field(default_factory=list)
     tool_traces: list[ToolTraceRead] = Field(default_factory=list)
     solveit_compliance: dict[str, bool] = Field(default_factory=dict)
@@ -223,12 +231,17 @@ class ApproveLessonEdit(BaseModel):
     order: int
     original_order: int | None = None
     title: str | None = None
+    modality: str | None = None
     objective: str | None = None
+    explanation: str | None = None
     toy_data: str | None = None
     expected_result: str | None = None
     micro_task: str | None = None
     inspect_prompt: str | None = None
     curiosity_prompt: str | None = None
+    sheet_cells: dict[str, str | int | float | bool] | str | None = None
+    success_cells: list[dict[str, Any]] | str | None = None
+    drawing_prompt: str | None = None
 
 
 class ApproveCourseRequest(BaseModel):
@@ -442,11 +455,15 @@ def _map_safe_preview_lessons(lessons: list[Any]) -> list[LessonPreviewRead]:
             title=lesson.title,
             modality=lesson.modality,
             objective=lesson.objective,
+            explanation=getattr(lesson, "explanation", ""),
             toy_data=lesson.toy_data,
             expected_result=lesson.expected_result,
             micro_task=lesson.micro_task,
             inspect_prompt=lesson.inspect_prompt,
             curiosity_prompt=lesson.curiosity_prompt,
+            sheet_cells=dict(getattr(lesson, "sheet_cells", {}) or {}),
+            success_cells=list(getattr(lesson, "success_cells", []) or []),
+            drawing_prompt=getattr(lesson, "drawing_prompt", ""),
             skills=lesson.skills,
         )
         for lesson in lessons
@@ -454,7 +471,7 @@ def _map_safe_preview_lessons(lessons: list[Any]) -> list[LessonPreviewRead]:
 
 
 def _generate_course_plan(
-    topic: str, materials: str, username: str, prefs: dict[str, Any] | None
+    topic: str, materials: str, username: str, prefs: dict[str, Any] | None, outline: str = ""
 ) -> Any:
     try:
         return ai_service.plan_agentic_course(
@@ -463,6 +480,7 @@ def _generate_course_plan(
             username=username,
             courses_dir=COURSES_DIR,
             course_preferences=prefs,
+            outline=outline,
         )
     except CourseGenerationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -501,7 +519,7 @@ def _materialize_approved_plan(
 
 
 def _execute_agentic_build(
-    topic: str, materials: str, username: str, prefs: dict[str, Any] | None
+    topic: str, materials: str, username: str, prefs: dict[str, Any] | None, outline: str = ""
 ) -> Any:
     try:
         return ai_service.run_agentic_course_builder(
@@ -510,6 +528,7 @@ def _execute_agentic_build(
             username=username,
             courses_dir=COURSES_DIR,
             course_preferences=prefs,
+            outline=outline,
         )
     except CourseGenerationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -530,7 +549,9 @@ def plan_learning_path(request: BuildCourseRequest, user: User = Depends(get_cur
 
     materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
     course_pref_dict = _prepare_course_builder_prefs(request, user.username)
-    plan_result = _generate_course_plan(topic, materials, user.username, course_pref_dict)
+    plan_result = _generate_course_plan(
+        topic, materials, user.username, course_pref_dict, outline=request.outline or ""
+    )
 
     from course_plans import plan_store
 
@@ -543,6 +564,9 @@ def plan_learning_path(request: BuildCourseRequest, user: User = Depends(get_cur
         description=plan_result.description,
         narrative_arc=plan_result.narrative_arc,
         lesson_count=plan_result.lesson_count,
+        suggested_lesson_count=getattr(plan_result, "suggested_lesson_count", 0)
+        or plan_result.lesson_count,
+        course_depth=getattr(plan_result, "course_depth", "auto"),
         grounded_in=plan_result.grounded_in,
         tool_traces=_map_tool_traces(plan_result.tool_traces),
         solveit_compliance=plan_result.solveit_compliance,
@@ -587,7 +611,9 @@ def build_learning_path(request: BuildCourseRequest, user: User = Depends(get_cu
 
     materials = "\n\n".join(r.text for r in request.resources if r.text.strip())
     course_pref_dict = _prepare_course_builder_prefs(request, user.username)
-    result = _execute_agentic_build(topic, materials, user.username, course_pref_dict)
+    result = _execute_agentic_build(
+        topic, materials, user.username, course_pref_dict, outline=request.outline or ""
+    )
     _record_course_authorship(user.username, result.slug, result.title, result.lesson_count)
 
     return BuildCourseResponse(

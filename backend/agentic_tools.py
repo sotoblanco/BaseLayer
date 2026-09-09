@@ -92,6 +92,7 @@ class CuratedLessonBlueprint(BaseModel):
     modality: Literal["code", "spreadsheet", "drawing"] = "code"
     language: str = "python"
     objective: str
+    explanation: str = ""
     toy_data: str
     expected_result: str
     micro_task: str
@@ -102,6 +103,13 @@ class CuratedLessonBlueprint(BaseModel):
     solution_code: str = ""
     google_sheet_id: str | None = None
     copy_on_open: bool = False
+    # Spreadsheet lessons carry an inline template (provisioned per learner at
+    # open time) plus graded target cells — no platform-owned sheet id needed.
+    sheet_cells: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    success_cells: list[dict[str, Any]] = Field(default_factory=list)
+    # Drawing lessons carry a canvas task prompt. No question.png is needed:
+    # the player falls back to a blank chalkboard canvas.
+    drawing_prompt: str = ""
     question_image_desc: str = ""
     source_refs: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
@@ -143,8 +151,12 @@ def get_learning_intent(
     clean_topic = topic.strip()
     clean_materials = materials.strip()[:MAX_MATERIAL_CHARS]
 
-    # Extract target concepts from topic and material keywords
-    raw_keywords = re.findall(r"[A-Za-z0-9_]{3,}", f"{clean_topic} {clean_materials[:500]}")
+    # Concepts come ONLY from the topic (the "what to learn").
+    # Materials are clarification/context, NOT the concept source — otherwise a
+    # note like "I want to learn vector search" leaks words like "learning"
+    # into target_concepts, the narrative arc, and finally verbatim into
+    # toy_data (e.g. docs = ['learning vector search', ...]).
+    raw_keywords = re.findall(r"[A-Za-z0-9_]{3,}", clean_topic)
     common_stops = {
         "and",
         "the",
@@ -153,6 +165,9 @@ def get_learning_intent(
         "from",
         "want",
         "learn",
+        "learning",
+        "learns",
+        "learned",
         "build",
         "code",
         "how",
@@ -176,17 +191,41 @@ def get_learning_intent(
     if not extracted_concepts:
         extracted_concepts = ["foundations", "primitives", "applications"]
 
-    # Extract code blocks or markdown snippets from materials if present
+    # Extract code blocks or markdown snippets from materials if present.
+    # Plain-English clarification ("I want to learn vector search") must NOT
+    # become a "reference snippet" — the LLM copies snippets verbatim into
+    # toy_data. Only keep material that looks like concrete grounding:
+    # fenced code, or lines with code/doc markers (=, (), [], imports...).
     code_snippets = re.findall(r"```(?:[a-zA-Z]+)?\s*(.*?)\s*```", clean_materials, flags=re.DOTALL)
     if not code_snippets and clean_materials:
-        # Check for single-line code or prominent sentence
         lines = [
             line.strip()
             for line in clean_materials.splitlines()
             if line.strip() and not line.startswith("#")
         ]
-        if lines:
-            code_snippets = lines[:3]
+        code_markers = (
+            "=",
+            "(",
+            ")",
+            "[",
+            "]",
+            "{",
+            "}",
+            ";",
+            ":",
+            "import ",
+            "def ",
+            "return ",
+            "->",
+            "|",
+        )
+        grounded = [
+            line for line in lines if len(line) > 80 or any(m in line for m in code_markers)
+        ]
+        # Short clarification sentences (e.g. "I want to learn X") yield no
+        # snippets at all — they stay as intent context, never as examples.
+        if grounded:
+            code_snippets = grounded[:3]
 
     # Search existing courses for related concepts
     related_courses: list[str] = []
@@ -208,7 +247,7 @@ def get_learning_intent(
 
     learning_goals = [
         f"Master the core mental model of {clean_topic}",
-        f"Build foundational intuition with toy data and micro-steps ({', '.join(extracted_concepts[:3])})",
+        f"Build foundational intuition with concrete sample data and micro-steps ({', '.join(extracted_concepts[:3])})",
         "Compose primitives into an end-to-end working system with verified tests",
     ]
 
@@ -425,6 +464,70 @@ def get_platform_content_tools() -> PlatformToolsResult:
 # Tool 4: curate_solveit_course
 # ---------------------------------------------------------------------------
 
+_CELL_RE = re.compile(r"^[A-Z]{1,3}[1-9][0-9]{0,3}$")
+
+
+def _normalize_cell_ref(key: Any) -> str | None:
+    if not isinstance(key, str):
+        return None
+    ref = key.strip().upper()
+    return ref if _CELL_RE.fullmatch(ref) else None
+
+
+def normalize_sheet_cells(raw: Any, limit: int = 500) -> dict[str, str | int | float | bool]:
+    """Accept a {A1: value} map or newline-separated 'A1=value' lines."""
+    if isinstance(raw, str):
+        pairs: dict[str, Any] = {}
+        for line in raw.splitlines():
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            pairs[key.strip()] = value.strip()
+        raw = pairs
+    if not isinstance(raw, dict):
+        return {}
+    cells: dict[str, str | int | float | bool] = {}
+    for key, value in raw.items():
+        ref = _normalize_cell_ref(key)
+        if not ref:
+            continue
+        if isinstance(value, bool):
+            cells[ref] = value
+        elif isinstance(value, (int, float)):
+            cells[ref] = value
+        elif isinstance(value, str):
+            cells[ref] = value
+        else:
+            continue
+        if len(cells) >= limit:
+            break
+    return cells
+
+
+def normalize_success_cells(raw: Any, limit: int = 50) -> list[dict[str, Any]]:
+    """Accept [{cell, expected}] or newline-separated 'CELL=expected' lines."""
+    if isinstance(raw, str):
+        items: list[Any] = []
+        for line in raw.splitlines():
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            items.append({"cell": key.strip(), "expected": value.strip()})
+        raw = items
+    if not isinstance(raw, list):
+        return []
+    targets: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ref = _normalize_cell_ref(item.get("cell"))
+        if not ref or item.get("expected") is None:
+            continue
+        targets.append({"cell": ref, "expected": item["expected"]})
+        if len(targets) >= limit:
+            break
+    return targets
+
 
 def curate_solveit_course(
     course_title: str,
@@ -433,6 +536,7 @@ def curate_solveit_course(
     lessons: list[dict[str, Any]],
     learner_context: LearnerContextResult | None = None,
     platform_tools: PlatformToolsResult | None = None,
+    allowed_modalities: list[str] | None = None,
 ) -> CuratedCourseResult:
     """Tool 4: Curates the exercises, plans structure, and shapes narrative using the Solveit skill.
 
@@ -458,6 +562,14 @@ def curate_solveit_course(
     slug_base = re.sub(r"[^a-z0-9]+", "-", clean_title.lower()).strip("-")
     slug = f"generated-{slug_base[:40].strip('-')}" or "generated-course"
 
+    allowed = [
+        m
+        for m in (allowed_modalities or ["code", "spreadsheet", "drawing"])
+        if m in ("code", "spreadsheet", "drawing")
+    ]
+    if not allowed:
+        allowed = ["code"]
+
     curated_lessons: list[CuratedLessonBlueprint] = []
 
     # Validate each lesson
@@ -465,9 +577,12 @@ def curate_solveit_course(
         modality = raw_lesson.get("modality", "code")
         if modality not in ("code", "spreadsheet", "drawing"):
             modality = "code"
+        if modality not in allowed:
+            modality = allowed[0]
 
         title = raw_lesson.get("title", f"Lesson {idx}").strip()
         objective = raw_lesson.get("objective", "Master this atomic step.").strip()
+        explanation = str(raw_lesson.get("explanation", "") or "").strip()
         toy_data = raw_lesson.get("toy_data", "input = [1, 2, 3]").strip()
         expected_result = raw_lesson.get("expected_result", "output").strip()
         micro_task = raw_lesson.get("micro_task", "Implement the function in 1-3 lines.").strip()
@@ -483,6 +598,27 @@ def curate_solveit_course(
         solution_code = raw_lesson.get("solution_code", "").strip()
         raw_skills = raw_lesson.get("skills") or []
         skills = [item.strip() for item in raw_skills if isinstance(item, str) and item.strip()][:8]
+        sheet_cells = normalize_sheet_cells(raw_lesson.get("sheet_cells", {}))
+        success_cells = normalize_success_cells(raw_lesson.get("success_cells", []))
+        drawing_prompt = str(raw_lesson.get("drawing_prompt", "") or "").strip()
+
+        if modality == "spreadsheet":
+            if not sheet_cells:
+                sheet_cells = {"A1": str(toy_data)[:200]}
+            if not success_cells:
+                raise ValueError(
+                    f"Lesson {idx} ('{title}'): spreadsheet lessons need "
+                    "'success_cells' (graded CELL=expected targets) so the "
+                    "learner's sheet can be verified."
+                )
+        elif modality == "drawing":
+            if not drawing_prompt:
+                drawing_prompt = micro_task
+            if not drawing_prompt:
+                raise ValueError(
+                    f"Lesson {idx} ('{title}'): drawing lessons need a "
+                    "'drawing_prompt' describing what to sketch on the canvas."
+                )
 
         if modality == "code":
             if not starter_code:
@@ -519,6 +655,7 @@ def curate_solveit_course(
                 modality=modality,
                 language=raw_lesson.get("language", "python"),
                 objective=objective,
+                explanation=explanation,
                 toy_data=toy_data,
                 expected_result=expected_result,
                 micro_task=micro_task,
@@ -529,6 +666,9 @@ def curate_solveit_course(
                 solution_code=solution_code,
                 google_sheet_id=raw_lesson.get("google_sheet_id"),
                 copy_on_open=bool(raw_lesson.get("copy_on_open", False)),
+                sheet_cells=sheet_cells,
+                success_cells=success_cells,
+                drawing_prompt=drawing_prompt,
                 question_image_desc=raw_lesson.get("question_image_desc", ""),
                 source_refs=raw_lesson.get("source_refs", ["Solveit pedagogy"]),
                 skills=skills,
@@ -543,6 +683,8 @@ def curate_solveit_course(
             len(item.inspect_prompt) > 0 for item in curated_lessons
         ),
         "curiosity_loop_active": all(len(item.curiosity_prompt) > 0 for item in curated_lessons),
+        "explanation_present": all(len(item.explanation) > 0 for item in curated_lessons),
+        "modality_blend_honored": all(item.modality in allowed for item in curated_lessons),
         "boilerplate_eliminated": True,
     }
 
@@ -559,7 +701,7 @@ def curate_solveit_course(
         description=course_description.strip()
         or f"A Solveit-crafted course for mastering {clean_title}.",
         narrative_arc=narrative_arc.strip()
-        or "From toy data intuition to end-to-end verified implementation.",
+        or "From sample-data intuition to end-to-end verified implementation.",
         lesson_count=len(curated_lessons),
         lessons=curated_lessons,
         solveit_compliance=solveit_compliance,

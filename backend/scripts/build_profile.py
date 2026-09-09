@@ -106,7 +106,9 @@ def _prompt_tool_preference() -> list[str]:
     return modality_map.get(tool_idx, ["code", "spreadsheet", "drawing"])
 
 
-def prompt_interactive_questionnaire(default_username: str = "Learner") -> tuple[str, LearnerQuestionnaire]:
+def prompt_interactive_questionnaire(
+    default_username: str = "Learner",
+) -> tuple[str, LearnerQuestionnaire]:
     """Interactively prompts situational questions in terminal and returns questionnaire answers."""
     print("=" * 60)
     print("BaseLayer Local Learner Profile Setup")
@@ -138,7 +140,12 @@ def prompt_interactive_questionnaire(default_username: str = "Learner") -> tuple
         s1_options,
         default_idx=0,
     )
-    unblock_map = {0: "visual_numbers", 1: "breakdown_code", 2: "breakdown_code", 3: "analogy_story"}
+    unblock_map = {
+        0: "visual_numbers",
+        1: "breakdown_code",
+        2: "breakdown_code",
+        3: "analogy_story",
+    }
     primary_unblock = unblock_map.get(s1_idx, "visual_numbers")
 
     # Situations 2 & 3 & Tool Focus
@@ -196,23 +203,34 @@ def _parse_cli_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
-def _build_non_interactive_answers(parsed_args: argparse.Namespace) -> tuple[str, LearnerQuestionnaire]:
-    """Constructs questionnaire answers from CLI flags."""
+def _resolve_hint_preference(tutor_style: str) -> str:
+    if tutor_style == "socratic":
+        return "guiding_question"
+    if tutor_style == "direct":
+        return "direct_explanation"
+    return "toy_example"
+
+
+def _extract_non_interactive_basics(parsed_args: argparse.Namespace) -> tuple[str, str]:
     username = parsed_args.username or "Learner"
     goal = parsed_args.goal or "Understand foundational AI and systems from first principles"
+    return username, goal
+
+
+def _build_non_interactive_answers(
+    parsed_args: argparse.Namespace,
+) -> tuple[str, LearnerQuestionnaire]:
+    """Constructs questionnaire answers from CLI flags."""
+    username, goal = _extract_non_interactive_basics(parsed_args)
     t_style = parsed_args.tutor_style or "solveit"
-    hint_pref = (
-        "guiding_question"
-        if t_style == "socratic"
-        else ("direct_explanation" if t_style == "direct" else "toy_example")
-    )
+    modalities = parsed_args.modalities or ["code", "spreadsheet", "drawing"]
     answers = LearnerQuestionnaire(
         goal=goal,
         tutor_style=t_style,
         tone=parsed_args.tone or "pragmatic",
-        preferred_modalities=parsed_args.modalities or ["code", "spreadsheet", "drawing"],
+        preferred_modalities=modalities,
         exercise_format="micro_steps",
-        hint_preference=hint_pref,
+        hint_preference=_resolve_hint_preference(t_style),
         explanation_length="short",
         pace="unhurried",
         preferred_ui="light",
@@ -221,7 +239,9 @@ def _build_non_interactive_answers(parsed_args: argparse.Namespace) -> tuple[str
     return username, answers
 
 
-def _print_profile_summary(profile_file: Path, username: str, parsed: dict[str, Any], goal: str) -> None:
+def _print_profile_summary(
+    profile_file: Path, username: str, parsed: dict[str, Any], goal: str
+) -> None:
     """Prints a clean confirmation summary to the console."""
     print("\n" + "=" * 60)
     print("Learner Profile Generated Successfully")
@@ -237,16 +257,34 @@ def _print_profile_summary(profile_file: Path, username: str, parsed: dict[str, 
     print("BaseLayer will automatically use this profile on your machine.\n")
 
 
+def _persist_active_learner(username: str) -> None:
+    try:
+        from backend.auth import set_active_learner_name
+
+        set_active_learner_name(username)
+    except Exception:
+        try:
+            from auth import set_active_learner_name
+
+            set_active_learner_name(username)
+        except Exception:
+            pass
+
+
+def _resolve_cli_answers(
+    parsed_args: argparse.Namespace,
+) -> tuple[str, LearnerQuestionnaire]:
+    if parsed_args.non_interactive or parsed_args.username:
+        return _build_non_interactive_answers(parsed_args)
+    return prompt_interactive_questionnaire()
+
+
 def build_profile_cli(args: list[str] | None = None, base_dir: Path | None = None) -> int:
     """CLI entrypoint for creating or updating a learner profile."""
     parsed_args = _parse_cli_args(args)
-
-    if parsed_args.non_interactive or parsed_args.username:
-        username, answers = _build_non_interactive_answers(parsed_args)
-    else:
-        username, answers = prompt_interactive_questionnaire()
-
+    username, answers = _resolve_cli_answers(parsed_args)
     _, parsed = apply_questionnaire_profile(username, answers, base_dir=base_dir)
+    _persist_active_learner(username)
 
     target_dir = base_dir or get_learners_data_dir()
     profile_file = target_dir / username / "LEARNING.md"

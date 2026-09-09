@@ -362,9 +362,10 @@ I prefer visual and drawing warm-ups before jumping to code.
 
 
 class TestLearnerProfileAPI:
-    def test_get_learning_profile_requires_auth(self, client):
+    def test_get_learning_profile_unauthenticated_resolves_local_learner(self, client):
         response = client.get("/me/learning-profile")
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert "markdown" in response.json()
 
     def test_get_learning_profile_authenticated(self, client, auth_headers, tmp_path: Path):
         with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
@@ -422,9 +423,10 @@ Advanced test runner.
         signals = response.json()["profile"]["signals"]
         assert any("Reset exercise on tinytorch" in s for s in signals)
 
-    def test_get_progress_requires_auth(self, client):
+    def test_get_progress_unauthenticated_resolves_local_learner(self, client):
         response = client.get("/me/progress")
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert "courses" in response.json()
 
     def test_get_progress_returns_resume_and_completions(self, client, auth_headers):
         event = client.post(

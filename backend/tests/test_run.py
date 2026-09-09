@@ -81,9 +81,10 @@ class TestWriteSubmission:
 
 
 class TestRunEndpoint:
-    def test_run_requires_auth(self, client: TestClient):
+    def test_run_without_auth_headers_succeeds_for_local_learner(self, client: TestClient):
+        """In local mode, unauthenticated runs resolve to the active local learner."""
         response = client.post("/run", json={"code": "print(1)", "language": "python"})
-        assert response.status_code == 401
+        assert response.status_code == 200
 
     def test_run_rejects_large_payload(self, client: TestClient, auth_headers):
         response = client.post(

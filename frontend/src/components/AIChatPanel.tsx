@@ -141,7 +141,7 @@ export default function AIChatPanel({
             setStepRunCountAtActivation(runCount ?? 0);
 
             const firstStep = result.sub_steps[0];
-            const introContent = `${result.intro}\n\n**Step 1 of ${result.sub_steps.length}: ${firstStep.title}**\n\n- **Toy Data**: \`${firstStep.toy_data}\`\n- **Target**: ${firstStep.target}\n- **Inspect**: ${firstStep.inspect_prompt}\n\n*Edit your code in the editor and click **Run** to inspect your output before advancing to the next step.*`;
+            const introContent = `${result.intro}\n\n**Step 1 of ${result.sub_steps.length}: ${firstStep.title}**\n\n- **Sample data**: \`${firstStep.toy_data}\`\n- **Target**: ${firstStep.target}\n- **Inspect**: ${firstStep.inspect_prompt}\n\n*Edit your code in the editor and click **Run** to inspect your output before advancing to the next step.*`;
 
             setMessages((prev) => [...prev, { role: 'assistant', content: introContent }]);
         } catch (error: any) {
@@ -165,7 +165,7 @@ export default function AIChatPanel({
             setActiveStepIndex(nextIndex);
             setStepRunCountAtActivation(runCount ?? 0);
             const nextStep = breakdown.sub_steps[nextIndex];
-            const nextContent = `Great progress inspecting Step ${activeStepIndex + 1}! Now let's move to **Step ${nextIndex + 1} of ${breakdown.sub_steps.length}: ${nextStep.title}**\n\n- **Toy Data**: \`${nextStep.toy_data}\`\n- **Target**: ${nextStep.target}\n- **Inspect**: ${nextStep.inspect_prompt}\n\n*Update your code and click **Run** to verify the output.*`;
+            const nextContent = `Great progress inspecting Step ${activeStepIndex + 1}! Now let's move to **Step ${nextIndex + 1} of ${breakdown.sub_steps.length}: ${nextStep.title}**\n\n- **Sample data**: \`${nextStep.toy_data}\`\n- **Target**: ${nextStep.target}\n- **Inspect**: ${nextStep.inspect_prompt}\n\n*Update your code and click **Run** to verify the output.*`;
             setMessages((prev) => [...prev, { role: 'assistant', content: nextContent }]);
         }
     };
@@ -382,7 +382,7 @@ export default function AIChatPanel({
                         <div className="space-y-2 text-xs">
                             {currentStep.toy_data && (
                                 <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800 font-mono text-[11px] text-amber-300">
-                                    <div className="text-[10px] uppercase font-bold text-slate-500 mb-0.5">Toy Data</div>
+                                    <div className="text-[10px] uppercase font-bold text-slate-500 mb-0.5">Sample data</div>
                                     {currentStep.toy_data}
                                 </div>
                             )}

@@ -9,7 +9,6 @@ import { groupLessonsIntoChapters, flattenLessons } from '../ux-light/courseLoad
 import { fetchSolutionCode } from '../solutionApi';
 import { testsToRun } from '../testsToRun';
 import { useAuth } from '../context/AuthContext';
-import { isLocalHost } from '../isLocalHost';
 import { cellsToTsv } from '../components/SheetTemplatePreview';
 import type {
   FileCourse,
@@ -190,14 +189,6 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
           }),
           fetchMyProgress(),
         ]);
-        if (res.status === 401) {
-          if (!isLocalHost()) {
-            logout();
-            setIsAuthModalOpen(true);
-            setCourseError('Your session has expired. Please sign in again.');
-            return;
-          }
-        }
         if (res.ok) {
           const data: FileCourse = await res.json();
           const grouped = groupLessonsIntoChapters(data.lessons);
@@ -228,10 +219,6 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
       }
     };
 
-    if (!isAuthenticated && !isLocalHost()) {
-      setIsAuthModalOpen(true);
-      return;
-    }
     fetchCourse();
   }, [slug, lessonSlug, isAuthenticated, token, logout]);
 
@@ -507,23 +494,17 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
           }
         }
       } catch (err: any) {
-        if (err?.message === 'AUTH_401') {
-          logout();
-          setIsAuthModalOpen(true);
-          setOutput('Session expired. Please sign in again.');
-        } else {
-          const errText = err?.message || 'Failed to execute code.';
-          pushOutput({ type: 'error', text: errText });
-          setOutput('Failed to execute code: ' + errText);
-          if (isSubmit) triggerFailure(errText);
-        }
+        const errText = err?.message || 'Failed to execute code.';
+        pushOutput({ type: 'error', text: errText });
+        setOutput('Failed to execute code: ' + errText);
+        if (isSubmit) triggerFailure(errText);
       } finally {
         setIsRunning(false);
         setIsSubmitting(false);
         setRunCount((c) => c + 1);
       }
     },
-    [lesson, code, token, slug, logout, recordLessonPass, triggerSuccess, triggerFailure, pushOutput]
+    [lesson, code, token, slug, recordLessonPass, triggerSuccess, triggerFailure, pushOutput]
   );
 
   const handleRun = useCallback(
@@ -575,9 +556,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
         }
       );
       if (response.status === 401) {
-        logout();
-        setIsAuthModalOpen(true);
-        const errMsg = 'Your session has expired. Please sign in again.';
+        const errMsg = 'Unauthorized request. Please verify local profile.';
         setDrawingFeedback({ passed: false, message: errMsg });
         setDrawingOutput(errMsg);
         return;
@@ -613,7 +592,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     } finally {
       setIsSubmittingDrawing(false);
     }
-  }, [lesson, slug, token, xpPenalty, logout, recordLessonPass, triggerSuccess]);
+  }, [lesson, slug, token, xpPenalty, recordLessonPass, triggerSuccess]);
 
   const handleManualDrawingPass = useCallback(() => {
     if (!lesson || !course) return;
@@ -637,9 +616,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
         }
       );
       if (response.status === 401) {
-        logout();
-        setIsAuthModalOpen(true);
-        setSheetVerifyError('Your session has expired. Please sign in again.');
+        setSheetVerifyError('Unauthorized request. Please verify local profile.');
         return;
       }
       const data = await response.json().catch(() => ({}));
@@ -682,7 +659,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     } finally {
       setIsCopyingSheet(false);
     }
-  }, [lesson, slug, token, logout]);
+  }, [lesson, slug, token]);
 
   const extractSheetId = useCallback((url: string) => {
     const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -714,9 +691,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
         }
       );
       if (response.status === 401) {
-        logout();
-        setIsAuthModalOpen(true);
-        setSheetVerifyError('Your session has expired. Please sign in again.');
+        setSheetVerifyError('Unauthorized request. Please verify local profile.');
         return;
       }
       const data = await response.json().catch(() => ({}));
@@ -735,7 +710,7 @@ export function useLessonPlayer(): UseLessonPlayerReturn {
     } finally {
       setIsVerifyingSheet(false);
     }
-  }, [lesson, slug, userSheetUrl, token, xpPenalty, logout, recordLessonPass, triggerSuccess]);
+  }, [lesson, slug, userSheetUrl, token, xpPenalty, recordLessonPass, triggerSuccess]);
 
   const handleManualSheetPass = useCallback(() => {
     if (!course || !lesson) return;

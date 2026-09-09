@@ -16,6 +16,7 @@ export interface CourseStylePreferences {
   explanationLength: 'short' | 'thorough';
   tutorStyle: 'solveit' | 'socratic' | 'direct' | 'blooms';
   level: 'beginner' | 'intermediate' | 'advanced';
+  depth: 'auto' | 'short' | 'standard' | 'deep';
 }
 
 interface CourseStyleMiniFormProps {
@@ -61,6 +62,13 @@ export default function CourseStyleMiniForm({
     return 'Solveit';
   };
 
+  const formatDepthSummary = () => {
+    if (preferences.depth === 'short') return 'Short (3-4)';
+    if (preferences.depth === 'standard') return 'Standard (5-6)';
+    if (preferences.depth === 'deep') return 'Deep (7-8)';
+    return 'Auto size';
+  };
+
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/80 overflow-hidden text-xs transition-all">
       {/* Header bar / accordion toggle */}
@@ -78,7 +86,7 @@ export default function CourseStyleMiniForm({
               Tailor this course style
             </span>
             <span className="text-[11px] text-slate-400 truncate block">
-              {formatModalitySummary()} · {formatScaffoldSummary()} · {formatTutorSummary()} · {preferences.level}
+              {formatModalitySummary()} · {formatScaffoldSummary()} · {formatTutorSummary()} · {preferences.level} · {formatDepthSummary()}
             </span>
           </div>
         </div>
@@ -306,6 +314,45 @@ export default function CourseStyleMiniForm({
             <span>
               Evolving profile: tailored settings for this course blend into your LEARNING.md profile as you go.
             </span>
+          </div>
+
+          {/* 6. Course depth — AI suggests, you override */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                6. Course depth
+              </label>
+              <span className="text-[10px] text-slate-400">Auto = AI suggests from topic</span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800">
+              {[
+                { id: 'auto', label: 'Auto' },
+                { id: 'short', label: 'Short 3-4' },
+                { id: 'standard', label: 'Standard 5-6' },
+                { id: 'deep', label: 'Deep 7-8' },
+              ].map((item) => {
+                const active = preferences.depth === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        ...preferences,
+                        depth: item.id as 'auto' | 'short' | 'standard' | 'deep',
+                      })
+                    }
+                    className={`py-1.5 px-2 rounded text-[11px] font-medium transition-colors text-center ${
+                      active
+                        ? 'bg-emerald-500 text-slate-950 font-semibold'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
