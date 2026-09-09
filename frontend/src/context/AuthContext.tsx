@@ -37,9 +37,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         } else {
             localStorage.removeItem('token');
             setUser(null);
-            // On localhost, auto-initialize a local session so dev is completely frictionless
+            // On localhost, auto-initialize a local session using saved machine profile handle
             if (isLocalHost()) {
-                localWelcome('Local Learner').catch(() => {});
+                const savedName = localStorage.getItem('baselayer_learner_name') || 'Local Learner';
+                localWelcome(savedName).catch(() => {});
             }
         }
     }, [token]);

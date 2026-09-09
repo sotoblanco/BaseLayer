@@ -13,17 +13,18 @@ import {
   AlertTriangle,
   AlertCircle,
   Loader,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { API_BASE_URL, APP_VERSION } from '../config';
+import { API_BASE_URL } from '../config';
 import { UserMenu } from '../components/UserMenu';
 import { WelcomeGate } from '../components/auth/WelcomeGate';
+import { SituationalProfileBuilder, PROFILE_CONFIGURED_KEY } from '../components/auth/SituationalProfileBuilder';
 import CourseBuilder from '../components/CourseBuilder';
 import { LearningProfileModal } from '../components/LearningProfileModal';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
-import { getLearningProfile, fetchMyProgress, type CourseProgressSummary } from '../services/profileService';
-import { isLocalHost } from '../isLocalHost';
+import { fetchMyProgress, type CourseProgressSummary } from '../services/profileService';
 
 interface FileCourse {
   slug: string;
@@ -69,7 +70,10 @@ export default function CoursesPage() {
   const [courses, setCourses] = useState<UnifiedCourse[]>([]);
   const [progressBySlug, setProgressBySlug] = useState<Record<string, CourseProgressSummary>>({});
   const [loading, setLoading] = useState(true);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileConfigured, setIsProfileConfigured] = useState<boolean>(() => {
+    return localStorage.getItem(PROFILE_CONFIGURED_KEY) === 'true';
+  });
+  const [isSituationalProfileOpen, setIsSituationalProfileOpen] = useState(false);
   const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
   const [isCourseBuilderOpen, setIsCourseBuilderOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -125,54 +129,18 @@ export default function CoursesPage() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated && isLocalHost()) {
-      setIsAuthModalOpen(true);
-    }
-    if (isAuthenticated) {
-      // Background auto-login (localhost) succeeded: dismiss the startup auth
-      // gate so the locally present courses are visible instead of staying
-      // buried under it. The "Learning Guide" entry point uses the separate
-      // isLearningGuideOpen flag and is unaffected.
-      setIsAuthModalOpen(false);
-    }
-  }, [isAuthenticated]);
+    const hasConfigured = localStorage.getItem(PROFILE_CONFIGURED_KEY) === 'true';
+    const hasCompleted = localStorage.getItem(DIAGNOSTIC_COMPLETED_KEY) === 'true';
+    const hasDismissed = localStorage.getItem(DIAGNOSTIC_DISMISSED_KEY) === 'true';
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      const hasCompleted = localStorage.getItem(DIAGNOSTIC_COMPLETED_KEY);
-      const hasDismissed = localStorage.getItem(DIAGNOSTIC_DISMISSED_KEY);
-      // Only auto-prompt on startup when the user has neither completed nor
-      // dismissed the diagnostic; otherwise the modal would cover the locally
-      // present courses on every launch.
-      if (hasCompleted !== 'true' && hasDismissed !== 'true') {
-        getLearningProfile()
-          .then((data) => {
-            // Explicit completion flag first (set by questionnaire submit).
-            // Legacy string heuristic only for pre-flag profiles, so choosing
-            // the actual defaults no longer looks like "never completed".
-            if (data.parsed.frontmatter.diagnostic_completed === true) {
-              localStorage.setItem(DIAGNOSTIC_COMPLETED_KEY, 'true');
-              return;
-            }
-            const isDefault =
-              data.parsed.signals.length <= 1 &&
-              !data.markdown.includes('intake_preference') &&
-              !data.markdown.includes('explanation_length: thorough') &&
-              !data.markdown.includes('exercise_format: macro_challenges') &&
-              !data.markdown.includes('exercise_format: guided_completion');
-            if (isDefault) {
-              setProfileInitialMode('customize');
-              setIsProfileModalOpen(true);
-            } else {
-              localStorage.setItem(DIAGNOSTIC_COMPLETED_KEY, 'true');
-            }
-          })
-          .catch(() => {
-            // Silently ignore if offline
-          });
-      }
+    // If profile is already configured or dismissed on this machine, never prompt on startup
+    if (hasConfigured || hasCompleted || hasDismissed) {
+      return;
     }
-  }, [isAuthenticated]);
+
+    // Auto-prompt situational onboarding on first launch
+    setIsSituationalProfileOpen(true);
+  }, []);
 
   useEffect(() => {
     const fetchCourses = async () => {
@@ -277,32 +245,25 @@ export default function CoursesPage() {
             <Compass size={14} className="text-emerald-400" />
             <span>Learning Guide</span>
           </button>
-          {isAuthenticated ? (
-            <UserMenu
-              onOpenProfile={() => {
-                setProfileInitialMode('preview');
-                setIsProfileModalOpen(true);
-              }}
-            />
-          ) : (
-            <div className="flex items-center gap-4 text-sm font-medium">
-              <div className="hidden sm:flex items-center px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 text-slate-400 text-xs font-mono">
-                v{APP_VERSION || 'dev'}
-              </div>
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="text-slate-400 hover:text-white transition-colors"
-              >
-                Sign In
-              </button>
-              <button
-                onClick={() => setIsAuthModalOpen(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-blue-500/20"
-              >
-                Get Started
-              </button>
-            </div>
+          {!isProfileConfigured && (
+            <button
+              onClick={() => setIsSituationalProfileOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
+              title="Set Up Your Learning Profile"
+            >
+              <Sparkles size={14} />
+              <span>Set Up Profile</span>
+            </button>
           )}
+          <UserMenu
+            onOpenProfile={() => {
+              setProfileInitialMode('preview');
+              setIsProfileModalOpen(true);
+            }}
+            onRecalibrate={() => {
+              setIsSituationalProfileOpen(true);
+            }}
+          />
         </div>
       </header>
 
@@ -316,7 +277,7 @@ export default function CoursesPage() {
             </div>
             <div className="flex items-center gap-3 shrink-0">
               <button
-                onClick={() => (isAuthenticated ? setIsImportModalOpen(true) : setIsAuthModalOpen(true))}
+                onClick={() => setIsImportModalOpen(true)}
                 className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/90 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-700 hover:text-white"
                 title="Import a shared course or lesson bundle"
               >
@@ -324,7 +285,7 @@ export default function CoursesPage() {
                 <span>Import Course</span>
               </button>
               <button
-                onClick={() => (isAuthenticated ? setIsCourseBuilderOpen(true) : setIsAuthModalOpen(true))}
+                onClick={() => setIsCourseBuilderOpen(true)}
                 className="rounded-lg bg-emerald-500 px-5 py-3 text-sm font-bold text-slate-950 transition-colors hover:bg-emerald-400"
               >
                 Build a course
@@ -362,11 +323,7 @@ export default function CoursesPage() {
                       : 'hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10'
                   }`}
                   onClick={() => {
-                    if (isAuthenticated) {
-                      navigate(course.navigatePath);
-                    } else {
-                      setIsAuthModalOpen(true);
-                    }
+                    navigate(course.navigatePath);
                   }}
                 >
                   <div className="h-2 bg-gradient-to-r from-emerald-600 to-teal-600" />
@@ -521,12 +478,21 @@ export default function CoursesPage() {
       </main>
 
       <WelcomeGate
-        isOpen={isAuthModalOpen || isLearningGuideOpen}
+        isOpen={isLearningGuideOpen}
+        onClose={() => setIsLearningGuideOpen(false)}
+        initialTab="modalities"
+      />
+      <SituationalProfileBuilder
+        isOpen={isSituationalProfileOpen}
         onClose={() => {
-          setIsAuthModalOpen(false);
-          setIsLearningGuideOpen(false);
+          setIsSituationalProfileOpen(false);
+          if (localStorage.getItem(PROFILE_CONFIGURED_KEY) !== 'true') {
+            localStorage.setItem(DIAGNOSTIC_DISMISSED_KEY, 'true');
+          }
         }}
-        initialTab={isLearningGuideOpen ? 'modalities' : undefined}
+        onProfileBuilt={() => {
+          setIsProfileConfigured(true);
+        }}
       />
       <CourseBuilder
         isOpen={isCourseBuilderOpen}

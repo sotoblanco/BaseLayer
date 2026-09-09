@@ -1,6 +1,4 @@
-import { useState } from 'react';
-import { isLocalHost } from '../../isLocalHost';
-import { AuthModal } from './AuthModal';
+import { SituationalProfileBuilder } from './SituationalProfileBuilder';
 import { LocalWelcome } from './LocalWelcome';
 
 interface WelcomeGateProps {
@@ -10,18 +8,21 @@ interface WelcomeGateProps {
 }
 
 export function WelcomeGate({ isOpen, onClose, initialTab }: WelcomeGateProps) {
-  const [useFullAuth, setUseFullAuth] = useState(!isLocalHost());
-
-  if (useFullAuth) {
-    return <AuthModal isOpen={isOpen} onClose={onClose} />;
+  // If the user specifically opened AI setup or modalities guide, show the studio tabs
+  if (initialTab === 'ai' || initialTab === 'modalities' || initialTab === 'customization') {
+    return (
+      <LocalWelcome
+        isOpen={isOpen}
+        onClose={onClose}
+        initialTab={initialTab}
+      />
+    );
   }
 
   return (
-    <LocalWelcome
+    <SituationalProfileBuilder
       isOpen={isOpen}
       onClose={onClose}
-      initialTab={initialTab}
-      onForbidden={() => setUseFullAuth(true)}
     />
   );
 }

@@ -25,7 +25,7 @@ import {
   Table,
 } from 'lucide-react';
 
-import { API_BASE_URL, APP_VERSION } from '../config';
+import { API_BASE_URL } from '../config';
 import { buildTutorContext } from '../tutorContext';
 import { Panel, Group, Separator } from 'react-resizable-panels';
 import { UserMenu } from '../components/UserMenu';
@@ -88,11 +88,9 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
         completedSlugs,
         courseError,
         isAuthModalOpen,
-        setIsAuthModalOpen,
         sharePayload,
         setSharePayload,
         currentLang,
-        isAuthenticated,
         token,
         user,
         navigate,
@@ -108,14 +106,12 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                     {courseError ? (
                         <>
                             <p className="mb-4 text-rose-400">{courseError}</p>
-                            {!isAuthenticated && (
-                                <button
-                                    onClick={() => setIsAuthModalOpen(true)}
-                                    className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-                                >
-                                    Sign in
-                                </button>
-                            )}
+                            <button
+                                onClick={() => navigate('/')}
+                                className="rounded bg-slate-800 border border-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 transition-colors"
+                            >
+                                Back to Courses
+                            </button>
                         </>
                     ) : (
                         <>
@@ -278,27 +274,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                                 <span className="hidden md:inline">UX Light</span>
                             </button>
                         )}
-                        {isAuthenticated ? (
-                            <UserMenu />
-                        ) : (
-                            <div className="flex items-center gap-3">
-                                <div className="hidden sm:flex items-center px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 text-slate-400 text-xs font-mono">
-                                    v{APP_VERSION || 'dev'}
-                                </div>
-                                <button
-                                    onClick={() => navigate('/login')}
-                                    className="text-sm text-slate-400 hover:text-white font-medium transition-colors"
-                                >
-                                    Sign In
-                                </button>
-                                <button
-                                    onClick={() => navigate('/signup')}
-                                    className="text-sm bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded transition-colors"
-                                >
-                                    Join
-                                </button>
-                            </div>
-                        )}
+                        <UserMenu />
                     </div>
                 </header>
 
