@@ -17,7 +17,6 @@ import {
   ExternalLink,
   Send,
   Sparkles,
-  Compass,
   Check,
   Lock,
   FileText,
@@ -259,10 +258,10 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
                         <button
                             onClick={() => setIsLearningGuideOpen(true)}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 transition-colors"
-                            title="Learning Guide & AI Setup"
+                            title="Configure AI features and model providers"
                         >
-                            <Compass size={14} className="text-emerald-400" />
-                            <span className="hidden md:inline">Learning Guide</span>
+                            <Sparkles size={13} className="text-amber-400" />
+                            <span className="hidden md:inline">AI Features</span>
                         </button>
                         {onSwitchUi && (
                             <button
@@ -711,7 +710,7 @@ export default function FileCodingPage({ onSwitchUi }: { onSwitchUi?: () => void
             <WelcomeGate
                 isOpen={isLearningGuideOpen}
                 onClose={() => setIsLearningGuideOpen(false)}
-                initialTab="modalities"
+                initialTab="ai"
             />
             {sharePayload && (
                 <ShareAchievement payload={sharePayload} onClose={() => setSharePayload(null)} />

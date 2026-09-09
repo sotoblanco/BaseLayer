@@ -4,8 +4,6 @@ import {
   Terminal,
   ChevronRight,
   FolderCode,
-  Compass,
-  Sliders,
   CheckCircle2,
   Upload,
   Share2,
@@ -74,7 +72,7 @@ export default function CoursesPage() {
     return localStorage.getItem(PROFILE_CONFIGURED_KEY) === 'true';
   });
   const [isSituationalProfileOpen, setIsSituationalProfileOpen] = useState(false);
-  const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
+  const [isAiFeaturesOpen, setIsAiFeaturesOpen] = useState(false);
   const [isCourseBuilderOpen, setIsCourseBuilderOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileInitialMode, setProfileInitialMode] = useState<'preview' | 'edit' | 'customize'>('customize');
@@ -224,34 +222,21 @@ export default function CoursesPage() {
           <h1 className="font-bold text-xl tracking-tight">BaseLayer App</h1>
         </div>
         <div className="flex items-center gap-3">
-          {isAuthenticated && (
-            <button
-              onClick={() => {
-                setProfileInitialMode('customize');
-                setIsProfileModalOpen(true);
-              }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
-              title="Calibrate your personal learning style"
-            >
-              <Sliders size={14} className="text-blue-400" />
-              <span>Learning Style</span>
-            </button>
-          )}
           <button
-            onClick={() => setIsLearningGuideOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors"
-            title="Learning Guide & AI Setup"
+            onClick={() => setIsAiFeaturesOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-colors"
+            title="Configure AI features and model providers"
           >
-            <Compass size={14} className="text-emerald-400" />
-            <span>Learning Guide</span>
+            <Sparkles size={13} className="text-amber-400" />
+            <span>AI Features</span>
           </button>
           {!isProfileConfigured && (
             <button
               onClick={() => setIsSituationalProfileOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
               title="Set Up Your Learning Profile"
             >
-              <Sparkles size={14} />
+              <Sparkles size={13} />
               <span>Set Up Profile</span>
             </button>
           )}
@@ -478,9 +463,9 @@ export default function CoursesPage() {
       </main>
 
       <WelcomeGate
-        isOpen={isLearningGuideOpen}
-        onClose={() => setIsLearningGuideOpen(false)}
-        initialTab="modalities"
+        isOpen={isAiFeaturesOpen}
+        onClose={() => setIsAiFeaturesOpen(false)}
+        initialTab="ai"
       />
       <SituationalProfileBuilder
         isOpen={isSituationalProfileOpen}

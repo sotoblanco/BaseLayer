@@ -8,7 +8,7 @@ import {
   Code2,
   Table,
   PenTool,
-  BookOpen,
+  Layers,
   X,
   Compass,
   Zap,
@@ -16,6 +16,7 @@ import {
   AlertCircle,
   HelpCircle,
   Terminal,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { submitLearnerQuestionnaire, type LearnerQuestionnaire } from '../../services/profileService';
@@ -33,43 +34,49 @@ interface SituationalProfileBuilderProps {
 
 type StuckStrategy = 'micro_steps' | 'socratic' | 'direct' | 'guided_completion';
 type ToneChoice = 'pragmatic' | 'concise' | 'thorough';
+type ToolFocusChoice = 'all' | 'code' | 'spreadsheet' | 'drawing';
 
-interface UnblockOption {
-  id: 'breakdown_code' | 'visual_numbers' | 'hand_written' | 'analogy_story';
+interface CognitiveOption {
+  id: string;
   title: string;
+  tag: string;
   description: string;
-  modality: 'code' | 'spreadsheet' | 'drawing' | 'text';
-  icon: typeof Code2;
+  unblockKey: 'visual_numbers' | 'breakdown_code' | 'hand_written' | 'analogy_story';
+  icon: typeof Activity;
 }
 
-const UNBLOCK_OPTIONS: UnblockOption[] = [
+const COGNITIVE_OPTIONS: CognitiveOption[] = [
   {
-    id: 'breakdown_code',
-    title: 'Walk through executable code',
-    description: 'Trace runnable logic step-by-step, inspect variables, and verify outputs directly.',
-    modality: 'code',
+    id: 'concrete_numbers',
+    title: 'Trace concrete values step-by-step',
+    tag: 'Empirical & Concrete',
+    description: 'Ground the concept with live numerical values and arithmetic progression before touching abstract math.',
+    unblockKey: 'visual_numbers',
+    icon: Activity,
+  },
+  {
+    id: 'first_principles',
+    title: 'Deconstruct first principles & invariants',
+    tag: 'Structural Invariants',
+    description: 'Focus on system boundaries, state transitions, constraints, and foundational operational rules.',
+    unblockKey: 'breakdown_code',
     icon: Code2,
   },
   {
-    id: 'visual_numbers',
-    title: 'Inspect numeric matrices & grids',
-    description: 'Watch arithmetic values transform cell-by-cell in a live spreadsheet or matrix view.',
-    modality: 'spreadsheet',
-    icon: Table,
+    id: 'experimental_tinkering',
+    title: 'Rapid trial-and-error experimentation',
+    tag: 'Interactive Verification',
+    description: 'Form hypotheses, modify inputs, and verify behavior with immediate automated feedback.',
+    unblockKey: 'breakdown_code',
+    icon: Zap,
   },
   {
-    id: 'hand_written',
-    title: 'Sketch architecture & data flow',
-    description: 'Draw boxes, arrows, memory layouts, and topological diagrams on a canvas.',
-    modality: 'drawing',
-    icon: PenTool,
-  },
-  {
-    id: 'analogy_story',
-    title: 'Read intuitive analogies',
-    description: 'Connect abstract concepts to physical metaphors and systems intuition before code.',
-    modality: 'text',
-    icon: BookOpen,
+    id: 'conceptual_analogies',
+    title: 'Connect to physical analogies & mental models',
+    tag: 'Conceptual Narrative',
+    description: 'Relate abstract mechanics to real-world physical systems and intuitive analogies.',
+    unblockKey: 'analogy_story',
+    icon: Compass,
   },
 ];
 
@@ -140,6 +147,50 @@ const TONE_OPTIONS: ToneOption[] = [
   },
 ];
 
+interface ToolFocusOption {
+  id: ToolFocusChoice;
+  title: string;
+  tag: string;
+  description: string;
+  modalities: string[];
+  icon: typeof Layers;
+}
+
+const TOOL_FOCUS_OPTIONS: ToolFocusOption[] = [
+  {
+    id: 'all',
+    title: 'Use all tools together (Recommended)',
+    tag: 'Full Multi-Modal',
+    description: 'Code editor, interactive spreadsheets, and drawing canvas are all active simultaneously.',
+    modalities: ['code', 'spreadsheet', 'drawing'],
+    icon: Layers,
+  },
+  {
+    id: 'code',
+    title: 'Lead primarily with Code',
+    tag: 'Code-First',
+    description: 'Focus heavily on code files and test suites, keeping spreadsheets and drawings secondary.',
+    modalities: ['code'],
+    icon: Code2,
+  },
+  {
+    id: 'spreadsheet',
+    title: 'Lead primarily with Interactive Spreadsheets',
+    tag: 'Matrix & Grid',
+    description: 'Focus heavily on cell calculations, tensor numbers, and formula verification.',
+    modalities: ['spreadsheet'],
+    icon: Table,
+  },
+  {
+    id: 'drawing',
+    title: 'Lead primarily with Visual Canvas',
+    tag: 'Canvas & Diagrams',
+    description: 'Focus heavily on architectural diagrams, memory layouts, and visual mental models.',
+    modalities: ['drawing'],
+    icon: PenTool,
+  },
+];
+
 export function SituationalProfileBuilder({
   isOpen,
   onClose,
@@ -155,27 +206,16 @@ export function SituationalProfileBuilder({
   const [goal, setGoal] = useState(
     'Understand foundational AI and systems from first principles'
   );
-  const [selectedUnblock, setSelectedUnblock] = useState<string[]>([
-    'breakdown_code',
-    'visual_numbers',
-  ]);
+  const [selectedCognitive, setSelectedCognitive] = useState<string>('concrete_numbers');
   const [stuckChoice, setStuckChoice] = useState<StuckStrategy>('micro_steps');
   const [toneChoice, setToneChoice] = useState<ToneChoice>('pragmatic');
+  const [toolFocus, setToolFocus] = useState<ToolFocusChoice>('all');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
   // Derived inferences
-  const inferredModalities = useMemo(() => {
-    const mods: string[] = [];
-    if (selectedUnblock.includes('breakdown_code')) mods.push('code');
-    if (selectedUnblock.includes('visual_numbers')) mods.push('spreadsheet');
-    if (selectedUnblock.includes('hand_written')) mods.push('drawing');
-    if (selectedUnblock.includes('analogy_story')) mods.push('text');
-    return mods.length > 0 ? mods : ['code'];
-  }, [selectedUnblock]);
-
   const inferredTutorStyle = useMemo(() => {
     const found = STUCK_OPTIONS.find((s) => s.id === stuckChoice);
     return found ? found.inferredStyle : 'solveit';
@@ -187,20 +227,30 @@ export function SituationalProfileBuilder({
     return 'micro_steps';
   }, [stuckChoice]);
 
-  const toggleUnblockOption = (id: string) => {
-    setSelectedUnblock((prev) => {
-      if (prev.includes(id)) {
-        if (prev.length === 1) return prev; // At least one modality
-        return prev.filter((item) => item !== id);
-      }
-      return [...prev, id];
-    });
-  };
+  const inferredModalities = useMemo(() => {
+    const found = TOOL_FOCUS_OPTIONS.find((t) => t.id === toolFocus);
+    return found ? found.modalities : ['code', 'spreadsheet', 'drawing'];
+  }, [toolFocus]);
 
-  const handleBuildProfile = async () => {
+  const unblockStrategy = useMemo(() => {
+    const found = COGNITIVE_OPTIONS.find((c) => c.id === selectedCognitive);
+    return found ? found.unblockKey : 'visual_numbers';
+  }, [selectedCognitive]);
+
+  const handleBuildProfile = async (forcedToolFocus?: ToolFocusChoice) => {
     const trimmedName = username.trim() || 'Learner';
     setIsSubmitting(true);
     setErrorMessage('');
+
+    const effectiveToolFocus = forcedToolFocus || toolFocus;
+    const finalModalities =
+      effectiveToolFocus === 'all'
+        ? ['code', 'spreadsheet', 'drawing']
+        : TOOL_FOCUS_OPTIONS.find((t) => t.id === effectiveToolFocus)?.modalities || [
+            'code',
+            'spreadsheet',
+            'drawing',
+          ];
 
     try {
       // 1. Establish local session with the handle
@@ -208,21 +258,8 @@ export function SituationalProfileBuilder({
 
       // 2. Submit the inferred questionnaire answers to build LEARNING.md
       const payload: LearnerQuestionnaire = {
-        unblock_strategies: selectedUnblock as (
-          | 'breakdown_code'
-          | 'visual_numbers'
-          | 'hand_written'
-          | 'analogy_story'
-        )[],
-        preferred_modalities: inferredModalities,
-        intake_preference: selectedUnblock.includes('breakdown_code')
-          ? 'hands_on'
-          : selectedUnblock.includes('visual_numbers')
-          ? 'table'
-          : selectedUnblock.includes('hand_written')
-          ? 'diagram'
-          : 'story',
-        explanation_length: toneChoice === 'thorough' ? 'thorough' : 'short',
+        unblock_strategies: [unblockStrategy],
+        preferred_modalities: finalModalities,
         exercise_format: inferredExerciseFormat,
         hint_preference:
           stuckChoice === 'socratic'
@@ -230,6 +267,7 @@ export function SituationalProfileBuilder({
             : stuckChoice === 'direct'
             ? 'direct_explanation'
             : 'toy_example',
+        explanation_length: toneChoice === 'thorough' ? 'thorough' : 'short',
         tone: toneChoice === 'thorough' ? 'direct' : toneChoice,
         pace: toneChoice === 'concise' ? 'sprint' : 'unhurried',
         goal: goal.trim() || 'Understand foundational AI and systems from first principles',
@@ -279,7 +317,7 @@ export function SituationalProfileBuilder({
                 Build Your Learning Profile
               </h2>
               <p className="text-xs text-slate-400">
-                Situational onboarding to personalize your local tutor, modalities, and hints
+                Situational onboarding to tailor your personal tutor, pacing, and feedback
               </p>
             </div>
           </div>
@@ -317,10 +355,10 @@ export function SituationalProfileBuilder({
             ))}
           </div>
           <span className="text-slate-400 font-medium">
-            {step === 1 && '1. Learner Identity'}
-            {step === 2 && '2. Concept Modalities'}
+            {step === 1 && '1. Handle & Focus'}
+            {step === 2 && '2. Mental Model Approach'}
             {step === 3 && '3. Stuck Resolution'}
-            {step === 4 && '4. Tutor Tone & Review'}
+            {step === 4 && '4. Tone & Tool Preference'}
           </span>
         </div>
 
@@ -342,8 +380,8 @@ export function SituationalProfileBuilder({
                     Who is coding on this machine?
                   </h3>
                   <p className="text-sm text-slate-400 leading-relaxed">
-                    BaseLayer is a local-first learning environment. Enter your handle so your
-                    notes, progress, and personal LEARNING.md stay scoped to you on this computer.
+                    BaseLayer is local-first. Enter your handle so your progress, personal notes,
+                    and LEARNING.md stay organized on this machine.
                   </p>
                 </div>
 
@@ -391,14 +429,14 @@ export function SituationalProfileBuilder({
               <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800 text-xs text-slate-400 flex items-start gap-3">
                 <Terminal size={18} className="text-emerald-400 shrink-0 mt-0.5" />
                 <p>
-                  Zero cloud accounts required. Your profile will be saved to{' '}
+                  Zero external accounts required. Your profile will be saved to{' '}
                   <span className="font-mono text-emerald-300">data/learners/{username.trim() || 'username'}/LEARNING.md</span> and picked up automatically on your machine.
                 </p>
               </div>
             </div>
           )}
 
-          {/* STEP 2: Situation 1 (New Concept Click) */}
+          {/* STEP 2: Mental Model Approach */}
           {step === 2 && (
             <div className="space-y-5 animate-fadeIn">
               <div>
@@ -406,74 +444,61 @@ export function SituationalProfileBuilder({
                   Situation 1
                 </span>
                 <h3 className="text-base font-semibold text-white mt-0.5 mb-1">
-                  When tackling an unfamiliar, abstract concept (e.g. attention heads or pointers), what makes it click?
+                  When tackling an unfamiliar, complex concept (e.g. self-attention, backprop, or memory allocators), what helps it click fastest?
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Select the learning modalities that help your mental model click fastest. (Select all that apply)
+                  Select the cognitive style that best describes how your intuition forms.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {UNBLOCK_OPTIONS.map((opt) => {
+              <div className="space-y-2.5">
+                {COGNITIVE_OPTIONS.map((opt) => {
                   const Icon = opt.icon;
-                  const isSelected = selectedUnblock.includes(opt.id);
+                  const isSelected = selectedCognitive === opt.id;
                   return (
                     <button
                       key={opt.id}
                       type="button"
-                      onClick={() => toggleUnblockOption(opt.id)}
-                      className={`text-left p-4 rounded-xl border transition-all flex flex-col justify-between ${
+                      onClick={() => setSelectedCognitive(opt.id)}
+                      className={`w-full text-left p-4 rounded-xl border transition-all flex items-start justify-between gap-3 ${
                         isSelected
                           ? 'border-emerald-500/60 bg-emerald-500/10 shadow-md shadow-emerald-500/5 ring-1 ring-emerald-500/30'
                           : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-900/50'
                       }`}
                     >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className={`p-2 rounded-lg ${isSelected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
-                            <Icon size={18} />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                            <Icon size={16} />
                           </div>
+                          <h4 className="text-sm font-semibold text-white">{opt.title}</h4>
                           <span
-                            className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                               isSelected
                                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                 : 'bg-slate-800 text-slate-500'
                             }`}
                           >
-                            {opt.modality}
+                            {opt.tag}
                           </span>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-semibold text-white">{opt.title}</h4>
-                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                            {opt.description}
-                          </p>
-                        </div>
+                        <p className="text-xs text-slate-400 leading-relaxed pl-8">
+                          {opt.description}
+                        </p>
                       </div>
-                      <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-end">
-                        <div className={`w-4 h-4 rounded-full flex items-center justify-center ${isSelected ? 'bg-emerald-500 text-slate-950' : 'border border-slate-700'}`}>
-                          {isSelected && <Check size={11} />}
+                      <div className="mt-1 shrink-0">
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${isSelected ? 'bg-emerald-500 text-slate-950 font-bold' : 'border border-slate-700'}`}>
+                          {isSelected && <Check size={12} />}
                         </div>
                       </div>
                     </button>
                   );
                 })}
               </div>
-
-              <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-lg text-xs flex items-center justify-between text-slate-400">
-                <span>Inferred Modalities:</span>
-                <div className="flex items-center gap-1.5">
-                  {inferredModalities.map((mod) => (
-                    <span key={mod} className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 font-mono text-[11px] font-semibold border border-emerald-500/30">
-                      {mod}
-                    </span>
-                  ))}
-                </div>
-              </div>
             </div>
           )}
 
-          {/* STEP 3: Situation 2 (Getting Stuck & Exercise Format) */}
+          {/* STEP 3: Guidance When Stuck */}
           {step === 3 && (
             <div className="space-y-5 animate-fadeIn">
               <div>
@@ -538,7 +563,7 @@ export function SituationalProfileBuilder({
             </div>
           )}
 
-          {/* STEP 4: Situation 3 (Tutor Tone & Profile Review) */}
+          {/* STEP 4: Tone & Tool Preference / Skip */}
           {step === 4 && (
             <div className="space-y-5 animate-fadeIn">
               <div>
@@ -549,7 +574,7 @@ export function SituationalProfileBuilder({
                   How should explanations and code reviews sound?
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Select the communication style that matches how you work best.
+                  Select your preferred tone for hints and feedback.
                 </p>
               </div>
 
@@ -592,6 +617,56 @@ export function SituationalProfileBuilder({
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Tool Focus Optional Section */}
+              <div className="pt-2 border-t border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                      Tool Focus (Optional)
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Code, spreadsheets, and diagrams are all active by default. You can choose a primary tool or keep all three.
+                    </p>
+                  </div>
+                  {toolFocus !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setToolFocus('all')}
+                      className="text-xs text-emerald-400 hover:underline font-semibold"
+                    >
+                      Reset to All
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {TOOL_FOCUS_OPTIONS.map((tool) => {
+                    const isSelected = toolFocus === tool.id;
+                    const Icon = tool.icon;
+                    return (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        onClick={() => setToolFocus(tool.id)}
+                        className={`text-left p-3 rounded-lg border transition-all flex items-start gap-2.5 ${
+                          isSelected
+                            ? 'border-emerald-500/50 bg-emerald-500/10'
+                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className={`p-1.5 rounded ${isSelected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                          <Icon size={15} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white">{tool.title}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5 truncate">{tool.tag}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Profile Blueprint Card */}
@@ -651,7 +726,7 @@ export function SituationalProfileBuilder({
             ) : (
               <span className="text-xs text-slate-500 flex items-center gap-1">
                 <HelpCircle size={13} />
-                No login required; saved directly on machine.
+                Saved directly to your machine.
               </span>
             )}
           </div>
@@ -672,21 +747,32 @@ export function SituationalProfileBuilder({
                 <ArrowRight size={14} />
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={handleBuildProfile}
-                disabled={isSubmitting}
-                className="px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 disabled:opacity-50"
-              >
-                {isSubmitting ? (
-                  <span>Building Profile...</span>
-                ) : (
-                  <>
-                    <Sparkles size={15} />
-                    <span>Build My Profile</span>
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleBuildProfile('all')}
+                  disabled={isSubmitting}
+                  className="px-4 py-2.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors disabled:opacity-50"
+                  title="Use all three tools together without setting a primary preference"
+                >
+                  <span>Skip (Use All Tools)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBuildProfile()}
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/25 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <span>Building Profile...</span>
+                  ) : (
+                    <>
+                      <Sparkles size={15} />
+                      <span>Build My Profile</span>
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>

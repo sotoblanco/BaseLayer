@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { User, ChevronDown, Info, BookOpen, Sparkles } from 'lucide-react';
+import { ChevronDown, Info, BookOpen, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../config';
 import { LearningProfileModal } from './LearningProfileModal';
@@ -35,19 +35,17 @@ export function UserMenu({ variant = 'dark', onOpenProfile, onRecalibrate }: Use
         <div className="relative" ref={menuRef}>
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`flex items-center gap-2 transition-colors p-2 rounded-lg ${
+                className={`flex items-center gap-1.5 transition-colors px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${
                     isLight
-                        ? 'text-[#5b6b7b] hover:text-[#05192d] hover:bg-[#f4f6f8]'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                        ? 'text-[#05192d] bg-white border-[#e2e8ee] hover:bg-[#f4f6f8]'
+                        : 'text-slate-200 bg-slate-800/90 border-slate-700 hover:bg-slate-700'
                 }`}
                 title="Account & Learning Profile"
             >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    isLight ? 'bg-[#03ef62] text-[#05192d]' : 'bg-emerald-600 text-white'
-                }`}>
-                    <User size={16} />
-                </div>
-                <ChevronDown size={16} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <span className="truncate max-w-[120px]">
+                    {user?.username || localStorage.getItem('baselayer_learner_name') || 'Learner'}
+                </span>
+                <ChevronDown size={14} className={`transition-transform duration-200 text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isOpen && (
