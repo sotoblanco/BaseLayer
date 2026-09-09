@@ -83,10 +83,11 @@ def _stdlib_modules() -> frozenset[str]:
 # Copy-paste instruction prompt
 # ---------------------------------------------------------------------------
 
-EXAMPLE_LESSON: dict[str, str] = {
+EXAMPLE_LESSON: dict[str, Any] = {
     "title": "Pixel Luminance: create a normalized RGB array",
     "objective": "Convert an 8-bit RGB color triple into a normalized float array.",
     "explanation": "Displays store color as 0-255 integers, but math needs 0.0-1.0 floats. Dividing by 255 maps the range so models see proportional brightness.",
+    "source_refs": ["sRGB IEC 61966-2-1", "NumPy array creation docs"],
     "sample_data": "raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
     "expected_result": "np.array([1.0, 0.50196, 0.0])",
     "micro_task": "In make_array(), return the input list converted to a float32 NumPy array divided by 255.0.",
@@ -259,14 +260,18 @@ COURSE TO BUILD
 Topic: {clean_topic}
 {reference_block}{profile_block}
 RULES (follow every rule)
+
 1. Narrative Arc & Progressiveness: Write exactly {MIN_IMPORT_LESSONS} to {MAX_IMPORT_LESSONS} lessons with a clear progression. Each lesson must directly build on the concept or data transformation from the previous lesson, constructing a cohesive mental model or mini-pipeline rather than disconnected fragments. Blend modalities where it helps: 'drawing' for architecture/data-flow intuition before formulas, 'spreadsheet' for matrix shapes and stepwise numeric intuition (MMULT, ARRAYFORMULA, cell math), 'code' for implementing functions. At least half the lessons must be 'code' so the course stays runnable and verifiable.
 2. Concrete Domain Sample Data: NEVER use lazy generic placeholders like foo, bar, or arbitrary [1, 2, 3] unless strictly necessary. Always use realistic, domain-relevant sample data tied to the topic (e.g. RGB pixel triples [255, 128, 0] for vision, token sequences for NLP, timestamped sensor readings for time-series, (x, y) coordinates for geometry, trade prices for finance). NEVER copy the learner's topic/notes wording verbatim as sample data (e.g. if notes say "learning vector search", do NOT emit docs = ['learning vector search']).
 3. Active Inspection & Prediction: Every lesson is a Solveit micro-lesson. The inspect_prompt MUST ask the learner to predict what a specific variable or expression evaluates to before running the code (e.g. "Before running: predict what make_array([255, 0, 0])[0] evaluates to. Run to verify.").
 3b. Explanation Before Exercise: Every lesson MUST include "explanation" (what the concept is + why it matters). Lesson 1 is always a foundations explainer for beginners — never code-only.
+3c. Cited Sources: Every lesson MUST include "source_refs" with 1-3 named citations (RFCs, vendor docs, textbooks, papers) the learner can look up.
+3c. Cited Sources: Every lesson MUST include "source_refs" with 1-3 named citations (RFCs, vendor docs, textbooks, papers) the learner can look up.
 4. Scaffolded Starter Code (CODE lessons): starter_code must contain a clear comment (e.g. # TODO: ...) guiding where to write code, but MUST be incomplete so that it FAILS test_code out of the box. solution_code must PASS test_code with a clean 1-3 line implementation. SPREADSHEET lessons need sheet_cells + success_cells instead of code; DRAWING lessons need drawing_prompt instead of code.
 5. Sandboxed Testing Environment: for CODE lessons, the learner's code lives in a file named main.py, and your test_code runs right next to it. So test_code MUST start by importing what it checks from main, for example: from main import make_array
 6. Allowed Sandbox Libraries: Import ONLY the Python standard library plus: {INSTALLED_SANDBOX_LIBRARY_TEXT}. Never import anything else (pandas, sklearn, requests, ... are NOT installed and break the lesson).
 7. Pure, Small Functions: Keep functions small, deterministic, and fast (<1 second). No file I/O, no network access, no infinite loops, no input().
+
 
 OUTPUT FORMAT (strict — do not skip)
 Reply ONLY with one ```json fenced block and NOTHING ELSE. No explanations, no text before or after the fence. The block must look EXACTLY like this:
@@ -281,6 +286,7 @@ Reply ONLY with one ```json fenced block and NOTHING ELSE. No explanations, no t
       "modality": "code (default) | spreadsheet | drawing",
       "objective": "The single idea this lesson teaches, in one sentence.",
       "explanation": "Concept explainer before the exercise (lesson 1 = foundations, never code-only).",
+      "source_refs": ["Named citation the learner can look up"],
       "sample_data": "Concrete domain-relevant input, e.g. raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
       "expected_result": "The exact evaluated result the sample produces.",
       "micro_task": "The concrete 1-3 line task the learner must do (code lines / formulas to enter / what to sketch).",
@@ -291,6 +297,7 @@ Reply ONLY with one ```json fenced block and NOTHING ELSE. No explanations, no t
       "sheet_cells": "SPREADSHEET lessons only: {{\"A1\": \"label\", \"B2\": 3, \"G2\": \"=ROWS(B2:D4)\"}} starter template (<=15 cells).",
       "success_cells": "SPREADSHEET lessons only: [{{\"cell\": \"G2\", \"expected\": \"3x3\"}}] graded targets (1-4).",
       "drawing_prompt": "DRAWING lessons only: exactly what to draw on the canvas and how success is judged."
+
     }}
   ]
 }}
@@ -518,6 +525,15 @@ def _validate_test_imports_main(lesson: dict[str, Any], lesson_index: int) -> No
         )
 
 
+def _import_source_refs(raw: dict[str, Any]) -> list[str]:
+    refs = raw.get("source_refs") or raw.get("sources") or []
+    if isinstance(refs, str) and refs.strip():
+        return [refs.strip()]
+    if not isinstance(refs, list):
+        return []
+    return [item.strip() for item in refs if isinstance(item, str) and item.strip()][:8]
+
+
 def _normalize_lesson(raw: dict[str, Any], order: int) -> CuratedLessonBlueprint:
     lesson: dict[str, Any] = raw if isinstance(raw, dict) else {}
     modality = str(lesson.get("modality", "code") or "code").lower().strip()
@@ -587,7 +603,8 @@ def _normalize_lesson(raw: dict[str, Any], order: int) -> CuratedLessonBlueprint
         sheet_cells=sheet_cells,  # type: ignore[arg-type]
         success_cells=success_cells,
         drawing_prompt=drawing_prompt,
-        source_refs=["Solveit micro-lesson contract (imported from chat)"],
+        source_refs=_import_source_refs(raw)
+        or ["Solveit micro-lesson contract (imported from chat)"],
         skills=[],
     )
 
@@ -635,15 +652,15 @@ def normalize_course_payload(
         "curiosity_loop_active": True,
         "boilerplate_eliminated": True,
     }
-    grounded_in = ["Solveit micro-lesson contract (imported from a chat reply)"]
+    grounded_in = ["Imported chat course (concept, example, and cited sources)"]
     if topic.strip():
         grounded_in.append(f"Learner topic: {topic.strip()}")
 
     return CuratedCourseResult(
         slug=f"generated-{slug_base}",
         title=title,
-        description=description or f"A Solveit micro-step course for {title}.",
-        narrative_arc=narrative_arc or "From toy-data intuition to a working implementation.",
+        description=description or f"A hands-on course for {title}.",
+        narrative_arc=narrative_arc or "From a worked example to a verified implementation.",
         lesson_count=len(lessons),
         lessons=lessons,
         solveit_compliance=solveit_compliance,

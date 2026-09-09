@@ -30,6 +30,7 @@ from agentic_tools import (
     get_learning_intent,
     get_platform_content_tools,
     normalize_sheet_cells,
+    normalize_source_refs,
     normalize_success_cells,
 )
 
@@ -145,6 +146,14 @@ def _resolve_course_directory(courses_dir: Path, slug: str, overwrite: bool) -> 
     return course_path
 
 
+def _format_source_list(source_refs: list[str]) -> str:
+    """Render cited sources for a lesson README."""
+    refs = [ref.strip() for ref in source_refs if ref and str(ref).strip()]
+    if not refs:
+        return "_No external citations for this step._"
+    return "\n".join(f"- {ref}" for ref in refs)
+
+
 def _write_lesson_files(lesson_dir: Path, lesson: CuratedLessonBlueprint) -> None:
     lesson_dir.mkdir(exist_ok=True)
     explanation_block = (
@@ -186,6 +195,8 @@ def _write_lesson_files(lesson_dir: Path, lesson: CuratedLessonBlueprint) -> Non
         f"{lesson.inspect_prompt}\n\n"
         "## 4. Curiosity & Simplification\n"
         f"{lesson.curiosity_prompt}\n\n"
+        "## Sources\n"
+        f"{_format_source_list(lesson.source_refs)}\n\n"
         "---\n"
         f"*Modality: {lesson.modality.title()} | Pedagogy: Solveit (Fast.ai / Answer.AI)*\n"
     )
@@ -231,7 +242,7 @@ def materialize_curated_course(
     Creates:
     - courses/{slug}/README.md
     - courses/{slug}/chapter1/lesson01/
-      - README.md (Solveit instructions)
+      - README.md (concept, example, task, sources)
       - metadata.json (exercise_type configuration)
       - main.py, test.py, solution.py (for code exercises)
     """
@@ -302,6 +313,10 @@ def _apply_lesson_override(
             cur.success_cells = parsed_targets
     if override.get("drawing_prompt") is not None:
         cur.drawing_prompt = str(override.get("drawing_prompt") or "")
+    if override.get("source_refs") is not None:
+        parsed_refs = normalize_source_refs(override.get("source_refs"))
+        if parsed_refs:
+            cur.source_refs = parsed_refs
     return cur
 
 
@@ -523,7 +538,7 @@ class AgenticCourseWorkflow:
         # Step 4: Tool 4 - curate_solveit_course (via LLM)
         # -------------------------------------------------------------------
         t4_start = time.time()
-        course_title = f"{intent.topic.title()} with Solveit"
+        course_title = intent.topic.title()
         course_desc = (
             f"An exploratory, micro-step course designed for {learner_ctx.username}. "
             f"Master {intent.topic} through concrete sample data, sensory feedback, and live inspection."
@@ -545,7 +560,7 @@ class AgenticCourseWorkflow:
                 guided_directive = ""
                 if getattr(learner_ctx, "exercise_format", "") == "guided_completion":
                     guided_directive = (
-                        "\n7. GUIDED CODE COMPLETION DIRECTIVE:\n"
+                        "\n9. GUIDED CODE COMPLETION DIRECTIVE:\n"
                         "The learner has selected Guided Code Completion (scaffolded fill-in-the-blanks).\n"
                         "For CODE lessons, starter_code must be a pre-structured code skeleton containing `____` placeholders to fill in.\n"
                         "micro_task should clearly instruct the learner what values/keywords should replace each `____` blank.\n"
@@ -563,7 +578,7 @@ class AgenticCourseWorkflow:
                 )
 
                 system_solveit_prompt = f"""
-You are an expert Solveit Curriculum Designer (Fast.ai / Answer.AI principles).
+You are an expert curriculum designer for BaseLayer, an interactive coding studio.
 You have already received the results of the 3 context-gathering tools:
 
 TOOL 1 (INTENT):
@@ -594,8 +609,9 @@ Plan micro-step lessons applying the Solveit methodology. Every lesson follows T
 3. "micro_task": assignment in 1-3 logical lines only (code: lines of code; spreadsheet: cell formulas to enter; drawing: what to sketch), plus "inspect_prompt" (live inspection) and "curiosity_prompt" (reflection).
 4. {modality_directive}
 5. Code lessons: Python must import only {platform_tools.installed_sandbox_libraries}; test_code must import from main (e.g. from main import ...) and assert results. Spreadsheet lessons: "sheet_cells" is a small {{A1: value-or-"=FORMULA"}} starter map (<=15 cells), "success_cells" lists 1-4 graded {{cell, expected}} targets that your formulas must satisfy. Drawing lessons: "drawing_prompt" states exactly what to draw and how success is judged.
-6. ANTI-ECHO RULE (STRICT): clarification notes describe intent — they are NOT example data. NEVER copy the topic words or clarification sentences verbatim into "toy_data"/"expected_result" (e.g. if the learner wrote "learning vector search", do NOT emit docs = ['learning vector search', ...]). Always invent fresh, domain-realistic sample data for the topic (for BM25: real term lists, doc collections, scores — not the learner's own sentence).{guided_directive}
-7. WRITING STYLE & TONE DIRECTIVES (STRICT ANTI-AI CONSTRAINTS):
+6. ANTI-ECHO RULE (STRICT): clarification notes describe intent — they are NOT example data. NEVER copy the topic words or clarification sentences verbatim into "toy_data"/"expected_result" (e.g. if the learner wrote "learning vector search", do NOT emit docs = ['learning vector search', ...]). Always invent fresh, domain-realistic sample data for the topic (for BM25: real term lists, doc collections, scores — not the learner's own sentence).
+7. SOURCES: every lesson MUST carry "source_refs" with 1-3 named citations (RFCs, vendor docs, textbooks, papers) the learner can look up. Prefer sources from the learner materials when provided.{guided_directive}
+8. WRITING STYLE & TONE DIRECTIVES (STRICT ANTI-AI CONSTRAINTS):
    Tone: {learner_ctx.tone.upper()}
    - If PRAGMATIC: Understated, dry developer realism about software gotchas, bugs, and computer literalism. No forced comedy or puns.
    - If DIRECT: Technical manual style — neutral, factual, and concise.
@@ -618,6 +634,7 @@ Return a JSON object with this exact shape:
       "modality": "code | spreadsheet | drawing (only from the allowed list)",
       "objective": "Atomic objective",
       "explanation": "Concept explainer: what this is and why it matters (lesson 1 = foundations, never code-only).",
+      "source_refs": ["Named citation the learner can look up"],
       "toy_data": "sample = ...",
       "expected_result": "expected value",
       "micro_task": "Write 1-3 lines to ... (code) / formulas to enter (spreadsheet) / what to sketch (drawing)",

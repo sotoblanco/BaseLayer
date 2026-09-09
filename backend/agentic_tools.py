@@ -5,7 +5,7 @@ This module implements the 4 core tool calls:
 1. get_learning_intent: Extract learning goals, concepts, and materials context.
 2. get_context_learning: Retrieve learner profile and preferences to personalize experience.
 3. get_platform_content_tools: Discover available platform modalities (code, spreadsheet, hand drawing) and sandbox packages.
-4. curate_solveit_course: Apply the Solveit skill to structure micro-steps, toy data, inspection, and narrative arc.
+4. curate_solveit_course: Structure lessons with a cited concept, a worked example, a small task, and an inspection check.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ class PlatformToolsResult(BaseModel):
 
 
 class CuratedLessonBlueprint(BaseModel):
-    """Blueprint for an individual lesson curated under the Solveit methodology."""
+    """Blueprint for an individual runnable lesson."""
 
     title: str
     order: int
@@ -483,7 +483,8 @@ def get_platform_content_tools() -> PlatformToolsResult:
         "Use 'spreadsheet' when the concept involves matrix shapes, broadcasting, or linear algebra intuition.",
         "Use 'code' for implementing concrete functions, classes, and algorithmic logic.",
         "Ensure every code lesson imports only installed libraries (numpy, torch, matplotlib).",
-        "Keep each micro-step atomic so the learner remains in the driver's seat.",
+        "Keep each task atomic so the learner remains in the driver's seat.",
+        "Every lesson README must explain the concept, cite sources, then give a worked example.",
     ]
 
     return PlatformToolsResult(
@@ -562,6 +563,18 @@ def normalize_success_cells(raw: Any, limit: int = 50) -> list[dict[str, Any]]:
     return targets
 
 
+def normalize_source_refs(raw: Any) -> list[str]:
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()]
+    if not isinstance(raw, list):
+        return []
+    refs: list[str] = []
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            refs.append(item.strip())
+    return refs[:8]
+
+
 def curate_solveit_course(
     course_title: str,
     course_description: str,
@@ -571,14 +584,15 @@ def curate_solveit_course(
     platform_tools: PlatformToolsResult | None = None,
     allowed_modalities: list[str] | None = None,
 ) -> CuratedCourseResult:
-    """Tool 4: Curates the exercises, plans structure, and shapes narrative using the Solveit skill.
+    """Tool 4: Curates lessons with a concept explanation, cited sources, a concrete example, and a small task.
 
-    Enforces the Solveit core directives:
-    1. Micro-Steps (1 to 3 lines at a time).
-    2. Toy Data & Expected Result (3-5 rows/items before running).
-    3. Immediate Live Inspection.
-    4. Curiosity Loop & Reflection.
-    5. Ruthless Boilerplate Elimination (<25-line primitives).
+    Each lesson must include:
+    1. Concept — what the idea is and why it exists.
+    2. Sources — named citations the learner can look up.
+    3. Example — a small, domain-relevant input and expected result.
+    4. Task — 1 to 3 lines of work.
+    5. Check — inspect the result immediately.
+    6. Go further — one follow-up question.
 
     Args:
         course_title: Title of the course.
@@ -616,7 +630,9 @@ def curate_solveit_course(
         title = raw_lesson.get("title", f"Lesson {idx}").strip()
         objective = raw_lesson.get("objective", "Master this atomic step.").strip()
         explanation = str(raw_lesson.get("explanation", "") or "").strip()
-        toy_data = raw_lesson.get("toy_data", "input = [1, 2, 3]").strip()
+        toy_data = (
+            raw_lesson.get("toy_data") or raw_lesson.get("example") or "input = [1, 2, 3]"
+        ).strip()
         expected_result = raw_lesson.get("expected_result", "output").strip()
         micro_task = raw_lesson.get("micro_task", "Implement the function in 1-3 lines.").strip()
         inspect_prompt = raw_lesson.get(
@@ -703,7 +719,7 @@ def curate_solveit_course(
                 success_cells=success_cells,
                 drawing_prompt=drawing_prompt,
                 question_image_desc=raw_lesson.get("question_image_desc", ""),
-                source_refs=raw_lesson.get("source_refs", ["Solveit pedagogy"]),
+                source_refs=normalize_source_refs(raw_lesson.get("source_refs")),
                 skills=skills,
             )
         )
@@ -722,7 +738,7 @@ def curate_solveit_course(
     }
 
     grounded_in = [
-        "Solveit Learning Methodology (Fast.ai / Answer.AI)",
+        "Lesson sources cited in each README",
         "Platform Sandbox (Python, NumPy, PyTorch, Matplotlib)",
     ]
     if learner_context and learner_context.has_stored_profile:
@@ -731,8 +747,7 @@ def curate_solveit_course(
     return CuratedCourseResult(
         slug=slug,
         title=clean_title,
-        description=course_description.strip()
-        or f"A Solveit-crafted course for mastering {clean_title}.",
+        description=course_description.strip() or f"A hands-on course for mastering {clean_title}.",
         narrative_arc=narrative_arc.strip()
         or "From sample-data intuition to end-to-end verified implementation.",
         lesson_count=len(curated_lessons),

@@ -251,6 +251,7 @@ class TestBuildImportInstructions:
         assert "NEVER use lazy generic placeholders" in prompt
         assert "Active Inspection & Prediction" in prompt
         assert "Scaffolded Starter Code" in prompt
+        assert "source_refs" in prompt
 
     def test_build_instructions_with_advanced_direct_profile(self):
         prompt_direct = build_import_instructions(

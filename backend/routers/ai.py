@@ -211,6 +211,7 @@ class LessonPreviewRead(BaseModel):
     modality: str = "code"
     objective: str
     explanation: str = ""
+    source_refs: list[str] = Field(default_factory=list)
     toy_data: str
     expected_result: str = ""
     micro_task: str = ""
@@ -244,6 +245,7 @@ class ApproveLessonEdit(BaseModel):
     modality: str | None = None
     objective: str | None = None
     explanation: str | None = None
+    source_refs: list[str] | None = None
     toy_data: str | None = None
     expected_result: str | None = None
     micro_task: str | None = None
@@ -466,6 +468,7 @@ def _map_safe_preview_lessons(lessons: list[Any]) -> list[LessonPreviewRead]:
             modality=lesson.modality,
             objective=lesson.objective,
             explanation=getattr(lesson, "explanation", ""),
+            source_refs=list(getattr(lesson, "source_refs", []) or []),
             toy_data=lesson.toy_data,
             expected_result=lesson.expected_result,
             micro_task=lesson.micro_task,

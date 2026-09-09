@@ -22,10 +22,26 @@ from database import get_session
 from models import Token, User
 
 # --- Configuration ---
-# Sensible local default fallback so local setup never requires manual secret configuration
-SECRET_KEY = (
-    os.getenv("SECRET_KEY") or ""
-).strip() or "baselayer-local-development-secret-key-32bytes-minimum"
+# In development / local mode, default to a stable local dev key if unset or placeholder,
+# so the studio boots seamlessly without configuration friction.
+# Only enforce a strict random SECRET_KEY when running in production.
+_raw_secret = (os.getenv("SECRET_KEY") or "").strip()
+_is_placeholder = not _raw_secret or _raw_secret == "super-secret-key-change-me-in-production"
+_is_production = os.getenv("ENVIRONMENT", "").strip().lower() in {"production", "prod"}
+
+if _is_placeholder and _is_production:
+    raise RuntimeError(
+        "SECRET_KEY is not set or is still the default placeholder value. "
+        "Set SECRET_KEY to a long, random value before starting the server in production "
+        '(e.g. `python -c "import secrets; print(secrets.token_hex(32))"`).'
+    )
+
+LOCAL_DEV_SECRET_KEY = "baselayer-local-dev-secret-key"
+SECRET_KEY = LOCAL_DEV_SECRET_KEY if _is_placeholder else _raw_secret
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365  # 1 year for seamless local sessions
+
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/local-welcome", auto_error=False)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365  # 1 year for seamless local sessions
 
