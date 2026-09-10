@@ -106,6 +106,10 @@ baselayer doctor
 
 # 3. Start the studio
 baselayer up
+
+# 4. Check for updates and sync (OpenClaw-inspired)
+baselayer update status
+baselayer update
 ```
 
 The onboarding wizard asks for your username, target learning goals, tutor style, and optional AI keys, creating your workspace at `~/.baselayer` with validated configuration.
@@ -118,6 +122,13 @@ baselayer onboard --username ada --provider gemini --api-key YOUR_KEY --non-inte
 To run completely offline without AI:
 ```bash
 baselayer onboard --username ada --skip-ai --non-interactive
+```
+
+To update BaseLayer and automatically protect personal courses from git conflicts:
+```bash
+baselayer update            # pulls updates, moves untracked courses to safety, syncs venv/npm
+baselayer update --dry-run  # preview updates without modifying files
+baselayer update repair     # repair and re-sync virtual environment and Docker sandbox
 ```
 
 ---
