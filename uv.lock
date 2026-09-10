@@ -270,7 +270,7 @@ dev = [
 
 [[package]]
 name = "baselayer"
-version = "0.1.63"
+version = "0.1.65"
 source = { virtual = "." }
 dependencies = [
     { name = "modal" },

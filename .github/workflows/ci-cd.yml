@@ -52,4 +52,13 @@ jobs:
 
       - name: Deploy to Modal
         run: |
-          uv run modal deploy backend/modal_app.py
+          if [ -f backend/modal_app.py ]; then
+            uv run modal deploy backend/modal_app.py
+          else
+            echo "Modal runner disabled in local-first studio mode. Skipping cloud deployment."
+          fi
+
+      - name: Verify CLI Package
+        run: |
+          node cli/bin/baselayer.js --version
+          npm pack --dry-run ./cli

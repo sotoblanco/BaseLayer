@@ -76,6 +76,13 @@ def _find_courses_dir() -> Path:
 COURSES_DIR = _find_courses_dir()
 
 
+def _is_local_container(course_dir: Path) -> bool:
+    try:
+        return course_dir.resolve() == (COURSES_DIR / "local").resolve()
+    except OSError:
+        return False
+
+
 def _workspace_courses_dir() -> Path | None:
     """Onboarded workspace courses dir, or None when no workspace is active."""
     if workspace_root is None:
@@ -255,6 +262,37 @@ def _coerce_bundle_description(copied: dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
+_MODALITY_ALIASES: dict[str, str] = {
+    "code": "code",
+    "python": "code",
+    "py": "code",
+    "spreadsheet": "spreadsheet",
+    "sheets": "spreadsheet",
+    "sheet": "spreadsheet",
+    "drawing": "drawing",
+    "draw": "drawing",
+    "sketch": "drawing",
+    "hand_drawn": "drawing",
+    "hand-drawn": "drawing",
+    "chalkboard": "drawing",
+}
+
+
+def _resolve_bundle_exercise_type(copied: dict[str, Any]) -> str:
+    curr = copied.get("exercise_type", "code")
+    if curr != "code":
+        return curr
+    mod = str(copied.get("modality") or "").lower().strip()
+    return _MODALITY_ALIASES.get(mod, curr)
+
+
+def _coerce_bundle_initial_code(copied: dict[str, Any]) -> None:
+    if not copied.get("initial_code"):
+        starter = copied.get("starter_code")
+        if starter:
+            copied["initial_code"] = starter
+
+
 class ExportLessonBundle(BaseModel):
     title: str
     slug: str = ""
@@ -287,29 +325,8 @@ class ExportLessonBundle(BaseModel):
             return data
         copied = dict(data)
         copied["slug"] = _coerce_bundle_slug(copied)
-        if not copied.get("initial_code") and copied.get("starter_code"):
-            copied["initial_code"] = copied["starter_code"]
-        # Chat-course dialect: "modality" maps onto "exercise_type" so pasting
-        # a generated course JSON into the bundle importer keeps its tools.
-        # An explicitly set non-default exercise_type always wins; "code" is
-        # the field default and therefore indistinguishable from unset.
-        mod = str(copied.get("modality") or "").lower().strip()
-        aliases = {
-            "code": "code",
-            "python": "code",
-            "py": "code",
-            "spreadsheet": "spreadsheet",
-            "sheets": "spreadsheet",
-            "sheet": "spreadsheet",
-            "drawing": "drawing",
-            "draw": "drawing",
-            "sketch": "drawing",
-            "hand_drawn": "drawing",
-            "hand-drawn": "drawing",
-            "chalkboard": "drawing",
-        }
-        if mod in aliases and copied.get("exercise_type", "code") == "code":
-            copied["exercise_type"] = aliases[mod]
+        _coerce_bundle_initial_code(copied)
+        copied["exercise_type"] = _resolve_bundle_exercise_type(copied)
         copied["description"] = _coerce_bundle_description(copied)
         return copied
 
@@ -929,6 +946,8 @@ def _build_course_summary(
 def _is_valid_course_dir(course_dir: Path) -> bool:
     if not course_dir.is_dir() or course_dir.name.startswith("."):
         return False
+    if _is_local_container(course_dir):
+        return False
     return _validate_slug(course_dir.name)
 
 
@@ -961,23 +980,27 @@ def _course_summary_from_dir(course_dir: Path) -> FileCourseSummary | None:
     return _fast_course_summary(course_dir)
 
 
+def _collect_root_summaries(root: Path, seen: set[str]) -> list[FileCourseSummary]:
+    if not root.exists():
+        return []
+    summaries: list[FileCourseSummary] = []
+    for entry in sorted(root.iterdir()):
+        if entry.name in seen:
+            continue
+        summary = _fast_course_summary(entry)
+        if summary is not None:
+            seen.add(entry.name)
+            summaries.append(summary)
+    return summaries
+
+
 @router.get("/", response_model=list[FileCourseSummary])
 def list_file_courses():
     """List all available file-based courses (workspace overlay + built-ins)."""
     seen: set[str] = set()
     summaries: list[FileCourseSummary] = []
     for root in _course_roots():
-        if not root.exists():
-            continue
-        for entry in sorted(root.iterdir()):
-            if entry.name in seen:
-                continue
-            if root == COURSES_DIR and entry.name == "local" and entry.is_dir():
-                continue
-            summary = _fast_course_summary(entry)
-            if summary is not None:
-                seen.add(entry.name)
-                summaries.append(summary)
+        summaries.extend(_collect_root_summaries(root, seen))
     return summaries
 
 
@@ -999,14 +1022,21 @@ def _find_lesson_in_course_or_404(course: FileCourse, lesson_slug: str) -> FileL
     )
 
 
+def _find_course_in_root(root: Path, course_slug: str) -> Path | None:
+    course_path = root / course_slug
+    if _is_local_container(course_path):
+        return None
+    if _is_safe_subpath(course_path, root) and course_path.is_dir():
+        return course_path
+    return None
+
+
 def _get_safe_course_dir(course_slug: str) -> Path | None:
     if not _validate_slug(course_slug):
         return None
     for root in _course_roots():
-        if root == COURSES_DIR and course_slug == "local" and (COURSES_DIR / "local").is_dir():
-            continue
-        course_path = root / course_slug
-        if _is_safe_subpath(course_path, root) and course_path.is_dir():
+        course_path = _find_course_in_root(root, course_slug)
+        if course_path is not None:
             return course_path
     return None
 
