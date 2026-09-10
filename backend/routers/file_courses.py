@@ -96,6 +96,9 @@ def _course_roots() -> list[Path]:
     ws = _workspace_courses_dir()
     if ws is not None:
         roots.append(ws)
+    local_in_repo = COURSES_DIR / "local"
+    if local_in_repo.is_dir() and local_in_repo not in roots:
+        roots.append(local_in_repo)
     if COURSES_DIR not in roots:
         roots.append(COURSES_DIR)
     return roots
@@ -969,6 +972,8 @@ def list_file_courses():
         for entry in sorted(root.iterdir()):
             if entry.name in seen:
                 continue
+            if root == COURSES_DIR and entry.name == "local" and entry.is_dir():
+                continue
             summary = _fast_course_summary(entry)
             if summary is not None:
                 seen.add(entry.name)
@@ -998,6 +1003,8 @@ def _get_safe_course_dir(course_slug: str) -> Path | None:
     if not _validate_slug(course_slug):
         return None
     for root in _course_roots():
+        if root == COURSES_DIR and course_slug == "local" and (COURSES_DIR / "local").is_dir():
+            continue
         course_path = root / course_slug
         if _is_safe_subpath(course_path, root) and course_path.is_dir():
             return course_path

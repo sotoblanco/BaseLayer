@@ -106,6 +106,10 @@ baselayer doctor
 
 # 3. Start the studio
 baselayer up
+
+# 4. Check for updates and sync (OpenClaw-inspired)
+baselayer update status
+baselayer update
 ```
 
 The onboarding wizard asks for your username, target learning goals, tutor style, and optional AI keys, creating your workspace at `~/.baselayer` with validated configuration.
@@ -118,6 +122,13 @@ baselayer onboard --username ada --provider gemini --api-key YOUR_KEY --non-inte
 To run completely offline without AI:
 ```bash
 baselayer onboard --username ada --skip-ai --non-interactive
+```
+
+To update BaseLayer and automatically protect personal courses from git conflicts:
+```bash
+baselayer update            # pulls updates, moves untracked courses to safety, syncs venv/npm
+baselayer update --dry-run  # preview updates without modifying files
+baselayer update repair     # repair and re-sync virtual environment and Docker sandbox
 ```
 
 ---
@@ -170,6 +181,7 @@ BaseLayer is designed around a local-first philosophy with zero cloud lock-in. F
   - `data/learners/{user}/LEARNING.md`: Durable learner profile.
   - `courses/`: Directory where AI-generated courses are saved.
 - **Union Course Catalog**: Automatically merges courses from the repository `courses/` directory and your local workspace `~/.baselayer/courses/`.
+- **Git Isolation for Personal Courses**: Courses created in `~/.baselayer/courses/` or configured via `BASELAYER_COURSES_DIR` reside outside the Git repository, protecting your work from branch changes or `git pull` updates. For in-tree development, `courses/local/` and prefixes (`courses/local-*/`, `courses/custom-*/`, `courses/my-*/`) are ignored by Git and discovered automatically.
 - **Terminal Profile Builder**: Configure or inspect your profile at any time:
   ```bash
   uv run python backend/scripts/build_profile.py
