@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.66](https://github.com/sotoblanco/BaseLayer/compare/v0.1.65...v0.1.66) (2026-09-10)
+
+
+### Bug Fixes
+
+* **ci:** fix CRAP complexity, guard modal deploy in CI/CD, and update version to 0.1.65 ([afd1f26](https://github.com/sotoblanco/BaseLayer/commit/afd1f260395843b7a7e31fe92a9f5c9ae668ae27))
+
 ### [0.1.65](https://github.com/sotoblanco/BaseLayer/compare/v0.1.64...v0.1.65) (2026-09-10)
 
 
