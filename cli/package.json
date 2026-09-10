@@ -1,0 +1,16 @@
+{
+  "name": "baselayer",
+  "version": "0.1.61",
+  "description": "Local-first AI learning studio: onboard once, learn in the browser or terminal",
+  "bin": {
+    "baselayer": "./bin/baselayer.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ]
+}

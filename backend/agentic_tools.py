@@ -383,20 +383,53 @@ def get_context_learning(
         except OSError:
             pass
 
-    # Default adaptive profile for unprofiled learners
-    guidance = (
-        f"Learner '{clean_user}' has no stored profile. Defaulting to Solveit micro-step pacing: "
-        "start with toy data and sensory verification; offer multi-modal support (code with spreadsheet intuition)."
-    )
+    # Default adaptive profile for unprofiled learners. Global
+    # INSTRUCTOR.md defaults (if onboarded) overlay the built-ins;
+    # a stored LEARNING.md profile always wins over both.
+    instructor: dict[str, Any] = {}
+    try:
+        try:
+            from workspace import get_instructor_defaults
+        except ModuleNotFoundError:
+            from backend.workspace import get_instructor_defaults
+        instructor = get_instructor_defaults()
+    except Exception:
+        instructor = {}
+    modalities = instructor.get("modality_order") or ["code", "spreadsheet", "drawing"]
+    tutor_style = instructor.get("tutor_style", "solveit")
+    tone = instructor.get("tone", "pragmatic")
+    pace = instructor.get("pace", "unhurried")
+    exercise_format = instructor.get("exercise_format", "micro_steps")
+    if tutor_style not in ("solveit", "socratic", "direct", "blooms"):
+        tutor_style = "solveit"
+    if tone not in ("direct", "pragmatic", "concise"):
+        tone = "pragmatic"
+    if pace not in ("unhurried", "sprint", "mixed"):
+        pace = "unhurried"
+    if exercise_format not in ("micro_steps", "macro_challenges", "guided_completion"):
+        exercise_format = "micro_steps"
+    source = "INSTRUCTOR.md defaults" if instructor else "built-in defaults"
+    if instructor:
+        guidance = (
+            f"Learner '{clean_user}' has no stored profile. Defaulting to {source}: "
+            f"{tutor_style} pacing ({pace}), {tone} tone. "
+            "Start with sample data and sensory verification; offer multi-modal support."
+        )
+    else:
+        guidance = (
+            f"Learner '{clean_user}' has no stored profile. Defaulting to Solveit micro-step pacing: "
+            "start with toy data and sensory verification; offer multi-modal support (code with spreadsheet intuition)."
+        )
     return LearnerContextResult(
         username=clean_user,
         has_stored_profile=False,
-        preferred_modalities=["code", "spreadsheet", "drawing"],
+        preferred_modalities=[m for m in modalities if m in ("code", "spreadsheet", "drawing")]
+        or ["code", "spreadsheet", "drawing"],
         understanding_level="Intermediate",
-        tutor_style="solveit",
-        tone="pragmatic",
-        pace="unhurried",
-        exercise_format="micro_steps",
+        tutor_style=tutor_style,  # type: ignore[arg-type]
+        tone=tone,  # type: ignore[arg-type]
+        pace=pace,  # type: ignore[arg-type]
+        exercise_format=exercise_format,  # type: ignore[arg-type]
         prior_courses=[],
         personalization_guidance=guidance,
     )

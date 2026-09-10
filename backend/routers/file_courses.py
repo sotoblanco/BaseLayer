@@ -33,6 +33,14 @@ from project_artifacts import (
     get_user_artifacts,
     is_project_course,
 )
+
+try:
+    from workspace import workspace_root
+except ModuleNotFoundError:
+    try:
+        from backend.workspace import workspace_root
+    except ModuleNotFoundError:
+        workspace_root = None  # type: ignore[assignment]
 from spreadsheet_verification import (
     SheetReadError,
     SpreadsheetTargetCell,
@@ -53,6 +61,9 @@ def _find_courses_dir() -> Path:
     env_path = os.environ.get("COURSES_DIR")
     if env_path:
         return Path(env_path)
+    ws_path = os.environ.get("BASELAYER_COURSES_DIR")
+    if ws_path:
+        return Path(ws_path)
     cur = Path(__file__).resolve().parent
     for _ in range(6):
         candidate = cur / "courses"
@@ -63,6 +74,46 @@ def _find_courses_dir() -> Path:
 
 
 COURSES_DIR = _find_courses_dir()
+
+
+def _workspace_courses_dir() -> Path | None:
+    """Onboarded workspace courses dir, or None when no workspace is active."""
+    if workspace_root is None:
+        return None
+    try:
+        ws = workspace_root()
+    except Exception:
+        return None
+    if ws is None:
+        return None
+    target = ws / "courses"
+    return target if target.is_dir() else None
+
+
+def _course_roots() -> list[Path]:
+    """Catalog roots, workspace-first: your generated courses overlay built-ins."""
+    roots: list[Path] = []
+    ws = _workspace_courses_dir()
+    if ws is not None:
+        roots.append(ws)
+    if COURSES_DIR not in roots:
+        roots.append(COURSES_DIR)
+    return roots
+
+
+def _course_write_root() -> Path:
+    """Where user-generated courses (imports) are written."""
+    if workspace_root is not None:
+        try:
+            ws = workspace_root()
+        except Exception:
+            ws = None
+        if ws is not None:
+            target = ws / "courses"
+            target.mkdir(parents=True, exist_ok=True)
+            return target
+    return COURSES_DIR
+
 
 _SLUG_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
 
@@ -235,6 +286,27 @@ class ExportLessonBundle(BaseModel):
         copied["slug"] = _coerce_bundle_slug(copied)
         if not copied.get("initial_code") and copied.get("starter_code"):
             copied["initial_code"] = copied["starter_code"]
+        # Chat-course dialect: "modality" maps onto "exercise_type" so pasting
+        # a generated course JSON into the bundle importer keeps its tools.
+        # An explicitly set non-default exercise_type always wins; "code" is
+        # the field default and therefore indistinguishable from unset.
+        mod = str(copied.get("modality") or "").lower().strip()
+        aliases = {
+            "code": "code",
+            "python": "code",
+            "py": "code",
+            "spreadsheet": "spreadsheet",
+            "sheets": "spreadsheet",
+            "sheet": "spreadsheet",
+            "drawing": "drawing",
+            "draw": "drawing",
+            "sketch": "drawing",
+            "hand_drawn": "drawing",
+            "hand-drawn": "drawing",
+            "chalkboard": "drawing",
+        }
+        if mod in aliases and copied.get("exercise_type", "code") == "code":
+            copied["exercise_type"] = aliases[mod]
         copied["description"] = _coerce_bundle_description(copied)
         return copied
 
@@ -888,12 +960,20 @@ def _course_summary_from_dir(course_dir: Path) -> FileCourseSummary | None:
 
 @router.get("/", response_model=list[FileCourseSummary])
 def list_file_courses():
-    """List all available file-based courses"""
-    if not COURSES_DIR.exists():
-        return []
-
-    summaries = [_fast_course_summary(d) for d in sorted(COURSES_DIR.iterdir())]
-    return [s for s in summaries if s is not None]
+    """List all available file-based courses (workspace overlay + built-ins)."""
+    seen: set[str] = set()
+    summaries: list[FileCourseSummary] = []
+    for root in _course_roots():
+        if not root.exists():
+            continue
+        for entry in sorted(root.iterdir()):
+            if entry.name in seen:
+                continue
+            summary = _fast_course_summary(entry)
+            if summary is not None:
+                seen.add(entry.name)
+                summaries.append(summary)
+    return summaries
 
 
 def _get_course_or_404(course_slug: str) -> FileCourse:
@@ -917,10 +997,11 @@ def _find_lesson_in_course_or_404(course: FileCourse, lesson_slug: str) -> FileL
 def _get_safe_course_dir(course_slug: str) -> Path | None:
     if not _validate_slug(course_slug):
         return None
-    course_path = COURSES_DIR / course_slug
-    if not _is_safe_subpath(course_path, COURSES_DIR) or not course_path.is_dir():
-        return None
-    return course_path
+    for root in _course_roots():
+        course_path = root / course_slug
+        if _is_safe_subpath(course_path, root) and course_path.is_dir():
+            return course_path
+    return None
 
 
 def _resolve_direct_lesson_path(course_path: Path, lesson_slug: str) -> Path:
@@ -1024,17 +1105,23 @@ def _sanitize_slug(raw: str, default: str = "imported") -> str:
     return cleaned[:50] or default
 
 
+def _is_within_course_roots(target: Path) -> bool:
+    """Traversal guard across the union catalog (workspace overlay + built-ins)."""
+    return any(_is_safe_subpath(target, root) for root in _course_roots())
+
+
 def _pick_safe_import_course_dir(base_slug: str) -> tuple[str, Path]:
     slug = _sanitize_slug(base_slug, "imported-course")
-    target = COURSES_DIR / slug
+    write_root = _course_write_root()
+    target = write_root / slug
     if not target.exists():
         return slug, target
-    target_imported = COURSES_DIR / f"{slug}-imported"
+    target_imported = write_root / f"{slug}-imported"
     if not target_imported.exists():
         return f"{slug}-imported", target_imported
     suffix = int(time.time()) % 10000
     unique_slug = f"{slug}-{suffix}"
-    return unique_slug, COURSES_DIR / unique_slug
+    return unique_slug, write_root / unique_slug
 
 
 _CODE_FILE_EXTENSIONS: dict[str, tuple[str, str, str]] = {
@@ -1442,7 +1529,7 @@ def _get_safe_lesson_dir_or_404(course_slug: str, lesson_slug: str) -> Path:
 
 def _get_safe_media_file_or_404(lesson_dir: Path, filename: str) -> Path:
     image_path = lesson_dir / filename
-    if not _is_safe_subpath(image_path, COURSES_DIR) or not image_path.exists():
+    if not _is_within_course_roots(image_path) or not image_path.exists():
         raise HTTPException(status_code=404, detail=f"File '{filename}' not found for this lesson")
     return image_path
 
@@ -1469,7 +1556,7 @@ class SolutionCodeRead(BaseModel):
 
 def _read_safe_solution_code(lesson_dir: Path) -> str:
     _language, _main, _test, solution_path = _detect_language_and_files(lesson_dir)
-    if not _is_safe_subpath(solution_path, COURSES_DIR):
+    if not _is_within_course_roots(solution_path):
         raise HTTPException(status_code=403, detail="Access denied")
     content = read_file_content(solution_path)
     if not content:

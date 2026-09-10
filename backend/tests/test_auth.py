@@ -71,6 +71,54 @@ class TestActiveLearner:
             assert res.json()["username"] == "grace-hopper"
             assert (learners_dir / "grace-hopper" / "LEARNING.md").is_file()
 
+    def test_is_learner_profile_dir_branches(self, tmp_path: Path):
+        from auth import _is_learner_profile_dir
+
+        plain = tmp_path / "ada"
+        plain.mkdir()
+        assert _is_learner_profile_dir(plain) is False  # no LEARNING.md yet
+        (plain / "LEARNING.md").write_text("# ada\n", encoding="utf-8")
+        assert _is_learner_profile_dir(plain) is True
+
+        verifier = tmp_path / "verifier_123"
+        verifier.mkdir()
+        (verifier / "LEARNING.md").write_text("# v\n", encoding="utf-8")
+        assert _is_learner_profile_dir(verifier) is False
+
+        stray = tmp_path / "notes.txt"
+        stray.write_text("x", encoding="utf-8")
+        assert _is_learner_profile_dir(stray) is False
+
+    def test_find_first_existing_profile_branches(self, tmp_path: Path):
+        from auth import _find_first_existing_profile
+
+        base = tmp_path / "case"
+        # Missing learners dir -> None.
+        with patch("learner_profile.get_learners_data_dir", return_value=base / "nope"):
+            assert _find_first_existing_profile() is None
+        # Empty dir -> None.
+        learners = base / "learners"
+        learners.mkdir(parents=True)
+        with patch("learner_profile.get_learners_data_dir", return_value=learners):
+            assert _find_first_existing_profile() is None
+            # Only verifier scratch dirs -> None.
+            verifier = learners / "verifier_9"
+            verifier.mkdir()
+            (verifier / "LEARNING.md").write_text("# v\n", encoding="utf-8")
+            assert _find_first_existing_profile() is None
+            # Sorted first valid profile wins.
+            for name in ("zara", "ada"):
+                user_dir = learners / name
+                user_dir.mkdir()
+                (user_dir / "LEARNING.md").write_text(f"# {name}\n", encoding="utf-8")
+            assert _find_first_existing_profile() == "ada"
+            # Backend failure degrades to None instead of raising.
+            with patch(
+                "learner_profile.get_learners_data_dir",
+                side_effect=RuntimeError("disk gone"),
+            ):
+                assert _find_first_existing_profile() is None
+
 
 class TestLocalWelcome:
     """Tests for /auth/local-welcome."""

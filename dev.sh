@@ -31,10 +31,27 @@ ensure_secret_key() {
     fi
 }
 
-# Load environment variables if .env exists
+# Load environment variables if .env exists.
+# Preset vars (e.g. from `baselayer up`, which injects the onboarded workspace
+# .env) win: the repo .env only fills keys that are still unset.
 if [ -f .env ]; then
     log "Loading .env file"
+    _preset_keys="LLM_PROVIDER LLM_MODEL LLM_API_KEY LLM_API_BASE GEMINI_API_KEY OPENAI_API_KEY LEARNERS_DATA_DIR BASELAYER_WORKSPACE BASELAYER_COURSES_DIR COURSES_DIR"
+    for _k in $_preset_keys; do
+        eval "${_k}_SAVED=\"\${$_k:-}\""
+    done
+    set -a
+    # shellcheck disable=SC1091
     source ./.env
+    set +a
+    for _k in $_preset_keys; do
+        eval "_s=\"\${${_k}_SAVED:-}\""
+        if [ -n "$_s" ]; then
+            eval "export $_k=\"\$_s\""
+        fi
+        eval "unset ${_k}_SAVED"
+    done
+    unset _preset_keys _k _s
 fi
 ensure_secret_key
 

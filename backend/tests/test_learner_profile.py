@@ -729,6 +729,19 @@ Advanced test runner.
         fm2, _ = parse_frontmatter(md2)
         assert fm2["preferred_modalities"] == ["code", "spreadsheet"]
 
+    def test_explicit_modalities_beat_unblock_inference(self):
+        # The onboard "Tool Focus" answer is explicit: it must survive even
+        # when the unblock strategy would infer a narrower set.
+        from learner_profile import aggregate_questionnaire_to_markdown, parse_frontmatter
+
+        q = LearnerQuestionnaire(
+            unblock_strategies=["breakdown_code"],
+            preferred_modalities=["code", "spreadsheet", "drawing"],
+        )
+        md = aggregate_questionnaire_to_markdown("explicit_learner", q)
+        fm, _ = parse_frontmatter(md)
+        assert fm["preferred_modalities"] == ["code", "spreadsheet", "drawing"]
+
     def test_apply_course_builder_preferences_blends_profile_and_records_signal(self, tmp_path):
         from learner_profile import apply_course_builder_preferences, get_or_create_profile
 

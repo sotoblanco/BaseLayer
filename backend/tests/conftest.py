@@ -11,6 +11,8 @@ import os
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["GOOGLE_CLIENT_ID"] = "fake-google-client-id.apps.googleusercontent.com"
 os.environ["DATABASE_URL"] = "sqlite://"  # in-memory
+# Keep tests hermetic: never pick up a developer's ~/.baselayer workspace.
+os.environ["BASELAYER_IGNORE_WORKSPACE"] = "1"
 
 from pathlib import Path
 

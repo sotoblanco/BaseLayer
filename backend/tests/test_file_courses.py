@@ -1589,6 +1589,72 @@ class TestShareExportImport:
         assert "vector_dot" in (imported_dir / "main.py").read_text()
         assert "Calculate dot product" in (imported_dir / "README.md").read_text()
 
+    def test_import_chat_dialect_keeps_modality_tools(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        """A generated-course JSON using the chat `modality` dialect must keep
+        its spreadsheet/drawing tools through the bundle importer (regression:
+        modality was silently dropped and everything became code)."""
+        import json as json_lib
+
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        payload = {
+            "title": "Pixel Gym",
+            "description": "Sketch, sheet, code.",
+            "lessons": [
+                {
+                    "title": "Sketch the pipeline",
+                    "modality": "drawing",
+                    "objective": "See the flow.",
+                    "micro_task": "Sketch it.",
+                    "inspect_prompt": "Labeled?",
+                    "drawing_prompt": "Sketch the 3-stage pipeline with labels.",
+                },
+                {
+                    "title": "Normalize in cells",
+                    "modality": "spreadsheet",
+                    "objective": "Feel the math.",
+                    "micro_task": "Enter the formula.",
+                    "inspect_prompt": "Check G2.",
+                    "sheet_cells": {"G2": "=ROWS(B2:D4)"},
+                    "success_cells": [{"cell": "G2", "expected": 3}],
+                },
+            ],
+        }
+
+        res = client.post("/file-courses/import", json=payload, headers=auth_headers)
+        assert res.status_code == 200, res.text
+        data = res.json()
+        assert data["lesson_count"] == 2
+
+        draw_meta = json_lib.loads(
+            (
+                courses_dir
+                / data["course_slug"]
+                / "chapter1"
+                / "sketch-the-pipeline"
+                / "metadata.json"
+            ).read_text()
+        )
+        assert draw_meta["exercise_type"] == "drawing"
+        assert "pipeline" in draw_meta["drawing"]["prompt_text"]
+
+        sheet_meta = json_lib.loads(
+            (
+                courses_dir
+                / data["course_slug"]
+                / "chapter1"
+                / "normalize-in-cells"
+                / "metadata.json"
+            ).read_text()
+        )
+        assert sheet_meta["exercise_type"] == "spreadsheet"
+        assert sheet_meta["sheet"]["cells"]["G2"] == "=ROWS(B2:D4)"
+
     def test_helper_unit_functions(self, tmp_path: Path):
         from routers.file_courses import (
             _decode_image_base64_safely,

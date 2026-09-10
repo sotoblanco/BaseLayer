@@ -2,6 +2,19 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any
 
+try:
+    from workspace import apply_workspace_env
+except ModuleNotFoundError:
+    try:
+        from backend.workspace import apply_workspace_env
+    except ModuleNotFoundError:
+        apply_workspace_env = None  # type: ignore[assignment]
+try:
+    if apply_workspace_env is not None:
+        apply_workspace_env()
+except Exception:
+    pass
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel

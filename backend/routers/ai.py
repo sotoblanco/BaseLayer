@@ -37,6 +37,16 @@ def _find_root_env() -> Path:
     env_override = os.environ.get("ENV_FILE")
     if env_override:
         return Path(env_override)
+    try:
+        try:
+            from workspace import workspace_root
+        except ModuleNotFoundError:
+            from backend.workspace import workspace_root
+        ws = workspace_root()
+    except Exception:
+        ws = None
+    if ws is not None:
+        return ws / ".env"
     cur = Path(__file__).resolve().parent
     for _ in range(6):
         if (cur / ".env").is_file():
@@ -470,6 +480,27 @@ def _map_safe_preview_lessons(lessons: list[Any]) -> list[LessonPreviewRead]:
     ]
 
 
+def _generated_courses_dir() -> Path:
+    """Destination for user-generated courses: workspace when onboarded.
+
+    Reads the COURSES_DIR module global at call time so tests can keep
+    monkeypatching it (conftest runs hermetic with the workspace ignored).
+    """
+    try:
+        try:
+            from workspace import workspace_root
+        except ModuleNotFoundError:
+            from backend.workspace import workspace_root
+        ws = workspace_root()
+    except Exception:
+        ws = None
+    if ws is not None:
+        target = ws / "courses"
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+    return COURSES_DIR
+
+
 def _generate_course_plan(
     topic: str, materials: str, username: str, prefs: dict[str, Any] | None, outline: str = ""
 ) -> Any:
@@ -478,7 +509,7 @@ def _generate_course_plan(
             topic=topic,
             materials=materials,
             username=username,
-            courses_dir=COURSES_DIR,
+            courses_dir=_generated_courses_dir(),
             course_preferences=prefs,
             outline=outline,
         )
@@ -504,7 +535,7 @@ def _materialize_approved_plan(
     try:
         return materialize_planned_course(
             plan=stored_plan,
-            courses_dir=COURSES_DIR,
+            courses_dir=_generated_courses_dir(),
             title_override=request.title,
             description_override=request.description,
             lessons_override=lessons_override,
@@ -526,7 +557,7 @@ def _execute_agentic_build(
             topic=topic,
             materials=materials,
             username=username,
-            courses_dir=COURSES_DIR,
+            courses_dir=_generated_courses_dir(),
             course_preferences=prefs,
             outline=outline,
         )
@@ -714,7 +745,7 @@ def import_learning_path(request: ImportCourseRequest, user: User = Depends(get_
         result = import_course(
             reply,
             topic=request.topic,
-            courses_dir=COURSES_DIR,
+            courses_dir=_generated_courses_dir(),
             verify=request.verify,
         )
     except CourseImportError as exc:

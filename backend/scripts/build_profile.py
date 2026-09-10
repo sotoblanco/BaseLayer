@@ -3,12 +3,19 @@
 Builds or recalibrates data/learners/{username}/LEARNING.md directly
 from the terminal by prompting situational questions without forcing
 arbitrary choices between code, spreadsheets, or drawings.
+
+With ``--onboard`` it runs the full first-run wizard: workspace init
+(``~/.baselayer``), learner profile (LEARNING.md), global teaching
+defaults (INSTRUCTOR.md), and AI provider key setup (.env).
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +31,9 @@ except ModuleNotFoundError:
         apply_questionnaire_profile,
         get_learners_data_dir,
     )
+
+DEFAULT_WORKSPACE = Path.home() / ".baselayer"
+WORKSPACE_VERSION = 1
 
 
 def _format_choice_prompt(prompt: str, options: list[str], default_idx: int) -> None:
@@ -200,6 +210,65 @@ def _parse_cli_args(args: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Run without interactive prompts, using defaults or passed flags.",
     )
+    parser.add_argument(
+        "--onboard",
+        action="store_true",
+        help="Full first-run wizard: workspace + LEARNING.md + INSTRUCTOR.md + AI key.",
+    )
+    parser.add_argument(
+        "--workspace",
+        default=None,
+        help="Workspace root (default: ~/.baselayer). Holds .env, INSTRUCTOR.md, MEMORY.md, data/, courses/.",
+    )
+    parser.add_argument(
+        "--instructor-style",
+        choices=["solveit", "socratic", "direct", "blooms"],
+        default=None,
+        help="Global default tutor style for INSTRUCTOR.md",
+    )
+    parser.add_argument(
+        "--instructor-tone",
+        choices=["direct", "pragmatic", "concise"],
+        default=None,
+        help="Global default tone for INSTRUCTOR.md",
+    )
+    parser.add_argument(
+        "--instructor-pace",
+        choices=["unhurried", "sprint", "mixed"],
+        default=None,
+        help="Global default pace for INSTRUCTOR.md",
+    )
+    parser.add_argument(
+        "--instructor-explanation",
+        choices=["short", "thorough"],
+        default=None,
+        help="Global default explanation depth for INSTRUCTOR.md",
+    )
+    parser.add_argument(
+        "--instructor-format",
+        choices=["micro_steps", "macro_challenges", "guided_completion"],
+        default=None,
+        help="Global default exercise format for INSTRUCTOR.md",
+    )
+    parser.add_argument(
+        "--instructor-hints",
+        choices=["toy_example", "guiding_question", "direct_explanation"],
+        default=None,
+        help="Global default hint style for INSTRUCTOR.md",
+    )
+    parser.add_argument(
+        "--provider",
+        default=None,
+        help="AI provider id (e.g. gemini, ollama, openai). Triggers AI key setup.",
+    )
+    parser.add_argument("--api-key", default=None, help="API key for the provider (if needed).")
+    parser.add_argument("--model", default=None, help="Model override for the provider.")
+    parser.add_argument("--api-base", default=None, help="Base URL override (custom providers).")
+    parser.add_argument(
+        "--skip-ai",
+        action="store_true",
+        help="Skip AI provider setup during onboard.",
+    )
     return parser.parse_args(args)
 
 
@@ -279,16 +348,419 @@ def _resolve_cli_answers(
     return prompt_interactive_questionnaire()
 
 
+# ---------------------------------------------------------------------------
+# Onboard wizard: workspace, INSTRUCTOR.md, AI key setup
+# ---------------------------------------------------------------------------
+
+
+def resolve_workspace(explicit: str | None, base_dir: Path | None = None) -> Path:
+    """Resolve the workspace root for onboard mode.
+
+    Explicit --workspace wins; a passed base_dir (tests, embedding) is treated
+    as the workspace root; otherwise ~/.baselayer.
+    """
+    if explicit:
+        return Path(explicit).expanduser()
+    if base_dir is not None:
+        return Path(base_dir)
+    return DEFAULT_WORKSPACE
+
+
+MEMORY_SKELETON = """# Memory — BaseLayer local studio
+
+## Active learner
+<!-- Set by `baselayer onboard`. -->
+
+## Course progress
+<!-- Updated automatically as lessons complete: course, position, XP. -->
+
+## Notes
+<!-- Durable facts worth remembering across sessions. -->
+"""
+
+
+def init_workspace(workspace: Path) -> dict[str, Path]:
+    """Create the workspace tree and seed files (idempotent)."""
+    learners_dir = workspace / "data" / "learners"
+    courses_dir = workspace / "courses"
+    learners_dir.mkdir(parents=True, exist_ok=True)
+    courses_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = workspace / "config.json"
+    if not config_path.is_file():
+        config_path.write_text(
+            json.dumps(
+                {
+                    "version": WORKSPACE_VERSION,
+                    "workspace": str(workspace),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    memory_path = workspace / "MEMORY.md"
+    if not memory_path.is_file():
+        memory_path.write_text(MEMORY_SKELETON, encoding="utf-8")
+
+    env_path = workspace / ".env"
+    if not env_path.is_file():
+        env_path.write_text(
+            "# BaseLayer local workspace env (managed by `baselayer onboard`)\n", encoding="utf-8"
+        )
+
+    return {
+        "workspace": workspace,
+        "learners_dir": learners_dir,
+        "courses_dir": courses_dir,
+        "config_path": config_path,
+        "memory_path": memory_path,
+        "env_path": env_path,
+        "instructor_path": workspace / "INSTRUCTOR.md",
+    }
+
+
+INSTRUCTOR_DEFAULTS = {
+    "tutor_style": "solveit",
+    "tone": "pragmatic",
+    "pace": "unhurried",
+    "explanation_length": "short",
+    "exercise_format": "micro_steps",
+}
+
+
+def _render_instructor_md(settings: dict[str, Any]) -> str:
+    modalities = settings.get("modality_order", ["drawing", "spreadsheet", "code"])
+    modality_lines = "\n".join(f"  - {mod}" for mod in modalities)
+    return f"""---
+# BaseLayer Instructor Defaults (global teaching defaults)
+# Per-learner overrides live in data/learners/{{username}}/LEARNING.md
+# and always win over these defaults.
+
+tutor_style: {settings["tutor_style"]}
+tone: {settings["tone"]}
+pace: {settings["pace"]}
+explanation_length: {settings["explanation_length"]}
+exercise_format: {settings["exercise_format"]}
+hint_preference: {settings["hint_preference"]}
+modality_order:
+{modality_lines}
+---
+
+# Instructor defaults
+
+## Persona
+{settings["persona"]}
+
+## Lesson contract
+Every generated lesson follows Topic -> Explanation -> Example -> Assignment.
+Lesson 1 is always a foundations explainer, never code-only for beginners.
+Micro-steps stay at 1-3 logical lines; sample data stays concrete (3-5 rows/items).
+
+## Tone rules
+- No "It is not X, but Y" contrast framing.
+- No rhetorical questions, no academic filler transitions.
+- No cheerleading or exclamation-mark hype.
+- State concrete behaviors: what the input is, what breaks, the exact line to handle it.
+"""
+
+
+def _prompt_instructor_settings() -> dict[str, Any]:
+    """Interactively collect global teaching defaults."""
+    print("\n" + "-" * 60)
+    print("Instructor defaults (INSTRUCTOR.md) — how every course should teach.")
+    print("-" * 60)
+    style_idx = _prompt_choice(
+        "Default tutor style for new courses?",
+        [
+            "Solveit: sample data, 1-3 line micro-steps, run & inspect",
+            "Socratic: guiding questions that make you discover the answer",
+            "Direct: clear rule-first explanations with minimal preamble",
+            "Blooms: climb from remember & understand up to evaluate & create",
+        ],
+        default_idx=0,
+    )
+    styles = ["solveit", "socratic", "direct", "blooms"]
+    tutor_style = styles[style_idx]
+
+    tone_idx = _prompt_choice(
+        "Default tone?",
+        [
+            "Pragmatic developer peer (default)",
+            "Direct technical manual",
+            "Ultra-concise, code-first",
+        ],
+        default_idx=0,
+    )
+    tones = ["pragmatic", "direct", "concise"]
+    personas = [
+        "Pragmatic developer peer. Plain-spoken about bugs, dry wit on edge cases, no forced humor.",
+        "Neutral technical manual. Factual, concise, zero preamble.",
+        "Ultra-concise code-first guide. Minimal text, maximum signal.",
+    ]
+
+    pace_idx = _prompt_choice(
+        "Default pace?",
+        ["Unhurried step-by-step (default)", "Sprint (rapid execution)", "Mixed"],
+        default_idx=0,
+    )
+    paces = ["unhurried", "sprint", "mixed"]
+
+    depth_idx = _prompt_choice(
+        "Default explanation depth?",
+        ["Concise essentials (default)", "Thorough background with analogies"],
+        default_idx=0,
+    )
+
+    return {
+        "tutor_style": tutor_style,
+        "tone": tones[tone_idx],
+        "persona": personas[tone_idx],
+        "pace": paces[pace_idx],
+        "explanation_length": "thorough" if depth_idx == 1 else "short",
+        "exercise_format": "micro_steps",
+        "hint_preference": _resolve_hint_preference(tutor_style),
+        "modality_order": ["drawing", "spreadsheet", "code"],
+    }
+
+
+def build_instructor_settings(parsed_args: argparse.Namespace, interactive: bool) -> dict[str, Any]:
+    """Merge instructor flags over defaults (interactive prompts when allowed)."""
+    if interactive:
+        settings = _prompt_instructor_settings()
+    else:
+        settings = {
+            **INSTRUCTOR_DEFAULTS,
+            "persona": "Pragmatic developer peer. Plain-spoken about bugs, dry wit on edge cases, no forced humor.",
+            "hint_preference": _resolve_hint_preference(
+                parsed_args.instructor_style or INSTRUCTOR_DEFAULTS["tutor_style"]
+            ),
+            "modality_order": ["drawing", "spreadsheet", "code"],
+        }
+    overrides = {
+        "tutor_style": parsed_args.instructor_style,
+        "tone": parsed_args.instructor_tone,
+        "pace": parsed_args.instructor_pace,
+        "explanation_length": parsed_args.instructor_explanation,
+        "exercise_format": parsed_args.instructor_format,
+        "hint_preference": parsed_args.instructor_hints,
+    }
+    for key, val in overrides.items():
+        if val:
+            settings[key] = val
+    if parsed_args.instructor_style and not parsed_args.instructor_hints:
+        settings["hint_preference"] = _resolve_hint_preference(parsed_args.instructor_style)
+    return settings
+
+
+def write_instructor_md(path: Path, settings: dict[str, Any]) -> Path:
+    """Write global teaching defaults (overwrite: onboard owns this file)."""
+    path.write_text(_render_instructor_md(settings), encoding="utf-8")
+    return path
+
+
+def _ensure_backend_importable() -> None:
+    """Make both `backend.*` and bare (`llm`, `ai_service`) imports work.
+
+    The wizard runs as `python -m backend.scripts.build_profile` (repo root on
+    sys.path, backend/ is not) while backend modules import each other bare
+    (`from llm import ...`, assuming backend/ on sys.path). Without this, any
+    interpreter without bespoke setup crashes at the AI step.
+    """
+    here = Path(__file__).resolve()
+    backend_dir = here.parent.parent  # .../backend
+    repo_root = backend_dir.parent
+    for entry in (str(repo_root), str(backend_dir)):
+        if entry not in sys.path:
+            sys.path.insert(0, entry)
+
+
+def _lazy_llm() -> tuple[Any, Any, Any]:
+    """Import LLM helpers without pulling the web stack."""
+    _ensure_backend_importable()
+    try:
+        from backend.llm import providers_public, validate_settings
+    except ModuleNotFoundError:
+        from llm import providers_public, validate_settings
+    try:
+        from backend.ai_service import ai_service
+    except ModuleNotFoundError:
+        from ai_service import ai_service
+    return providers_public, validate_settings, ai_service
+
+
+def _upsert_env(env_path: Path, mapping: dict[str, str]) -> None:
+    """Write KEY=value pairs into an .env file, replacing existing keys."""
+    import re
+
+    content = env_path.read_text(encoding="utf-8") if env_path.is_file() else ""
+    for key, value in mapping.items():
+        pattern = rf"^\s*(?:export\s+)?{re.escape(key)}=.*$"
+        replacement = f"{key}={value}"
+        if re.search(pattern, content, flags=re.MULTILINE):
+            content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+        else:
+            if content and not content.endswith("\n"):
+                content += "\n"
+            content += f"{replacement}\n"
+    env_path.write_text(content, encoding="utf-8")
+
+
+def _provider_choices() -> list[dict[str, Any]]:
+    providers_public, _, _ = _lazy_llm()
+    return [dict(p) for p in providers_public()]
+
+
+def _prompt_ai_settings() -> dict[str, Any] | None:
+    """Interactive provider picker + key prompt. Returns None when skipped."""
+    print("\n" + "-" * 60)
+    print("AI provider — optional. Coding and spreadsheets work without it,")
+    print("but course generation and tutoring need a model.")
+    print("-" * 60)
+    providers = _provider_choices()
+    labels = [
+        f"{p['name']} ({'needs API key' if p['needs_key'] else 'no key needed'}) — {p.get('blurb', '')}".strip()
+        for p in providers
+    ]
+    labels.append("Skip AI setup for now")
+    idx = _prompt_choice("Which provider should power your studio?", labels, default_idx=0)
+    if idx >= len(providers):
+        return None
+    provider = providers[idx]
+    api_key = ""
+    if provider["needs_key"]:
+        try:
+            api_key = getpass.getpass(f"Paste your {provider['name']} API key (hidden): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            api_key = ""
+        if not api_key:
+            print("No key entered — skipping AI setup. Re-run with --provider/--api-key later.")
+            return None
+    try:
+        model_input = input(f"Model [{provider['default_model']}] (Enter for default): ").strip()
+    except EOFError:
+        model_input = ""
+    return {
+        "provider": provider["id"],
+        "api_key": api_key,
+        "model": model_input or None,
+        "api_base": None,
+    }
+
+
+def configure_ai_settings(
+    requested: dict[str, Any] | None, env_path: Path
+) -> dict[str, Any] | None:
+    """Validate (and live-check) AI settings, persist to .env. None = skipped."""
+    if not requested:
+        return None
+    _, validate_settings, ai_service = _lazy_llm()
+    try:
+        settings = validate_settings(
+            provider=requested["provider"],
+            api_key=requested.get("api_key", ""),
+            model=requested.get("model"),
+            api_base=requested.get("api_base"),
+        )
+    except ValueError as exc:
+        print(f"AI setup error: {exc}")
+        return None
+    ok, message = ai_service.check_connection(settings)
+    print(message)
+    if not ok:
+        print("AI setup NOT saved — fix the issue above and re-run with --provider/--api-key.")
+        return None
+    mapping = {
+        "LLM_PROVIDER": settings.provider,
+        "LLM_MODEL": settings.model,
+        "LLM_API_KEY": settings.api_key,
+    }
+    if settings.provider == "gemini" and settings.api_key:
+        mapping["GEMINI_API_KEY"] = settings.api_key
+    if settings.provider == "openai" and settings.api_key:
+        mapping["OPENAI_API_KEY"] = settings.api_key
+    if settings.api_base:
+        mapping["LLM_API_BASE"] = settings.api_base
+    _upsert_env(env_path, mapping)
+    return {"provider": settings.provider, "model": settings.model}
+
+
+def _print_onboard_summary(
+    paths: dict[str, Path],
+    username: str,
+    instructor: dict[str, Any],
+    ai: dict[str, Any] | None,
+) -> None:
+    """Prints the full wizard result with next steps."""
+    print("\n" + "=" * 60)
+    print("BaseLayer onboard complete")
+    print("=" * 60)
+    print(f"Workspace:    {paths['workspace']}")
+    print(f"Learner:      {paths['learners_dir'] / username / 'LEARNING.md'}")
+    print(
+        f"Instructor:   {paths['instructor_path']} ({instructor['tutor_style']}, {instructor['tone']})"
+    )
+    print(f"Memory:       {paths['memory_path']}")
+    if ai:
+        print(f"AI provider:  {ai['provider']} ({ai['model']}) — saved to {paths['env_path'].name}")
+    else:
+        print("AI provider:  skipped — coding and spreadsheets still work")
+    print("=" * 60)
+    print("Next: `baselayer up` to open the studio, `baselayer learn` for the terminal player.\n")
+
+
 def build_profile_cli(args: list[str] | None = None, base_dir: Path | None = None) -> int:
     """CLI entrypoint for creating or updating a learner profile."""
     parsed_args = _parse_cli_args(args)
-    username, answers = _resolve_cli_answers(parsed_args)
-    _, parsed = apply_questionnaire_profile(username, answers, base_dir=base_dir)
-    _persist_active_learner(username)
+    if not parsed_args.onboard:
+        # Legacy path: learner profile only, behavior unchanged.
+        username, answers = _resolve_cli_answers(parsed_args)
+        _, parsed = apply_questionnaire_profile(username, answers, base_dir=base_dir)
+        _persist_active_learner(username)
 
-    target_dir = base_dir or get_learners_data_dir()
-    profile_file = target_dir / username / "LEARNING.md"
+        target_dir = base_dir or get_learners_data_dir()
+        profile_file = target_dir / username / "LEARNING.md"
+        _print_profile_summary(profile_file, username, parsed, answers.goal)
+        return 0
+
+    workspace = resolve_workspace(parsed_args.workspace, base_dir)
+    paths = init_workspace(workspace)
+    interactive = not parsed_args.non_interactive
+
+    username, answers = _resolve_cli_answers(parsed_args)
+    _, parsed = apply_questionnaire_profile(username, answers, base_dir=paths["learners_dir"])
+    _persist_active_learner(username)
+    profile_file = paths["learners_dir"] / username / "LEARNING.md"
     _print_profile_summary(profile_file, username, parsed, answers.goal)
+
+    instructor = build_instructor_settings(parsed_args, interactive=interactive)
+    write_instructor_md(paths["instructor_path"], instructor)
+
+    ai_result: dict[str, Any] | None = None
+    if parsed_args.skip_ai:
+        print("Skipping AI setup (--skip-ai).")
+    elif interactive and not (parsed_args.provider or parsed_args.api_key):
+        try:
+            ai_result = configure_ai_settings(_prompt_ai_settings(), paths["env_path"])
+        except Exception as exc:
+            print(f"AI setup unavailable in this Python ({exc}).")
+            print("Your profile and instructor files are saved; re-run onboard to add a key later.")
+    elif parsed_args.provider or parsed_args.api_key:
+        ai_result = configure_ai_settings(
+            {
+                "provider": parsed_args.provider or "gemini",
+                "api_key": parsed_args.api_key or "",
+                "model": parsed_args.model,
+                "api_base": parsed_args.api_base,
+            },
+            paths["env_path"],
+        )
+    else:
+        print("Skipping AI setup (non-interactive, no --provider given).")
+
+    _print_onboard_summary(paths, username, instructor, ai_result)
     return 0
 
 
