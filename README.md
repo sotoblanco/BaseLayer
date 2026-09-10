@@ -1,6 +1,6 @@
 # BaseLayer
 
-**Version:** 0.1.65
+**Version:** 0.1.66
 
 An open-source, local-first studio for **learning by doing**. You take (or write) file-based exercises in a browser IDE: run Python or Rust in a sandbox, build intuition in Google Sheets, or draw on a realistic chalkboard. SocratiQ, the built-in tutor, hints without dumping the full solution.
 

@@ -1,6 +1,6 @@
 {
   "name": "baselayer",
-  "version": "0.1.65",
+  "version": "0.1.66",
   "description": "Local-first AI learning studio: onboard once, learn in the browser or terminal",
   "bin": {
     "baselayer": "./bin/baselayer.js"
