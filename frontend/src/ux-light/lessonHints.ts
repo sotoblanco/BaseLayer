@@ -4,16 +4,19 @@ const MAX_HINTS = 3;
 const MAX_HINT_LENGTH = 200;
 
 const HEADING_KEYWORDS = [
+  'example',
   'toy data',
   'toy',
-  'micro-step',
-  'micro task',
+  'concept',
+  'sources',
   'your task',
   'task',
+  'micro-step',
+  'micro task',
+  'check your work',
   'inspect',
   'expected outcome',
   'expected result',
-  'predict',
   'hint',
   'tip',
 ];
@@ -52,13 +55,14 @@ function headingSections(markdown: string): SectionMatch[] {
 
 function formatContentHint(match: SectionMatch): string | null {
   const { keyword, content } = match;
-  if (keyword.includes('toy')) return `Start from the toy example: ${content}`;
-  if (keyword.includes('predict') || keyword.includes('expected')) {
-    return `Expected result first: ${content}`;
+  if (keyword.includes('concept')) return `Re-read the concept: ${content}`;
+  if (keyword.includes('source')) return `Look up: ${content}`;
+  if (keyword.includes('example') || keyword.includes('toy')) return `Start from the example: ${content}`;
+  if (keyword.includes('expected')) {
+    return `Expected result: ${content}`;
   }
-  if (keyword.includes('inspect')) return `Inspect after running: ${content}`;
-  if (keyword.includes('micro')) return `Your micro-step: ${content}`;
-  if (keyword.includes('task')) return `Re-read the task: ${content}`;
+  if (keyword.includes('inspect') || keyword.includes('check')) return `Check after running: ${content}`;
+  if (keyword.includes('micro') || keyword.includes('task')) return `Re-read the task: ${content}`;
   if (keyword.includes('hint') || keyword.includes('tip')) return `Hint: ${content}`;
   return null;
 }
@@ -75,7 +79,7 @@ function contentHints(description: string): string[] {
 
 function typeHints(lesson: FileLesson): string[] {
   const focus = lesson.skills?.[0] || lesson.title || 'this lesson';
-  const base = `Restate the task in your own words (${focus}), then pick the smallest toy example from the instructions that exercises it.`;
+  const base = `Restate the task in your own words (${focus}), then pick the smallest example from the instructions that exercises it.`;
   switch (lesson.exercise_type) {
     case 'spreadsheet': {
       return [
@@ -106,7 +110,7 @@ function typeHints(lesson: FileLesson): string[] {
  *
  * Priority:
  *  1. Explicit `hints` authored in the lesson metadata.
- *  2. Hints derived from Solveit-style README sections (toy data / micro-step / inspect).
+ *  2. Hints derived from README sections (concept / example / task / check).
  *  3. Exercise-type hints that never reference a "tests tab" (which spreadsheet and
  *     drawing lessons do not have).
  */

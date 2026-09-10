@@ -23,22 +23,18 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 ensure_secret_key() {
     local placeholder="super-secret-key-change-me-in-production"
+    local env_name="${ENVIRONMENT:-}"
+    case "$env_name" in
+        production|prod)
+            return 0
+            ;;
+    esac
     if [ -n "${SECRET_KEY:-}" ] && [ "$SECRET_KEY" != "$placeholder" ]; then
+        export SECRET_KEY
         return 0
     fi
-    SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null || openssl rand -hex 32)"
-    export SECRET_KEY
-    log "Generated SECRET_KEY (placeholder keys are no longer allowed)."
-    if [ -f .env ]; then
-        grep -vE '^(export[[:space:]]+)?SECRET_KEY=' .env > .env.tmp || true
-        if grep -q '^export ' .env 2>/dev/null; then
-            echo "export SECRET_KEY=$SECRET_KEY" >> .env.tmp
-        else
-            echo "SECRET_KEY=$SECRET_KEY" >> .env.tmp
-        fi
-        mv .env.tmp .env
-        log "Saved SECRET_KEY to .env"
-    fi
+    unset SECRET_KEY
+    log "No SECRET_KEY set; backend will use the stable local-dev default."
 }
 
 # ---------- Generate .env.docker from .env ----------

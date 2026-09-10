@@ -83,7 +83,7 @@ Each learner has a personal profile file at `data/learners/{username}/LEARNING.m
 - Frontend: http://localhost:5173  
 - Backend: http://localhost:8000  
 
-`./dev.sh` creates the venv and starts API + UI. Copy `.env.example` → `.env` to set a provider (`LLM_PROVIDER` / `LLM_API_KEY`, optional) and `SECRET_KEY` (`SECRET_KEY` is generated for you in local/Docker dev if empty).
+`./dev.sh` creates the venv and starts API + UI. Copy `.env.example` → `.env` only if you want an LLM provider (`LLM_PROVIDER` / `LLM_API_KEY`). `SECRET_KEY` is optional locally (stable default across restarts); production still requires a real key.
 
 **Stuck**
 
@@ -124,11 +124,12 @@ The backend executes a 4-step agentic workflow defining explicit tool calls:
 1. **`get_learning_intent`**: Analyzes the topic, extracts core target concepts, extracts snippets from learner materials, and searches existing platform courses for conceptual anchors.
 2. **`get_context_learning`**: Retrieves the learner's profile (`data/learners/{user}/LEARNING.md`) or initializes an adaptive profile (understanding level, pace, preferred modalities).
 3. **`get_platform_content_tools`**: Inspects platform capabilities across Coding Studio (sandbox libraries: `numpy`, `torch`, `matplotlib`), Google Sheets workspaces (`MMULT`, `ARRAYFORMULA`), and Hand Drawing canvases.
-4. **`curate_solveit_course`**: Curates the curriculum under the Solveit methodology (Fast.ai / Answer.AI):
-   - **Toy Data**: 3-5 rows or small tensor stated with expected output *before* execution.
-   - **Micro-Steps**: Tasks require only 1 to 3 logical lines of code.
-   - **Live Inspection**: Prompt to inspect intermediate state immediately.
-   - **Curiosity Loop**: Reflection or simplification question at the end of each lesson.
+4. **`curate_solveit_course`**: Curates the curriculum (Topic → Explanation → Example → Assignment):
+   - **Explanation**: concept first; Lesson 1 is always a foundations explainer.
+   - **Sources**: named citations (RFCs, vendor docs, papers) in each lesson.
+   - **Example**: a small, domain-relevant input with the expected result.
+   - **Assignment**: 1 to 3 lines (code), formulas (spreadsheet), or a sketch (drawing); modality blend honored.
+   - **Live Inspection + Curiosity**: verify output immediately, then reflect.
    - **Narrative Arc**: A cohesive storyline connecting the lessons from intuition to working implementation.
 
 The workflow materializes the course into the `courses/` directory so it is immediately playable in the BaseLayer IDE.
@@ -232,7 +233,7 @@ flowchart TB
 
 2. **Frictionless Local Auth & File System Discovery**:
    - Courses are simple folder hierarchies under `courses/` (`README.md`, `main.py`, `test.py`, `metadata.json`).
-   - On `localhost`, `ALLOW_LOCAL_WELCOME=true` automatically drops the learner into a local development session (`local-learner`), removing sign-in walls when exploring courses locally.
+   - On `localhost`, local welcome is on by default (`ALLOW_LOCAL_WELCOME=true` unless production), dropping the learner into a local session without a sign-in wall. A leftover JWT from a previous key is treated as that local learner instead of a 401.
 
 3. **Multi-Modal Learning Studio**:
    - **Interactive Code**: Monaco editor with real-time test verification and student/author test visibility.
