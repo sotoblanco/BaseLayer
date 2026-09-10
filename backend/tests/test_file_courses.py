@@ -2106,3 +2106,38 @@ class TestFastCourseSummaryAndCaching:
         assert "generated-numpy-basics" in courses
         assert courses["generated-numpy-basics"]["is_generated"] is True
         assert courses["generated-numpy-basics"]["modalities"] == ["code"]
+
+    def test_courses_local_directory_discovered_and_isolated(
+        self, client, tmp_path: Path, monkeypatch
+    ):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        local_dir = courses_dir / "local"
+        local_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        # Place a course inside courses/local/my-local-course
+        my_course = local_dir / "my-local-course"
+        my_course.mkdir()
+        (my_course / "README.md").write_text("# My Local Course\nPrivate and safe.\n")
+        l1 = my_course / "lesson01"
+        l1.mkdir()
+        (l1 / "README.md").write_text("# L1")
+        (l1 / "main.py").write_text("print('hello')")
+
+        res = client.get("/file-courses/")
+        assert res.status_code == 200
+        courses = {c["slug"]: c for c in res.json()}
+
+        # 1. The nested course is discovered
+        assert "my-local-course" in courses
+        assert courses["my-local-course"]["title"] == "My Local Course"
+
+        # 2. The container directory 'local' itself is not listed as a course
+        assert "local" not in courses
+
+        # 3. Individual course retrieval works
+        detail_res = client.get("/file-courses/my-local-course")
+        assert detail_res.status_code == 200
+        assert detail_res.json()["slug"] == "my-local-course"

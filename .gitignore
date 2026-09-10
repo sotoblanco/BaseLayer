@@ -19,10 +19,17 @@ __pycache__/
 .coverage.*
 .uv/
 
-# Database
+# Database & Learner Data
 backend/database.db
 data/
+
+# Local & generated courses (prevents user courses from showing in git commits)
 courses/generated-*/
+courses/local-*/
+courses/custom-*/
+courses/user-*/
+courses/my-*/
+courses/local/
 
 # OS / IDE
 # Research & Notebooks

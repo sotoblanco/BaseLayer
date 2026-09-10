@@ -54,3 +54,29 @@ python3 backend/scripts/create_lesson.py tinytorch chapter1 5 image
 ## Folder Structure (Result)
 The script creates folders in the following hierarchy:
 `courses/<course_slug>/<chapter_slug>/lesson<number>/`
+
+---
+
+## Protecting Custom Courses from Git Tracking and Updates
+
+When creating or modifying courses, you can ensure your files do not appear in `git status` or risk being overwritten during repository updates (`git pull`, `git checkout`):
+
+### 1. Workspace Courses (`~/.baselayer/courses/`) — Recommended
+Save custom courses in your local BaseLayer workspace:
+```bash
+~/.baselayer/courses/<course_slug>/
+```
+The BaseLayer studio automatically discovers and loads workspace courses alongside built-in courses via its union catalog. Because the workspace lives outside the repository directory, Git operations will never touch or conflict with your courses.
+
+### 2. In-Repository Local Directory (`courses/local/`)
+If you prefer keeping custom courses inside the repository checkout, create them inside `courses/local/`:
+```bash
+courses/local/<course_slug>/
+```
+The entire `courses/local/` tree, along with prefixes like `courses/local-*/`, `courses/custom-*/`, and `courses/my-*/`, is pre-configured in `.gitignore` and recognized by the studio course scanner.
+
+### 3. Custom External Path via `.env`
+You can point BaseLayer to any external folder on your machine by setting `BASELAYER_COURSES_DIR` in `.env`:
+```bash
+BASELAYER_COURSES_DIR=/path/to/my/private/courses
+```
