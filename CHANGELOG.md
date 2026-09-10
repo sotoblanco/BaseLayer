@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.65](https://github.com/sotoblanco/BaseLayer/compare/v0.1.64...v0.1.65) (2026-09-10)
+
+
+### Features
+
+* **cli:** add baselayer update workflow and protect user courses from git tracking ([#123](https://github.com/sotoblanco/BaseLayer/issues/123)) ([bf4d9cb](https://github.com/sotoblanco/BaseLayer/commit/bf4d9cb69d435be91f32a37ee661ac810986df9d))
+
 ### [0.1.64](https://github.com/sotoblanco/BaseLayer/compare/v0.1.63...v0.1.64) (2026-09-10)
 
 ### [0.1.63](https://github.com/sotoblanco/BaseLayer/compare/v0.1.62...v0.1.63) (2026-09-10)
