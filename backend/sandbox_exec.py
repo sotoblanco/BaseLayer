@@ -171,22 +171,9 @@ def execute_in_sandbox(
     setup_workspace: Callable[[Path], None] | None = None,
     inspect_workspace: Callable[[Path, dict], dict | None] | None = None,
 ) -> dict:
-    """Run code through whatever backend ``POST /run`` would use.
-
-    Honors ``EXECUTION_ENV`` (``docker`` default, ``modal`` for the remote
-    sandbox used in Compose/production). Raises :class:`SandboxUnavailableError`
+    """Run code through the local docker sandbox executor. Raises :class:`SandboxUnavailableError`
     when the configured backend cannot run at all.
     """
-    execution_env = os.environ.get("EXECUTION_ENV", "docker")
-    if execution_env == "modal":
-        try:
-            from modal_app import run_in_sandbox
-        except ImportError as exc:
-            raise SandboxUnavailableError("Modal backend not found") from exc
-        try:
-            return run_in_sandbox.remote(code, language, test_code or "")
-        except Exception as exc:
-            raise SandboxUnavailableError(str(exc)) from exc
     return execute_docker(
         code,
         language,

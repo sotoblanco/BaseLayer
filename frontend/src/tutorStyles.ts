@@ -18,7 +18,7 @@ export const TUTOR_STYLES: TutorStyleOption[] = [
         id: 'solveit',
         label: 'Solveit',
         emoji: '🧩',
-        tagline: 'Toy data, 1–3 line micro-steps, run & inspect, one question.',
+        tagline: 'Sample data, 1–3 line micro-steps, run & inspect, one question.',
     },
     {
         id: 'socratic',

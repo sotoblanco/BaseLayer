@@ -29,6 +29,8 @@ from agentic_tools import (
     get_context_learning,
     get_learning_intent,
     get_platform_content_tools,
+    normalize_sheet_cells,
+    normalize_success_cells,
 )
 
 
@@ -55,6 +57,26 @@ class AgenticWorkflowResult(BaseModel):
     tool_traces: list[ToolTrace] = Field(default_factory=list)
     grounded_in: list[str] = Field(default_factory=list)
     solveit_compliance: dict[str, bool] = Field(default_factory=dict)
+    suggested_lesson_count: int = 0
+    course_depth: str = "auto"
+
+
+def _resolve_course_depth(course_preferences: dict[str, Any] | None) -> tuple[str, str]:
+    """Map the learner's depth choice to an LLM lesson-count directive.
+
+    Returns (depth_name, count_directive). Auto lets the model pick 3-8 from
+    topic complexity; short/standard/deep pin explicit ranges.
+    """
+    depth = str((course_preferences or {}).get("course_depth", "auto") or "auto").lower()
+    if depth not in ("auto", "short", "standard", "deep"):
+        depth = "auto"
+    directives = {
+        "auto": "Choose 3 to 8 lessons based on topic complexity (narrow topic: fewer; broad topic: more). Report why you chose that count.",
+        "short": "Plan exactly 3 to 4 lessons (quick exploratory pass).",
+        "standard": "Plan exactly 5 to 6 lessons (balanced coverage).",
+        "deep": "Plan exactly 7 to 8 lessons (thorough deep-dive).",
+    }
+    return depth, directives[depth]
 
 
 def _extract_json_from_llm(text: str) -> dict[str, Any]:
@@ -72,14 +94,36 @@ def _extract_json_from_llm(text: str) -> dict[str, Any]:
     return json.loads(json_str)
 
 
-def _validate_code_only_lessons(lessons: list[CuratedLessonBlueprint]) -> None:
+def _validate_publishable_lessons(lessons: list[CuratedLessonBlueprint]) -> None:
+    """Refuse lessons that cannot run without assets a generator cannot supply.
+
+    Code lessons run in the sandbox. Spreadsheet lessons carry an inline
+    ``sheet.cells`` template (provisioned per learner), so no template sheet id
+    is needed. Drawing lessons fall back to a blank chalkboard canvas, so no
+    question image is needed. Only structurally incomplete lessons are refused.
+    """
     for lesson in lessons:
-        if lesson.modality != "code":
-            raise CourseGenerationError(
-                f"Cannot publish lesson {lesson.order} ('{lesson.title}'): "
-                f"{lesson.modality} exercises need platform-owned assets that a "
-                "generated course cannot supply. No course was written to disk."
-            )
+        if lesson.modality == "code":
+            if not (lesson.starter_code and lesson.test_code and lesson.solution_code):
+                raise CourseGenerationError(
+                    f"Cannot publish lesson {lesson.order} ('{lesson.title}'): "
+                    "code lessons need starter, test, and solution code. "
+                    "No course was written to disk."
+                )
+        elif lesson.modality == "spreadsheet":
+            if not lesson.sheet_cells or not lesson.success_cells:
+                raise CourseGenerationError(
+                    f"Cannot publish lesson {lesson.order} ('{lesson.title}'): "
+                    "spreadsheet lessons need inline sheet_cells and success_cells. "
+                    "No course was written to disk."
+                )
+        elif lesson.modality == "drawing":
+            if not lesson.drawing_prompt:
+                raise CourseGenerationError(
+                    f"Cannot publish lesson {lesson.order} ('{lesson.title}'): "
+                    "drawing lessons need a drawing_prompt for the canvas. "
+                    "No course was written to disk."
+                )
 
 
 def _resolve_course_directory(courses_dir: Path, slug: str, overwrite: bool) -> Path:
@@ -103,15 +147,41 @@ def _resolve_course_directory(courses_dir: Path, slug: str, overwrite: bool) -> 
 
 def _write_lesson_files(lesson_dir: Path, lesson: CuratedLessonBlueprint) -> None:
     lesson_dir.mkdir(exist_ok=True)
+    explanation_block = (
+        f"## Explanation\n{lesson.explanation}\n\n" if lesson.explanation.strip() else ""
+    )
+    if lesson.modality == "spreadsheet":
+        example_block = (
+            "## Example (Predict First)\n"
+            "Open your provisioned sheet copy and find these starter cells:\n"
+            f"```text\n{lesson.toy_data}\n```\n\n"
+            f"**Expected Outcome:** `{lesson.expected_result}`\n\n"
+        )
+        assignment_block = f"## Assignment (Formulas, Not Code)\n{lesson.micro_task}\n\n"
+    elif lesson.modality == "drawing":
+        example_block = (
+            "## Example (Look First)\n"
+            f"```text\n{lesson.toy_data}\n```\n\n"
+            f"**Expected Outcome:** `{lesson.expected_result}`\n\n"
+        )
+        assignment_block = (
+            "## Assignment (Sketch on the Canvas)\n"
+            f"{lesson.drawing_prompt or lesson.micro_task}\n\n"
+        )
+    else:
+        example_block = (
+            "## Example (Predict First)\n"
+            "Before writing any code, examine this minimal sample:\n"
+            f"```text\n{lesson.toy_data}\n```\n\n"
+            f"**Expected Outcome:** `{lesson.expected_result}`\n\n"
+        )
+        assignment_block = f"## Assignment (1 to 3 Lines)\n{lesson.micro_task}\n\n"
     lesson_readme = (
-        f"# Lesson {lesson.order}: {lesson.title}\n\n"
+        f"# Topic: {lesson.title}\n\n"
         f"## Objective\n{lesson.objective}\n\n"
-        "## 1. Toy Data (Predict First)\n"
-        "Before writing any code or changing formulas, examine this minimal sample:\n"
-        f"```text\n{lesson.toy_data}\n```\n\n"
-        f"**Expected Outcome:** `{lesson.expected_result}`\n\n"
-        "## 2. Your Micro-Step (1 to 3 Lines)\n"
-        f"{lesson.micro_task}\n\n"
+        f"{explanation_block}"
+        f"{example_block}"
+        f"{assignment_block}"
         "## 3. Live Inspection\n"
         f"{lesson.inspect_prompt}\n\n"
         "## 4. Curiosity & Simplification\n"
@@ -131,6 +201,11 @@ def _write_lesson_files(lesson_dir: Path, lesson: CuratedLessonBlueprint) -> Non
         (lesson_dir / "main.py").write_text(lesson.starter_code, encoding="utf-8")
         (lesson_dir / "test.py").write_text(lesson.test_code, encoding="utf-8")
         (lesson_dir / "solution.py").write_text(lesson.solution_code, encoding="utf-8")
+    elif lesson.modality == "spreadsheet":
+        metadata["sheet"] = {"cells": dict(lesson.sheet_cells)}
+        metadata["success_cells"] = list(lesson.success_cells)
+    elif lesson.modality == "drawing":
+        metadata["drawing"] = {"prompt_text": lesson.drawing_prompt or lesson.micro_task}
 
     (lesson_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
@@ -160,7 +235,7 @@ def materialize_curated_course(
       - metadata.json (exercise_type configuration)
       - main.py, test.py, solution.py (for code exercises)
     """
-    _validate_code_only_lessons(curated.lessons)
+    _validate_publishable_lessons(curated.lessons)
     course_path = _resolve_course_directory(courses_dir, curated.slug, overwrite)
 
     overview_text = (
@@ -169,7 +244,7 @@ def materialize_curated_course(
         "## Narrative & Learning Arc\n"
         f"{curated.narrative_arc}\n\n"
         "## Solveit Methodology in this Course\n"
-        "- **Toy Data First**: Every lesson presents a minimal 3-5 item example to predict before running.\n"
+        "- **Sample Data First**: Every lesson presents a minimal 3-5 item example to predict before running.\n"
         "- **Micro-Steps**: Tasks require 1 to 3 logical lines of code. No massive boilerplate dumps.\n"
         "- **Live Inspection**: Test in the editor and verify the exact output immediately.\n"
         "- **Curiosity Loop**: Reflect and simplify before moving to the next concept.\n\n"
@@ -201,6 +276,7 @@ def _apply_lesson_override(
     text_fields = (
         "title",
         "objective",
+        "explanation",
         "toy_data",
         "expected_result",
         "micro_task",
@@ -213,6 +289,19 @@ def _apply_lesson_override(
             setattr(cur, field, str(val).strip() if field in ("title", "objective") else str(val))
     if override.get("order") is not None:
         cur.order = int(override["order"])
+    modality = override.get("modality")
+    if isinstance(modality, str) and modality.lower().strip() in ("code", "spreadsheet", "drawing"):
+        cur.modality = modality.lower().strip()  # type: ignore[assignment]
+    if override.get("sheet_cells") is not None:
+        parsed_cells = normalize_sheet_cells(override.get("sheet_cells"))
+        if parsed_cells:
+            cur.sheet_cells = parsed_cells
+    if override.get("success_cells") is not None:
+        parsed_targets = normalize_success_cells(override.get("success_cells"))
+        if parsed_targets:
+            cur.success_cells = parsed_targets
+    if override.get("drawing_prompt") is not None:
+        cur.drawing_prompt = str(override.get("drawing_prompt") or "")
     return cur
 
 
@@ -299,6 +388,8 @@ def materialize_planned_course(
         tool_traces=traces,
         grounded_in=plan.grounded_in,
         solveit_compliance=plan.solveit_compliance,
+        suggested_lesson_count=plan.suggested_lesson_count or len(final_lessons),
+        course_depth=plan.course_depth,
     )
 
 
@@ -323,6 +414,7 @@ class AgenticCourseWorkflow:
         materials: str = "",
         username: str = "",
         course_preferences: dict[str, Any] | None = None,
+        outline: str = "",
     ) -> AgenticWorkflowResult:
         """Executes the 4 planning tool calls without writing anything to disk:
 
@@ -377,6 +469,13 @@ class AgenticCourseWorkflow:
                 lvl = str(course_preferences["understanding_level"]).capitalize()
                 if lvl in ("Beginner", "Intermediate", "Advanced"):
                     learner_ctx.understanding_level = lvl  # type: ignore[assignment]
+        depth_name, count_directive = _resolve_course_depth(course_preferences)
+        clean_outline = (outline or "").strip()[:2000]
+        outline_block = (
+            f"\nLEARNER-DEFINED OUTLINE (must-cover points, in order when possible):\n{clean_outline}\n"
+            if clean_outline
+            else "\nLEARNER-DEFINED OUTLINE: none — infer the best progression for the topic.\n"
+        )
         t2_duration = round((time.time() - t2_start) * 1000, 1)
         traces.append(
             ToolTrace(
@@ -400,6 +499,10 @@ class AgenticCourseWorkflow:
         # -------------------------------------------------------------------
         t3_start = time.time()
         platform_tools = get_platform_content_tools()
+        requested = [str(m).lower() for m in (learner_ctx.preferred_modalities or [])]
+        allowed_modalities = [m for m in requested if m in ("code", "spreadsheet", "drawing")]
+        if not allowed_modalities:
+            allowed_modalities = ["code", "spreadsheet", "drawing"]
         t3_duration = round((time.time() - t3_start) * 1000, 1)
         traces.append(
             ToolTrace(
@@ -410,6 +513,7 @@ class AgenticCourseWorkflow:
                 details={
                     "modalities": list(platform_tools.modalities.keys()),
                     "sandbox_libraries": platform_tools.installed_sandbox_libraries,
+                    "allowed_modalities": allowed_modalities,
                     "duration_ms": t3_duration,
                 },
             )
@@ -422,11 +526,11 @@ class AgenticCourseWorkflow:
         course_title = f"{intent.topic.title()} with Solveit"
         course_desc = (
             f"An exploratory, micro-step course designed for {learner_ctx.username}. "
-            f"Master {intent.topic} through sensory feedback, toy data, and live inspection."
+            f"Master {intent.topic} through concrete sample data, sensory feedback, and live inspection."
         )
         narrative_arc = (
             f"From initial mental model to working implementation: "
-            f"explore {', '.join(intent.target_concepts[:3])} step-by-step."
+            f"explore {intent.topic} step-by-step."
         )
 
         raw_lessons: list[dict[str, Any]] = []
@@ -443,9 +547,20 @@ class AgenticCourseWorkflow:
                     guided_directive = (
                         "\n7. GUIDED CODE COMPLETION DIRECTIVE:\n"
                         "The learner has selected Guided Code Completion (scaffolded fill-in-the-blanks).\n"
-                        "starter_code must be a pre-structured code skeleton containing `____` placeholders to fill in.\n"
+                        "For CODE lessons, starter_code must be a pre-structured code skeleton containing `____` placeholders to fill in.\n"
                         "micro_task should clearly instruct the learner what values/keywords should replace each `____` blank.\n"
                     )
+
+                modality_directive = (
+                    "Use ONLY these modalities across the course: "
+                    f"{', '.join(allowed_modalities)}. Assign each lesson the modality that fits best:\n"
+                    "- 'drawing' when the learner needs architecture or data-flow intuition before formulas/code (e.g. first contact with a pipeline, token routing, layer connections). Drawing lessons need 'drawing_prompt' (the canvas task); no image file is required.\n"
+                    "- 'spreadsheet' when the concept is matrix shapes, broadcasting, or stepwise numeric intuition (MMULT, ARRAYFORMULA, cell math). Spreadsheet lessons need 'sheet_cells' (inline {A1: value-or-formula} starter template) and 'success_cells' ([{cell, expected}] graded targets); no Google Sheet id is required — a copy is provisioned per learner.\n"
+                    "- 'code' for implementing concrete functions and algorithmic logic (starter_code with # TODO that FAILS test_code; solution_code that PASSES in 1-3 lines; test_code imports from main).\n"
+                    "Blend modalities across the course so intuition (drawing/spreadsheet) precedes implementation (code) where it helps."
+                    if len(allowed_modalities) > 1
+                    else f"Every lesson's modality MUST be '{allowed_modalities[0]}'."
+                )
 
                 system_solveit_prompt = f"""
 You are an expert Solveit Curriculum Designer (Fast.ai / Answer.AI principles).
@@ -454,7 +569,8 @@ You have already received the results of the 3 context-gathering tools:
 TOOL 1 (INTENT):
 Topic: {intent.topic}
 Target Concepts: {intent.target_concepts}
-Materials Excerpt: {intent.extracted_snippets}
+Clarification / reference notes (CONTEXT ONLY — never copy verbatim into lessons): {intent.extracted_snippets or "none — invent fresh domain sample data"}
+Full learning goals: {intent.learning_goals}
 
 TOOL 2 (LEARNER CONTEXT):
 User: {learner_ctx.username}
@@ -463,17 +579,22 @@ Preferred Modalities: {learner_ctx.preferred_modalities}
 Guidance: {learner_ctx.personalization_guidance}
 
 TOOL 3 (PLATFORM TOOLS):
-Target Modality: code (all published lessons must be runnable Python code)
-Installed Python Sandbox Packages: {platform_tools.installed_sandbox_libraries}
+Allowed modalities for THIS course: {allowed_modalities}
+Modality capabilities:
+- code: Monaco editor + sandbox (Python). Imports limited to {platform_tools.installed_sandbox_libraries}.
+- spreadsheet: embedded Google Sheets copy provisioned from your inline sheet_cells; graded via success_cells.
+- drawing: hand-drawing canvas (blank chalkboard when no image); graded against drawing_prompt rubric.
 
 YOUR TASK:
-Plan 3 to 5 micro-step lessons applying the Solveit methodology:
-1. Concrete sample data (3-5 rows/items, expected output stated before running)
-2. Micro-step (1-3 logical lines only)
-3. Live inspection prompt
-4. Curiosity reflection prompt
-5. Every lesson's "modality" MUST be "code" (do not use "spreadsheet" or "drawing"). Python code lessons must import only {platform_tools.installed_sandbox_libraries}
-6. test_code must import from main (e.g. from main import ...) and assert results.{guided_directive}
+Course size (learner chose "{depth_name}"): {count_directive}
+{outline_block}
+Plan micro-step lessons applying the Solveit methodology. Every lesson follows Topic → Explanation → Example → Assignment:
+1. "explanation": concept explainer BEFORE the exercise. Lesson 1 is always a foundations explainer (what the concept is, why it matters, one mental model) — never jump straight into code for beginners. Beginners get 3-4 sentences; others 1-2 sentences. NEVER show the word "toy" to the learner in titles, objectives, explanations, or descriptions ("toy_data" is only the internal JSON field name).
+2. "toy_data" + "expected_result": concrete sample data (3-5 rows/items, expected output stated before running).
+3. "micro_task": assignment in 1-3 logical lines only (code: lines of code; spreadsheet: cell formulas to enter; drawing: what to sketch), plus "inspect_prompt" (live inspection) and "curiosity_prompt" (reflection).
+4. {modality_directive}
+5. Code lessons: Python must import only {platform_tools.installed_sandbox_libraries}; test_code must import from main (e.g. from main import ...) and assert results. Spreadsheet lessons: "sheet_cells" is a small {{A1: value-or-"=FORMULA"}} starter map (<=15 cells), "success_cells" lists 1-4 graded {{cell, expected}} targets that your formulas must satisfy. Drawing lessons: "drawing_prompt" states exactly what to draw and how success is judged.
+6. ANTI-ECHO RULE (STRICT): clarification notes describe intent — they are NOT example data. NEVER copy the topic words or clarification sentences verbatim into "toy_data"/"expected_result" (e.g. if the learner wrote "learning vector search", do NOT emit docs = ['learning vector search', ...]). Always invent fresh, domain-realistic sample data for the topic (for BM25: real term lists, doc collections, scores — not the learner's own sentence).{guided_directive}
 7. WRITING STYLE & TONE DIRECTIVES (STRICT ANTI-AI CONSTRAINTS):
    Tone: {learner_ctx.tone.upper()}
    - If PRAGMATIC: Understated, dry developer realism about software gotchas, bugs, and computer literalism. No forced comedy or puns.
@@ -494,16 +615,20 @@ Return a JSON object with this exact shape:
   "lessons": [
     {{
       "title": "Lesson title",
-      "modality": "code",
+      "modality": "code | spreadsheet | drawing (only from the allowed list)",
       "objective": "Atomic objective",
+      "explanation": "Concept explainer: what this is and why it matters (lesson 1 = foundations, never code-only).",
       "toy_data": "sample = ...",
       "expected_result": "expected value",
-      "micro_task": "Write 1-3 lines to ...",
+      "micro_task": "Write 1-3 lines to ... (code) / formulas to enter (spreadsheet) / what to sketch (drawing)",
       "inspect_prompt": "What does output show?",
       "curiosity_prompt": "Can we simplify this?",
-      "starter_code": "def func():\\n    pass\\n",
-      "test_code": "from main import func\\nassert func() == expected\\n",
-      "solution_code": "def func():\\n    return expected\\n"
+      "starter_code": "def func():\\n    pass\\n (code lessons only)",
+      "test_code": "from main import func\\nassert func() == expected\\n (code lessons only)",
+      "solution_code": "def func():\\n    return expected\\n (code lessons only)",
+      "sheet_cells": {{"A1": "label", "B2": 3, "G2": "=ROWS(B2:D4)"}} (spreadsheet lessons only)",
+      "success_cells": [{{"cell": "G2", "expected": "3x3"}}] (spreadsheet lessons only)",
+      "drawing_prompt": "Circle the cell holding 50; one clean loop, no stray marks (drawing lessons only)"
     }}
   ]
 }}
@@ -551,41 +676,37 @@ Return a JSON object with this exact shape:
             )
 
         # Normalize modalities: models often output "python", "Python", or "Code"
-        # for runnable code lessons. Accept those as "code".
+        # for runnable code lessons. Accept those as "code". Unknown labels fall
+        # back to the learner's first allowed modality in curate_solveit_course.
         for lesson in raw_lessons:
             mod = str(lesson.get("modality") or "code").lower().strip()
             if mod in ("code", "python", "py"):
                 lesson["modality"] = "code"
+            elif mod in ("spreadsheet", "sheets", "sheet"):
+                lesson["modality"] = "spreadsheet"
+            elif mod in ("drawing", "draw", "sketch", "hand_drawn", "hand-drawn", "chalkboard"):
+                lesson["modality"] = "drawing"
             elif (lesson.get("starter_code") or lesson.get("test_code")) and mod not in (
                 "spreadsheet",
                 "drawing",
             ):
                 lesson["modality"] = "code"
 
-        # A generated course may only publish code lessons: spreadsheet and drawing
-        # lessons need platform-owned assets (a real template sheet id, a real
-        # question image) that a text model cannot supply. Reject them instead of
-        # writing courses that depend on unowned or blank assets.
-        non_code = [
-            lesson.get("title") or f"lesson {idx}"
-            for idx, lesson in enumerate(raw_lessons, start=1)
-            if lesson.get("modality") != "code"
-        ]
-        if non_code:
-            raise CourseGenerationError(
-                "The AI model proposed lessons that need assets it cannot supply "
-                f"(e.g. '{non_code[0]}'). Generated courses only publish runnable "
-                "code lessons. Nothing was written to disk — please try again."
+        try:
+            curated = curate_solveit_course(
+                course_title=course_title,
+                course_description=course_desc,
+                narrative_arc=narrative_arc,
+                lessons=raw_lessons,
+                learner_context=learner_ctx,
+                platform_tools=platform_tools,
+                allowed_modalities=allowed_modalities,
             )
-
-        curated = curate_solveit_course(
-            course_title=course_title,
-            course_description=course_desc,
-            narrative_arc=narrative_arc,
-            lessons=raw_lessons,
-            learner_context=learner_ctx,
-            platform_tools=platform_tools,
-        )
+        except ValueError as exc:
+            raise CourseGenerationError(
+                f"The AI model returned lessons that cannot run as-is ({exc}). "
+                "Nothing was written to disk — please try again."
+            ) from exc
 
         t4_duration = round((time.time() - t4_start) * 1000, 1)
         traces.append(
@@ -597,6 +718,8 @@ Return a JSON object with this exact shape:
                 details={
                     "title": curated.title,
                     "lesson_count": curated.lesson_count,
+                    "modalities": [lesson.modality for lesson in curated.lessons],
+                    "allowed_modalities": allowed_modalities,
                     "solveit_compliance": curated.solveit_compliance,
                     "duration_ms": t4_duration,
                 },
@@ -613,6 +736,8 @@ Return a JSON object with this exact shape:
             tool_traces=traces,
             grounded_in=curated.grounded_in,
             solveit_compliance=curated.solveit_compliance,
+            suggested_lesson_count=curated.lesson_count,
+            course_depth=depth_name,
         )
 
     def execute(
@@ -621,6 +746,7 @@ Return a JSON object with this exact shape:
         materials: str = "",
         username: str = "",
         course_preferences: dict[str, Any] | None = None,
+        outline: str = "",
         overwrite: bool = True,
     ) -> AgenticWorkflowResult:
         """Executes the complete workflow: plans the course and materializes it to disk."""
@@ -629,6 +755,7 @@ Return a JSON object with this exact shape:
             materials=materials,
             username=username,
             course_preferences=course_preferences,
+            outline=outline,
         )
         return materialize_planned_course(
             plan=planned,

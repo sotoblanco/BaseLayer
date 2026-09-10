@@ -90,7 +90,10 @@ class LearnerQuestionnaire(BaseModel):
         max_length=500,
     )
     preferred_modalities: list[str] = Field(
-        default_factory=lambda: ["code", "spreadsheet", "drawing"]
+        # Empty means "not answered": _infer_modalities falls back to
+        # unblock-strategy/intake inference. An explicit answer (even the
+        # full default set) always wins over inference.
+        default_factory=list
     )
     understanding_level: Literal["beginner", "intermediate", "advanced"] = "intermediate"
     tutor_style: Literal["solveit", "socratic", "direct", "blooms"] = "solveit"
@@ -649,7 +652,40 @@ def record_learner_event(
     new_content = f"{serialize_frontmatter(fm)}\n\n{new_body}\n"
     file_path.write_text(new_content, encoding="utf-8")
 
+    _mirror_memory_progress(event_type, payload)
+
     return get_or_create_profile(username, base_dir)[1]
+
+
+def _mirror_memory_progress(event_type: str, payload: dict[str, Any]) -> None:
+    """Mirror course progress into <workspace>/MEMORY.md (best-effort).
+
+    The workspace file is shared context for browser + terminal; LEARNING.md
+    stays the system of record. Never raises.
+    """
+    try:
+        try:
+            from workspace import record_memory_progress
+        except ModuleNotFoundError:
+            from backend.workspace import record_memory_progress
+    except ModuleNotFoundError:
+        return
+    try:
+        if event_type == "course_authored":
+            slug = str(payload.get("course_slug", "")).strip()
+            if not slug:
+                return
+            title = str(payload.get("title", slug)).strip() or slug
+            count = payload.get("lesson_count", 1)
+            record_memory_progress(slug, f"authored '{title}' ({count} lessons)")
+        elif event_type == "lesson_passed":
+            slug = str(payload.get("course_slug", "")).strip()
+            lesson = str(payload.get("lesson_slug", "")).strip()
+            if not slug or not lesson:
+                return
+            record_memory_progress(slug, f"in progress — passed {lesson}")
+    except Exception:
+        pass
 
 
 def _infer_tutor_style(
@@ -673,6 +709,11 @@ UNBLOCK_STRATEGY_MAP = {
 
 
 def _infer_modalities(answers: LearnerQuestionnaire) -> list[str]:
+    # An explicit modality choice (e.g. the onboard "Tool Focus" answer) always
+    # wins. Unblock-strategy inference is only a fallback for questionnaires
+    # that never asked the question directly.
+    if answers.preferred_modalities:
+        return list(dict.fromkeys(m for m in answers.preferred_modalities if m))
     if answers.unblock_strategies:
         inferred: list[str] = []
         for strategy in answers.unblock_strategies:

@@ -24,7 +24,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from agentic_tools import CuratedCourseResult, CuratedLessonBlueprint
+from agentic_tools import (
+    CuratedCourseResult,
+    CuratedLessonBlueprint,
+    normalize_sheet_cells,
+    normalize_success_cells,
+)
 from agentic_workflow import materialize_curated_course
 from sandbox_exec import SandboxUnavailableError, execute_in_sandbox, is_docker_daemon_failure
 from sandbox_libs import SANDBOX_LIBRARIES, SANDBOX_LIBRARIES_TEXT
@@ -50,6 +55,9 @@ _REQUIRED_LESSON_FIELDS = (
     "expected_result",
     "micro_task",
     "inspect_prompt",
+)
+
+_REQUIRED_CODE_FIELDS = (
     "starter_code",
     "test_code",
     "solution_code",
@@ -78,6 +86,7 @@ def _stdlib_modules() -> frozenset[str]:
 EXAMPLE_LESSON: dict[str, str] = {
     "title": "Pixel Luminance: create a normalized RGB array",
     "objective": "Convert an 8-bit RGB color triple into a normalized float array.",
+    "explanation": "Displays store color as 0-255 integers, but math needs 0.0-1.0 floats. Dividing by 255 maps the range so models see proportional brightness.",
     "sample_data": "raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
     "expected_result": "np.array([1.0, 0.50196, 0.0])",
     "micro_task": "In make_array(), return the input list converted to a float32 NumPy array divided by 255.0.",
@@ -225,8 +234,8 @@ def build_import_instructions(
     Self-contained means it embeds the learner's topic, any reference text, the
     learner's profile (level, tutor style, explanation preferences, goals), the
     sandbox reality (which imports actually work), the Solveit micro-lesson
-    contract, one fully worked example lesson, a capped ask (4-6 code-only
-    lessons) and a strict output format. It is meant to be usable both as the
+    contract, one fully worked example lesson, a capped ask (4-6 blended
+    lessons, mostly code) and a strict output format. It is meant to be usable both as the
     text a human copies into any chat AND as the user/system prompt for a future
     weak-model auto path.
     """
@@ -235,7 +244,10 @@ def build_import_instructions(
     if resources_text.strip():
         clipped = resources_text.strip()[:MAX_RESOURCE_CHARS]
         reference_block = (
-            "\nREFERENCE TEXT THE LEARNER PROVIDED (ground your examples in it when useful):\n"
+            "\nLEARNER NOTES (clarification of intent — CONTEXT ONLY):\n"
+            "Treat the text below as background on what the learner wants. "
+            "Do NOT copy its wording verbatim into sample_data/expected_result — "
+            "always invent fresh, domain-realistic sample data.\n"
             f"```text\n{clipped}\n```\n"
         )
 
@@ -247,11 +259,12 @@ COURSE TO BUILD
 Topic: {clean_topic}
 {reference_block}{profile_block}
 RULES (follow every rule)
-1. Narrative Arc & Progressiveness: Write exactly {MIN_IMPORT_LESSONS} to {MAX_IMPORT_LESSONS} Python lessons with a clear progression. Each lesson must directly build on the concept or data transformation from the previous lesson, constructing a cohesive mental model or mini-pipeline rather than disconnected fragments.
-2. Concrete Domain Sample Data: NEVER use lazy generic placeholders like foo, bar, or arbitrary [1, 2, 3] unless strictly necessary. Always use realistic, domain-relevant sample data tied to the topic (e.g. RGB pixel triples [255, 128, 0] for vision, token sequences for NLP, timestamped sensor readings for time-series, (x, y) coordinates for geometry, trade prices for finance).
+1. Narrative Arc & Progressiveness: Write exactly {MIN_IMPORT_LESSONS} to {MAX_IMPORT_LESSONS} lessons with a clear progression. Each lesson must directly build on the concept or data transformation from the previous lesson, constructing a cohesive mental model or mini-pipeline rather than disconnected fragments. Blend modalities where it helps: 'drawing' for architecture/data-flow intuition before formulas, 'spreadsheet' for matrix shapes and stepwise numeric intuition (MMULT, ARRAYFORMULA, cell math), 'code' for implementing functions. At least half the lessons must be 'code' so the course stays runnable and verifiable.
+2. Concrete Domain Sample Data: NEVER use lazy generic placeholders like foo, bar, or arbitrary [1, 2, 3] unless strictly necessary. Always use realistic, domain-relevant sample data tied to the topic (e.g. RGB pixel triples [255, 128, 0] for vision, token sequences for NLP, timestamped sensor readings for time-series, (x, y) coordinates for geometry, trade prices for finance). NEVER copy the learner's topic/notes wording verbatim as sample data (e.g. if notes say "learning vector search", do NOT emit docs = ['learning vector search']).
 3. Active Inspection & Prediction: Every lesson is a Solveit micro-lesson. The inspect_prompt MUST ask the learner to predict what a specific variable or expression evaluates to before running the code (e.g. "Before running: predict what make_array([255, 0, 0])[0] evaluates to. Run to verify.").
-4. Scaffolded Starter Code: starter_code must contain a clear comment (e.g. # TODO: ...) guiding where to write code, but MUST be incomplete so that it FAILS test_code out of the box. solution_code must PASS test_code with a clean 1-3 line implementation.
-5. Sandboxed Testing Environment: The learner's code lives in a file named main.py, and your test_code runs right next to it. So test_code MUST start by importing what it checks from main, for example: from main import make_array
+3b. Explanation Before Exercise: Every lesson MUST include "explanation" (what the concept is + why it matters). Lesson 1 is always a foundations explainer for beginners — never code-only.
+4. Scaffolded Starter Code (CODE lessons): starter_code must contain a clear comment (e.g. # TODO: ...) guiding where to write code, but MUST be incomplete so that it FAILS test_code out of the box. solution_code must PASS test_code with a clean 1-3 line implementation. SPREADSHEET lessons need sheet_cells + success_cells instead of code; DRAWING lessons need drawing_prompt instead of code.
+5. Sandboxed Testing Environment: for CODE lessons, the learner's code lives in a file named main.py, and your test_code runs right next to it. So test_code MUST start by importing what it checks from main, for example: from main import make_array
 6. Allowed Sandbox Libraries: Import ONLY the Python standard library plus: {INSTALLED_SANDBOX_LIBRARY_TEXT}. Never import anything else (pandas, sklearn, requests, ... are NOT installed and break the lesson).
 7. Pure, Small Functions: Keep functions small, deterministic, and fast (<1 second). No file I/O, no network access, no infinite loops, no input().
 
@@ -265,14 +278,19 @@ Reply ONLY with one ```json fenced block and NOTHING ELSE. No explanations, no t
   "lessons": [
     {{
       "title": "Name of this lesson",
+      "modality": "code (default) | spreadsheet | drawing",
       "objective": "The single idea this lesson teaches, in one sentence.",
+      "explanation": "Concept explainer before the exercise (lesson 1 = foundations, never code-only).",
       "sample_data": "Concrete domain-relevant input, e.g. raw RGB triple [255, 128, 0] -> normalized [1.0, 0.50196, 0.0]",
       "expected_result": "The exact evaluated result the sample produces.",
-      "micro_task": "The concrete 1-3 line task the learner must write in main.py.",
+      "micro_task": "The concrete 1-3 line task the learner must do (code lines / formulas to enter / what to sketch).",
       "inspect_prompt": "Active prediction prompt asking what a specific expression evaluates to before running.",
-      "starter_code": "Incomplete Python with a # TODO comment that fails tests until finished.",
-      "test_code": "Python asserting the sample behavior; imports the learner's function from main.",
-      "solution_code": "Short, complete Python (1-3 lines) that passes test_code."
+      "starter_code": "CODE lessons only: incomplete Python with a # TODO comment that fails tests until finished.",
+      "test_code": "CODE lessons only: Python asserting the sample behavior; imports the learner's function from main.",
+      "solution_code": "CODE lessons only: short, complete Python (1-3 lines) that passes test_code.",
+      "sheet_cells": "SPREADSHEET lessons only: {{\"A1\": \"label\", \"B2\": 3, \"G2\": \"=ROWS(B2:D4)\"}} starter template (<=15 cells).",
+      "success_cells": "SPREADSHEET lessons only: [{{\"cell\": \"G2\", \"expected\": \"3x3\"}}] graded targets (1-4).",
+      "drawing_prompt": "DRAWING lessons only: exactly what to draw on the canvas and how success is judged."
     }}
   ]
 }}
@@ -502,28 +520,73 @@ def _validate_test_imports_main(lesson: dict[str, Any], lesson_index: int) -> No
 
 def _normalize_lesson(raw: dict[str, Any], order: int) -> CuratedLessonBlueprint:
     lesson: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    modality = str(lesson.get("modality", "code") or "code").lower().strip()
+    if modality in ("python", "py"):
+        modality = "code"
+    if modality not in ("code", "spreadsheet", "drawing"):
+        modality = "code"
     cleaned: dict[str, str] = {}
     for field_name in _REQUIRED_LESSON_FIELDS:
         cleaned[field_name] = _required_str(lesson, order, field_name)
 
-    _check_imports(cleaned, order)
-    _validate_snippets_parse(cleaned, order)
-    _validate_test_imports_main(cleaned, order)
+    sheet_cells: dict[str, Any] = {}
+    success_cells: list[dict[str, Any]] = []
+    drawing_prompt = str(lesson.get("drawing_prompt", "") or "").strip()
+    starter_code = test_code = solution_code = ""
+
+    if modality == "code":
+        code_fields: dict[str, str] = {}
+        for field_name in _REQUIRED_CODE_FIELDS:
+            code_fields[field_name] = _required_str(lesson, order, field_name)
+        _check_imports(code_fields, order)
+        _validate_snippets_parse(code_fields, order)
+        _validate_test_imports_main(code_fields, order)
+        starter_code, test_code, solution_code = (
+            code_fields["starter_code"],
+            code_fields["test_code"],
+            code_fields["solution_code"],
+        )
+    elif modality == "spreadsheet":
+        sheet_cells = normalize_sheet_cells(lesson.get("sheet_cells", {}))
+        success_cells = normalize_success_cells(lesson.get("success_cells", []))
+        if not sheet_cells:
+            raise CourseImportError(
+                f"Lesson {order} is a spreadsheet lesson but has no valid "
+                '"sheet_cells" ({A1: value-or-"=FORMULA"} map). Ask the model '
+                "to re-send it with an inline sheet template."
+            )
+        if not success_cells:
+            raise CourseImportError(
+                f"Lesson {order} is a spreadsheet lesson but has no valid "
+                '"success_cells" ([{cell, expected}] graded targets). Ask the '
+                "model to re-send it with graded targets."
+            )
+    elif modality == "drawing":
+        if not drawing_prompt:
+            raise CourseImportError(
+                f"Lesson {order} is a drawing lesson but has no "
+                '"drawing_prompt" describing what to sketch. Ask the model to '
+                "re-send it with a canvas task."
+            )
 
     return CuratedLessonBlueprint(
         title=cleaned["title"],
         order=order,
-        modality="code",
+        modality=modality,  # type: ignore[arg-type]
         language="python",
         objective=cleaned["objective"],
+        explanation=str(raw.get("explanation", "") or "").strip(),
         toy_data=cleaned["toy_data"],
         expected_result=cleaned["expected_result"],
         micro_task=cleaned["micro_task"],
         inspect_prompt=cleaned["inspect_prompt"],
         curiosity_prompt=(_clean_code(raw.get("curiosity_prompt")) or _DEFAULT_CURIOSITY_PROMPT),
-        starter_code=cleaned["starter_code"],
-        test_code=cleaned["test_code"],
-        solution_code=cleaned["solution_code"],
+        starter_code=starter_code,
+        test_code=test_code,
+        solution_code=solution_code,
+        sheet_cells=sheet_cells,  # type: ignore[arg-type]
+        success_cells=success_cells,
+        drawing_prompt=drawing_prompt,
         source_refs=["Solveit micro-lesson contract (imported from chat)"],
         skills=[],
     )
@@ -630,7 +693,12 @@ def _stderr_snippet(result: dict) -> str:
 
 
 def verify_imported_course(curated: CuratedCourseResult) -> list[LessonVerifyRecord]:
-    """Run each code lesson: solution+tests must pass, starter+tests must fail.
+    """Verify every lesson before publishing.
+
+    Code lessons run in the sandbox (solution+tests must pass, starter+tests
+    must fail). Spreadsheet/drawing lessons are verified structurally (inline
+    template + graded targets, or canvas prompt present) since they need no
+    sandbox run.
 
     Returns one record per lesson. Raises :class:`CourseVerificationError` on the
     first lesson that fails, with its stderr, so the caller can refuse to publish.
@@ -638,6 +706,41 @@ def verify_imported_course(curated: CuratedCourseResult) -> list[LessonVerifyRec
     """
     records: list[LessonVerifyRecord] = []
     for lesson in curated.lessons:
+        if lesson.modality == "spreadsheet":
+            if not lesson.sheet_cells or not lesson.success_cells:
+                raise CourseVerificationError(
+                    f"Lesson {lesson.order} ({lesson.title}) is a spreadsheet lesson "
+                    "without an inline template or graded targets."
+                )
+            records.append(
+                LessonVerifyRecord(
+                    order=lesson.order,
+                    title=lesson.title,
+                    status="passed",
+                    solution_passes=True,
+                    starter_fails=True,
+                    detail=f"spreadsheet template: {len(lesson.sheet_cells)} cells, "
+                    f"{len(lesson.success_cells)} graded targets",
+                )
+            )
+            continue
+        if lesson.modality == "drawing":
+            if not lesson.drawing_prompt:
+                raise CourseVerificationError(
+                    f"Lesson {lesson.order} ({lesson.title}) is a drawing lesson "
+                    "without a canvas prompt."
+                )
+            records.append(
+                LessonVerifyRecord(
+                    order=lesson.order,
+                    title=lesson.title,
+                    status="passed",
+                    solution_passes=True,
+                    starter_fails=True,
+                    detail="drawing canvas prompt present (chalkboard fallback)",
+                )
+            )
+            continue
         solution_result = _run_lesson(lesson, run_solution=True)
         solution_passes = solution_result.get("exit_code") == 0
         if not solution_passes:

@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config';
+import { getLocalHeaders } from './profileService';
 
 export interface ChatTurn {
     role: 'user' | 'assistant';
@@ -24,13 +25,9 @@ export const discussImplementation = async (
     context?: string,
     tutorStyle?: TutorStyleId,
 ) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please sign in to use the tutor.');
-    }
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...getLocalHeaders(),
     };
 
     const response = await fetch(`${API_BASE_URL}/ai/discuss`, {
@@ -70,13 +67,9 @@ export const requestBreakdown = async (
     courseSlug?: string,
     lessonSlug?: string,
 ): Promise<BreakdownResponse> => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please sign in to use the tutor.');
-    }
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...getLocalHeaders(),
     };
 
     const response = await fetch(`${API_BASE_URL}/ai/breakdown`, {
@@ -247,18 +240,15 @@ export interface CoursePreferences {
     explanation_length?: 'short' | 'thorough';
     tutor_style?: 'solveit' | 'socratic' | 'direct' | 'blooms';
     understanding_level?: 'beginner' | 'intermediate' | 'advanced';
+    course_depth?: 'auto' | 'short' | 'standard' | 'deep';
 }
 
 export const buildLearningCourse = async (
     topic: string,
     referenceText?: string,
     coursePreferences?: CoursePreferences,
+    outline?: string,
 ): Promise<BuildCourseResult> => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please start a learner session before building a course.');
-    }
-
     const resources = referenceText?.trim()
         ? [{ kind: 'pasted-notes', name: 'Learner-provided notes', text: referenceText.trim() }]
         : [];
@@ -266,12 +256,13 @@ export const buildLearningCourse = async (
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            ...getLocalHeaders(),
         },
         body: JSON.stringify({
             topic: topic.trim(),
             resources,
             course_preferences: coursePreferences,
+            outline: outline?.trim() || '',
         }),
     });
 
@@ -288,11 +279,17 @@ export interface LessonPreview {
     title: string;
     modality: string;
     objective: string;
+    explanation?: string;
     toy_data: string;
     expected_result?: string;
     micro_task?: string;
     inspect_prompt?: string;
     curiosity_prompt?: string;
+    sheet_cells?: Record<string, string | number | boolean>;
+    success_cells?: Array<Record<string, unknown>>;
+    drawing_prompt?: string;
+    sheet_text?: string;
+    target_text?: string;
     skills?: string[];
 }
 
@@ -303,6 +300,8 @@ export interface CoursePlanPreviewResult {
     description?: string;
     narrative_arc?: string;
     lesson_count: number;
+    suggested_lesson_count?: number;
+    course_depth?: string;
     grounded_in: string[];
     tool_traces?: ToolTraceItem[];
     solveit_compliance?: Record<string, boolean>;
@@ -313,12 +312,17 @@ export interface ApproveLessonEdit {
     order: number;
     original_order?: number;
     title?: string;
+    modality?: string;
     objective?: string;
+    explanation?: string;
     toy_data?: string;
     expected_result?: string;
     micro_task?: string;
     inspect_prompt?: string;
     curiosity_prompt?: string;
+    sheet_cells?: Record<string, string | number | boolean> | string;
+    success_cells?: Array<Record<string, unknown>> | string;
+    drawing_prompt?: string;
 }
 
 export interface ApproveCoursePayload {
@@ -332,12 +336,8 @@ export const planLearningCourse = async (
     topic: string,
     referenceText?: string,
     coursePreferences?: CoursePreferences,
+    outline?: string,
 ): Promise<CoursePlanPreviewResult> => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please start a learner session before planning a course.');
-    }
-
     const resources = referenceText?.trim()
         ? [{ kind: 'pasted-notes', name: 'Learner-provided notes', text: referenceText.trim() }]
         : [];
@@ -345,12 +345,13 @@ export const planLearningCourse = async (
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            ...getLocalHeaders(),
         },
         body: JSON.stringify({
             topic: topic.trim(),
             resources,
             course_preferences: coursePreferences,
+            outline: outline?.trim() || '',
         }),
     });
 
@@ -364,16 +365,11 @@ export const planLearningCourse = async (
 export const approveLearningCourse = async (
     payload: ApproveCoursePayload,
 ): Promise<BuildCourseResult> => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please start a learner session before approving a course.');
-    }
-
     const response = await fetch(`${API_BASE_URL}/ai/learning-path/approve`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            ...getLocalHeaders(),
         },
         body: JSON.stringify(payload),
     });
@@ -404,11 +400,6 @@ export const getCourseBuildInstructions = async (
     referenceText?: string,
     coursePreferences?: CoursePreferences,
 ): Promise<CourseInstructionsResult> => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please start a learner session before building a course.');
-    }
-
     const resources = referenceText?.trim()
         ? [{ kind: 'pasted-notes', name: 'Learner-provided notes', text: referenceText.trim() }]
         : [];
@@ -416,7 +407,7 @@ export const getCourseBuildInstructions = async (
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            ...getLocalHeaders(),
         },
         body: JSON.stringify({
             topic: topic.trim(),
@@ -442,16 +433,11 @@ export const importLearningCourse = async (
     responseText: string,
     verify: boolean = true,
 ): Promise<ImportCourseResult> => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        throw new Error('Please start a learner session before building a course.');
-    }
-
     const response = await fetch(`${API_BASE_URL}/ai/learning-path/import`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            ...getLocalHeaders(),
         },
         body: JSON.stringify({
             topic: topic.trim(),

@@ -177,6 +177,18 @@ def _first_env(*names: str) -> str:
 
 def load_settings() -> LLMSettings:
     """Read LLM_* first, then common aliases so existing .env files still work."""
+    try:
+        from workspace import apply_workspace_env
+    except ModuleNotFoundError:
+        try:
+            from backend.workspace import apply_workspace_env
+        except ModuleNotFoundError:
+            apply_workspace_env = None  # type: ignore[assignment]
+    if apply_workspace_env is not None:
+        try:
+            apply_workspace_env()
+        except Exception:
+            pass
     provider = _first_env("LLM_PROVIDER").lower()
     api_key = _first_env("LLM_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY")
     model = _first_env("LLM_MODEL")

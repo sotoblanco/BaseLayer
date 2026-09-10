@@ -12,6 +12,7 @@ import { API_BASE_URL } from '../config';
 import { messageForRunStatus } from '../runErrors';
 import { sanitizeRunStderr } from '../runOutput';
 import { isMissingModuleError, libraryHelpHint, missingModule } from '../sandboxLibs';
+import { getLocalHeaders } from './profileService';
 
 export interface RunResult {
   stdout: string;
@@ -173,6 +174,7 @@ export async function executeCode(options: RunOptions): Promise<RunResult> {
     onStatusUpdate?.('Sending to execution server...');
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
+      ...getLocalHeaders(),
     };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;

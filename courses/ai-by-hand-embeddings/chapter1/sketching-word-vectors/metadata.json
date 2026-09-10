@@ -1,0 +1,20 @@
+{
+  "exercise_type": "hand_drawn",
+  "skills": [],
+  "title": "Sketching Word Vectors on the 2D Plane",
+  "google_sheet_id": null,
+  "copy_on_open": false,
+  "stroke_color": "#f8fafc",
+  "stroke_width": 3,
+  "hints": [
+    "Use the Arrow tool to draw the coordinate axes.",
+    "Use Yellow or Cyan chalk for the word vectors.",
+    "Click Show Solution to compare with the reference diagram."
+  ],
+  "board_theme": "chalkboard",
+  "drawing": {
+    "prompt_text": "Sketch the 2D plane with King [0.9, 0.1] and Queen [0.8, 0.3], showing angle theta.",
+    "solution_diagram": "      y ^\n        |\n  0.3 - |       * Queen [0.8, 0.3]\n  0.1 - |         * King [0.9, 0.1]\n        +-------------> x\n             0.8 0.9",
+    "solution_explanation": "Both King and Queen vectors point in almost the same direction in the first quadrant, forming an acute angle theta (~10 degrees) that results in a high cosine similarity (>0.95)."
+  }
+}

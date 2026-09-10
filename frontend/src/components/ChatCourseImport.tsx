@@ -105,6 +105,7 @@ export default function ChatCourseImport({
             explanation_length: preferences.explanationLength,
             tutor_style: preferences.tutorStyle,
             understanding_level: preferences.level,
+            course_depth: preferences.depth,
           }
         : undefined;
       const result = await getCourseBuildInstructions(topic, referenceText, coursePrefs);

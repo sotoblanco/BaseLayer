@@ -234,6 +234,8 @@ class TestTool4CurateSolveitCourse:
                 "curiosity_prompt": "How does ARRAYFORMULA work?",
                 "google_sheet_id": "test_sheet_123",
                 "copy_on_open": True,
+                "sheet_cells": {"A1": 1, "A2": 2, "C1": "=ARRAYFORMULA(A1:A2*2)"},
+                "success_cells": [{"cell": "C1", "expected": 2}],
             },
         ]
 
@@ -250,8 +252,52 @@ class TestTool4CurateSolveitCourse:
         assert curated.solveit_compliance["toy_data_grounded"] is True
         assert curated.solveit_compliance["immediate_inspection_present"] is True
         assert curated.solveit_compliance["curiosity_loop_active"] is True
+        assert curated.solveit_compliance["modality_blend_honored"] is True
         assert curated.lessons[0].modality == "code"
         assert curated.lessons[1].modality == "spreadsheet"
+        assert curated.lessons[1].sheet_cells["A1"] == 1
+        assert curated.lessons[1].success_cells[0]["cell"] == "C1"
+
+    def test_curate_rejects_spreadsheet_without_graded_targets(self):
+        with pytest.raises(ValueError, match="success_cells"):
+            curate_solveit_course(
+                course_title="Bad Sheets",
+                course_description="desc",
+                narrative_arc="arc",
+                lessons=[
+                    {
+                        "title": "Sheets without targets",
+                        "modality": "spreadsheet",
+                        "objective": "obj",
+                        "toy_data": "data",
+                        "expected_result": "1",
+                        "micro_task": "task",
+                        "inspect_prompt": "inspect",
+                        "curiosity_prompt": "curiosity",
+                        "sheet_cells": {"A1": 1},
+                    }
+                ],
+            )
+
+    def test_curate_rejects_drawing_without_prompt(self):
+        with pytest.raises(ValueError, match="drawing_prompt"):
+            curate_solveit_course(
+                course_title="Bad Drawing",
+                course_description="desc",
+                narrative_arc="arc",
+                lessons=[
+                    {
+                        "title": "Sketch without task",
+                        "modality": "drawing",
+                        "objective": "obj",
+                        "toy_data": "data",
+                        "expected_result": "1",
+                        "micro_task": "",
+                        "inspect_prompt": "inspect",
+                        "curiosity_prompt": "curiosity",
+                    }
+                ],
+            )
 
     def test_curate_solveit_course_preserves_guided_blank_templates(self):
         # Guided completion blank templates with ____ syntax
@@ -358,9 +404,9 @@ class TestAgenticWorkflowExecution:
             assert "google_sheet_id" not in meta
         assert not list(course_dir.rglob("question.png"))
 
-    def test_materialize_refuses_spreadsheet_and_drawing_lessons(self, tmp_path):
-        """Even a curated set containing a spreadsheet/drawing lesson (e.g. one
-        carrying Google's public sample sheet id) is refused and never written."""
+    def test_materialize_blended_course_writes_per_modality_files(self, tmp_path):
+        """A curated blend writes code files, inline sheet templates, and
+        drawing prompts — no platform-owned sheet id or question image needed."""
         courses_dir = tmp_path / "courses"
         courses_dir.mkdir()
 
@@ -378,37 +424,81 @@ class TestAgenticWorkflowExecution:
             "solution_code": "def f():\n    return [1, 2, 3]\n",
         }
         spreadsheet_lesson = {
-            **code_lesson,
             "title": "Sheets Toy",
             "modality": "spreadsheet",
-            "google_sheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-            "copy_on_open": True,
+            "objective": "obj",
+            "toy_data": "B2:D4 numbers",
+            "expected_result": "3x3",
+            "micro_task": "Enter the shape formula",
+            "inspect_prompt": "Check G2",
+            "curiosity_prompt": "curiosity",
+            "sheet_cells": {"G2": '=ROWS(B2:D4) & "x" & COLUMNS(B2:D4)'},
+            "success_cells": [{"cell": "G2", "expected": "3x3"}],
         }
         drawing_lesson = {
-            **code_lesson,
             "title": "Drawing Toy",
             "modality": "drawing",
-            "question_image_desc": "A diagram",
+            "objective": "obj",
+            "toy_data": "matrix with 50",
+            "expected_result": "one circled cell",
+            "micro_task": "Circle the 50",
+            "inspect_prompt": "inspect",
+            "curiosity_prompt": "curiosity",
+            "drawing_prompt": "Circle the cell holding 50 with one clean loop",
         }
 
         curated = curate_solveit_course(
             course_title="Toy mixed course",
             course_description="desc",
             narrative_arc="arc",
-            lessons=[code_lesson, spreadsheet_lesson],
+            lessons=[code_lesson, spreadsheet_lesson, drawing_lesson],
         )
-        with pytest.raises(CourseGenerationError, match="spreadsheet"):
-            materialize_curated_course(curated, courses_dir)
-        assert list(courses_dir.iterdir()) == []
+        materialize_curated_course(curated, courses_dir)
+        course_dir = courses_dir / curated.slug
 
-        curated_drawing = curate_solveit_course(
-            course_title="Toy drawing course",
-            course_description="desc",
-            narrative_arc="arc",
-            lessons=[drawing_lesson],
+        code_meta = json.loads((course_dir / "chapter1" / "lesson01" / "metadata.json").read_text())
+        assert code_meta["exercise_type"] == "code"
+        assert (course_dir / "chapter1" / "lesson01" / "main.py").is_file()
+
+        sheet_meta = json.loads(
+            (course_dir / "chapter1" / "lesson02" / "metadata.json").read_text()
         )
-        with pytest.raises(CourseGenerationError, match="drawing"):
-            materialize_curated_course(curated_drawing, courses_dir)
+        assert sheet_meta["exercise_type"] == "spreadsheet"
+        assert sheet_meta["sheet"]["cells"]["G2"] == '=ROWS(B2:D4) & "x" & COLUMNS(B2:D4)'
+        assert sheet_meta["success_cells"][0]["cell"] == "G2"
+        assert "google_sheet_id" not in sheet_meta
+
+        draw_meta = json.loads((course_dir / "chapter1" / "lesson03" / "metadata.json").read_text())
+        assert draw_meta["exercise_type"] == "drawing"
+        assert "Circle the cell" in draw_meta["drawing"]["prompt_text"]
+        assert not list(course_dir.rglob("question.png"))
+
+    def test_materialize_refuses_structurally_incomplete_lessons(self, tmp_path):
+        """Lessons that cannot run (spreadsheet without graded targets,
+        drawing without a prompt) are refused and never written."""
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+
+        incomplete_sheet = {
+            "title": "Sheets Toy",
+            "modality": "spreadsheet",
+            "objective": "obj",
+            "toy_data": "data",
+            "expected_result": "1",
+            "micro_task": "task",
+            "inspect_prompt": "inspect",
+            "curiosity_prompt": "curiosity",
+            "sheet_cells": {"A1": 1},
+            # Invalid cell ref normalizes to empty -> refused.
+            "success_cells": [{"cell": "!!!", "expected": "x"}],
+        }
+        with pytest.raises(ValueError, match="success_cells"):
+            curate_solveit_course(
+                course_title="Bad sheets",
+                course_description="desc",
+                narrative_arc="arc",
+                lessons=[incomplete_sheet],
+            )
         assert list(courses_dir.iterdir()) == []
 
     def test_workflow_refuses_to_publish_when_no_llm_configured(self, tmp_path):
@@ -494,7 +584,7 @@ class TestAgenticWorkflowExecution:
         assert res.lesson_count == 1
         assert res.slug.startswith("generated-")
 
-    def test_workflow_refuses_non_code_lessons_from_llm(self, tmp_path):
+    def test_workflow_refuses_structurally_incomplete_lessons_from_llm(self, tmp_path):
         courses_dir = tmp_path / "courses"
         courses_dir.mkdir()
 
@@ -522,10 +612,76 @@ class TestAgenticWorkflowExecution:
             data_dir=tmp_path / "data",
             generate_text=lambda prompt: bad_plan,
         )
-        with pytest.raises(CourseGenerationError, match="assets"):
+        with pytest.raises(CourseGenerationError, match="success_cells"):
             workflow.execute(topic="NumPy broadcasting", materials="", username="alex")
 
         assert list(courses_dir.iterdir()) == []
+
+    def test_workflow_blends_modalities_from_llm(self, tmp_path):
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+
+        blend_plan = json.dumps(
+            {
+                "title": "Blended",
+                "description": "desc",
+                "narrative_arc": "arc",
+                "lessons": [
+                    {
+                        "title": "Sketch the pipeline",
+                        "modality": "drawing",
+                        "objective": "See the data flow",
+                        "explanation": "Data flows left to right.",
+                        "toy_data": "pipeline diagram",
+                        "expected_result": "one annotated sketch",
+                        "micro_task": "Sketch the flow",
+                        "inspect_prompt": "One sketch, labeled?",
+                        "curiosity_prompt": "What breaks if a stage is skipped?",
+                        "drawing_prompt": "Sketch the 3-stage pipeline with labels",
+                    },
+                    {
+                        "title": "Shape intuition",
+                        "modality": "spreadsheet",
+                        "objective": "Feel broadcasting",
+                        "explanation": "Shapes must align.",
+                        "toy_data": "B2:D4 block",
+                        "expected_result": "3x3",
+                        "micro_task": "Enter the shape formula",
+                        "inspect_prompt": "Check G2",
+                        "curiosity_prompt": "What if a row is added?",
+                        "sheet_cells": {"G2": "=ROWS(B2:D4)"},
+                        "success_cells": [{"cell": "G2", "expected": 3}],
+                    },
+                    {
+                        "title": "Implement",
+                        "modality": "code",
+                        "objective": "Code it",
+                        "explanation": "Now implement.",
+                        "toy_data": "x = [1, 2]",
+                        "expected_result": "[1, 2]",
+                        "micro_task": "Return x",
+                        "inspect_prompt": "Print it",
+                        "curiosity_prompt": "Why?",
+                        "starter_code": "def f():\n    pass\n",
+                        "test_code": "from main import f\nassert f() == [1, 2]\n",
+                        "solution_code": "def f():\n    return [1, 2]\n",
+                    },
+                ],
+            }
+        )
+        workflow = AgenticCourseWorkflow(
+            courses_dir=courses_dir,
+            data_dir=tmp_path / "data",
+            generate_text=lambda prompt: blend_plan,
+        )
+        res = workflow.execute(topic="Broadcasting", materials="", username="alex")
+        assert res.lesson_count == 3
+        assert [lesson.modality for lesson in res.lessons] == [
+            "drawing",
+            "spreadsheet",
+            "code",
+        ]
+        assert (courses_dir / res.slug / "chapter1" / "lesson02" / "metadata.json").is_file()
 
     def test_fastapi_build_endpoint_uses_agentic_workflow(
         self, client, auth_headers, tmp_path: Path, monkeypatch

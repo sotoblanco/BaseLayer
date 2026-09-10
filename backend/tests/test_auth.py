@@ -1,586 +1,198 @@
-"""
-Tests for the authentication system.
+"""Tests for the local-first learner identity and authentication system.
 
 Covers:
-  - Signup (success, duplicate username, duplicate email)
-  - Login with username or email
-  - Login with wrong credentials
-  - JWT token validation on protected endpoints
-  - Admin-only access control
-  - Google OAuth flow (mocked)
-  - Guest access (unauthenticated) behavior
+  - Local learner resolution from marker file, environment, and headers
+  - Automatic LEARNING.md profile creation
+  - Active learner inspection and switching (/auth/active-learner)
+  - Local welcome session initialization (/auth/local-welcome)
+  - Administrative rights for local developers (/auth/admin-check)
+  - Zero-friction unauthenticated access
 """
 
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
 
-from tests.conftest import VALID_USER
+from auth import (
+    ALGORITHM,
+    SECRET_KEY,
+    create_access_token,
+    get_active_learner_name,
+    get_current_user,
+    get_password_hash,
+    set_active_learner_name,
+    verify_password,
+)
 
-# ==============================================================
-#  SIGNUP
-# ==============================================================
 
+class TestActiveLearner:
+    """Tests for active learner discovery and persistence."""
 
-class TestSignup:
-    """User registration tests."""
+    def test_default_active_learner(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+        monkeypatch.delenv("ACTIVE_LEARNER", raising=False)
+        with patch("learner_profile.get_learners_data_dir", return_value=tmp_path / "learners"):
+            name = get_active_learner_name()
+            assert name == "local-learner"
 
-    def test_signup_success(self, client: TestClient):
-        """A new user can register and gets back their data."""
-        response = client.post("/auth/signup", json=VALID_USER)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["username"] == VALID_USER["username"]
-        assert data["email"] == VALID_USER["email"]
-        assert data["role"] == "student"
-        assert "id" in data
-        # Password hash must NOT leak
-        assert "hashed_password" not in data
-        assert "password" not in data
+    def test_env_var_overrides_active_learner(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("ACTIVE_LEARNER", "custom-engineer")
+        assert get_active_learner_name() == "custom-engineer"
 
-    def test_signup_duplicate_username(self, client: TestClient):
-        """Registering with an existing username is rejected."""
-        client.post("/auth/signup", json=VALID_USER)
-        duplicate = {**VALID_USER, "email": "other@example.com"}
-        response = client.post("/auth/signup", json=duplicate)
-        assert response.status_code == 400
-        assert "Username already registered" in response.json()["detail"]
+    def test_marker_file_persists_active_learner(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv("ACTIVE_LEARNER", raising=False)
+        learners_dir = tmp_path / "learners"
+        learners_dir.mkdir(parents=True, exist_ok=True)
+        with patch("learner_profile.get_learners_data_dir", return_value=learners_dir):
+            set_active_learner_name("ada-lovelace")
+            assert get_active_learner_name() == "ada-lovelace"
+            marker = tmp_path / "active_learner.txt"
+            assert marker.is_file()
+            assert marker.read_text(encoding="utf-8").strip() == "ada-lovelace"
 
-    def test_signup_duplicate_email(self, client: TestClient):
-        """Registering with an existing email is rejected."""
-        client.post("/auth/signup", json=VALID_USER)
-        duplicate = {**VALID_USER, "username": "otheruser"}
-        response = client.post("/auth/signup", json=duplicate)
-        assert response.status_code == 400
-        assert "Email already registered" in response.json()["detail"]
+    def test_api_get_active_learner(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("ACTIVE_LEARNER", "test-dev")
+        res = client.get("/auth/active-learner")
+        assert res.status_code == 200
+        assert res.json()["username"] == "test-dev"
 
-    def test_signup_ignores_role(self, client: TestClient):
-        """A user cannot self-assign admin at signup; role is always student."""
-        from tests.conftest import ADMIN_USER
+    def test_api_switch_active_learner(self, client: TestClient, tmp_path: Path):
+        learners_dir = tmp_path / "learners"
+        learners_dir.mkdir(parents=True, exist_ok=True)
+        with patch("learner_profile.get_learners_data_dir", return_value=learners_dir):
+            res = client.post("/auth/active-learner", json={"username": "grace-hopper"})
+            assert res.status_code == 200
+            assert res.json()["username"] == "grace-hopper"
+            assert (learners_dir / "grace-hopper" / "LEARNING.md").is_file()
 
-        response = client.post("/auth/signup", json=ADMIN_USER)
-        assert response.status_code == 200
-        assert response.json()["role"] == "student"
+    def test_is_learner_profile_dir_branches(self, tmp_path: Path):
+        from auth import _is_learner_profile_dir
 
-        login = client.post(
-            "/auth/login",
-            data={"username": ADMIN_USER["username"], "password": ADMIN_USER["password"]},
-        )
-        assert login.status_code == 200
-        admin_attempt = client.get(
-            "/auth/admin-check",
-            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
-        )
-        assert admin_attempt.status_code == 403
+        plain = tmp_path / "ada"
+        plain.mkdir()
+        assert _is_learner_profile_dir(plain) is False  # no LEARNING.md yet
+        (plain / "LEARNING.md").write_text("# ada\n", encoding="utf-8")
+        assert _is_learner_profile_dir(plain) is True
 
-    def test_signup_missing_fields(self, client: TestClient):
-        """Partial data is rejected by validation."""
-        response = client.post("/auth/signup", json={"username": "x"})
-        assert response.status_code == 422  # Pydantic validation error
+        verifier = tmp_path / "verifier_123"
+        verifier.mkdir()
+        (verifier / "LEARNING.md").write_text("# v\n", encoding="utf-8")
+        assert _is_learner_profile_dir(verifier) is False
+
+        stray = tmp_path / "notes.txt"
+        stray.write_text("x", encoding="utf-8")
+        assert _is_learner_profile_dir(stray) is False
+
+    def test_find_first_existing_profile_branches(self, tmp_path: Path):
+        from auth import _find_first_existing_profile
+
+        base = tmp_path / "case"
+        # Missing learners dir -> None.
+        with patch("learner_profile.get_learners_data_dir", return_value=base / "nope"):
+            assert _find_first_existing_profile() is None
+        # Empty dir -> None.
+        learners = base / "learners"
+        learners.mkdir(parents=True)
+        with patch("learner_profile.get_learners_data_dir", return_value=learners):
+            assert _find_first_existing_profile() is None
+            # Only verifier scratch dirs -> None.
+            verifier = learners / "verifier_9"
+            verifier.mkdir()
+            (verifier / "LEARNING.md").write_text("# v\n", encoding="utf-8")
+            assert _find_first_existing_profile() is None
+            # Sorted first valid profile wins.
+            for name in ("zara", "ada"):
+                user_dir = learners / name
+                user_dir.mkdir()
+                (user_dir / "LEARNING.md").write_text(f"# {name}\n", encoding="utf-8")
+            assert _find_first_existing_profile() == "ada"
+            # Backend failure degrades to None instead of raising.
+            with patch(
+                "learner_profile.get_learners_data_dir",
+                side_effect=RuntimeError("disk gone"),
+            ):
+                assert _find_first_existing_profile() is None
 
 
 class TestLocalWelcome:
-    def test_disabled_by_default(self, client: TestClient):
-        response = client.post("/auth/local-welcome", json={"name": "Ada"})
-        assert response.status_code == 403
+    """Tests for /auth/local-welcome."""
 
-    def test_creates_student_and_returns_token(self, client: TestClient, monkeypatch):
-        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
-        response = client.post("/auth/local-welcome", json={"name": "Ada Lovelace"})
-        assert response.status_code == 200
-        token = response.json()["access_token"]
-        from jose import jwt
+    def test_local_welcome_issues_valid_token(self, client: TestClient, tmp_path: Path):
+        learners_dir = tmp_path / "learners"
+        learners_dir.mkdir(parents=True, exist_ok=True)
+        with patch("learner_profile.get_learners_data_dir", return_value=learners_dir):
+            res = client.post("/auth/local-welcome", json={"name": "Ada Lovelace"})
+            assert res.status_code == 200
+            token = res.json()["access_token"]
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            assert payload["sub"] == "ada-lovelace"
+            assert payload["role"] == "admin"
+            assert (learners_dir / "ada-lovelace" / "LEARNING.md").is_file()
 
-        from auth import ALGORITHM, SECRET_KEY
 
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        assert payload["sub"] == "ada-lovelace"
-        assert payload["role"] == "student"
+class TestLocalIdentityResolution:
+    """Tests for zero-friction user dependency resolution."""
 
-    def test_same_name_reuses_account(self, client: TestClient, monkeypatch):
-        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
-        first = client.post("/auth/local-welcome", json={"name": "Ada"})
-        second = client.post("/auth/local-welcome", json={"name": "Ada"})
-        assert first.status_code == 200
-        assert second.status_code == 200
-
-    @pytest.mark.parametrize(
-        "reserved_name", ["admin", "Administrator", "root", "superuser", "system"]
-    )
-    def test_rejects_reserved_usernames(self, client: TestClient, monkeypatch, reserved_name):
-        """Reserved usernames like admin cannot be claimed via local welcome."""
-        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
-        res = client.post("/auth/local-welcome", json={"name": reserved_name})
-        assert res.status_code == 400
-        assert "reserved" in res.json()["detail"].lower()
-
-    def test_prevents_takeover_of_standard_registered_account(
-        self, client: TestClient, monkeypatch
+    @pytest.mark.anyio
+    async def test_resolves_active_learner_when_no_auth_provided(
+        self, monkeypatch: pytest.MonkeyPatch
     ):
-        """A registered account with password cannot be hijacked via local welcome."""
-        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
-        # Alice signs up normally
-        reg = client.post(
-            "/auth/signup",
-            json={
-                "username": "alice",
-                "email": "alice@example.com",
-                "password": "securepassword123",
-            },
+        monkeypatch.setenv("ACTIVE_LEARNER", "resident-dev")
+        mock_session = pytest.importorskip("unittest.mock").MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+
+        user = await get_current_user(
+            token=None, learner_header=None, learner_query=None, session=mock_session
         )
-        assert reg.status_code == 200
+        assert user.username == "resident-dev"
+        assert user.role == "admin"
 
-        # Attacker tries to hijack Alice's account via local welcome
-        attack = client.post("/auth/local-welcome", json={"name": "alice"})
-        assert attack.status_code == 403
-        assert "registered account" in attack.json()["detail"].lower()
+    @pytest.mark.anyio
+    async def test_header_resolves_learner(self):
+        mock_session = pytest.importorskip("unittest.mock").MagicMock()
+        mock_session.exec.return_value.first.return_value = None
 
-    def test_local_welcome_token_always_enforces_student_role(
-        self, client: TestClient, monkeypatch
-    ):
-        """The token generated by local welcome must always have role 'student'."""
-        monkeypatch.setenv("ALLOW_LOCAL_WELCOME", "true")
-        res = client.post("/auth/local-welcome", json={"name": "Bob Learner"})
+        user = await get_current_user(
+            token=None, learner_header="Margaret Hamilton", learner_query=None, session=mock_session
+        )
+        assert user.username == "margaret-hamilton"
+
+    @pytest.mark.anyio
+    async def test_token_resolves_learner_and_role(self):
+        token = create_access_token(data={"sub": "linus", "role": "student"})
+        mock_session = pytest.importorskip("unittest.mock").MagicMock()
+        mock_session.exec.return_value.first.return_value = None
+
+        user = await get_current_user(
+            token=token, learner_header=None, learner_query=None, session=mock_session
+        )
+        assert user.username == "linus"
+        assert user.role == "student"
+
+
+class TestAdminStatus:
+    """Tests for administrative privilege validation."""
+
+    def test_default_local_user_is_admin(self, client: TestClient):
+        res = client.get("/auth/admin-check")
         assert res.status_code == 200
-        token = res.json()["access_token"]
-        from jose import jwt
+        assert res.json()["role"] == "admin"
 
-        from auth import ALGORITHM, SECRET_KEY
+    def test_student_token_rejected_from_admin(self, client: TestClient):
+        student_token = create_access_token(data={"sub": "student-1", "role": "student"})
+        res = client.get("/auth/admin-check", headers={"Authorization": f"Bearer {student_token}"})
+        assert res.status_code == 403
 
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        assert payload["role"] == "student"
 
+class TestHelperFunctions:
+    """Tests for helper utilities."""
 
-# ==============================================================
-#  LOGIN (Email / Password)
-# ==============================================================
-
-
-class TestLogin:
-    """Email-and-password login tests."""
-
-    def test_login_with_username(self, client: TestClient, registered_user):
-        """Login using the username field."""
-        response = client.post(
-            "/auth/login",
-            data={
-                "username": registered_user["username"],
-                "password": registered_user["password"],
-            },
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert "access_token" in body
-        assert body["token_type"] == "bearer"
-
-    def test_login_with_email(self, client: TestClient, registered_user):
-        """Login using the email as 'username' (dual-login support)."""
-        response = client.post(
-            "/auth/login",
-            data={
-                "username": registered_user["email"],
-                "password": registered_user["password"],
-            },
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert "access_token" in body
-
-    def test_login_wrong_password(self, client: TestClient, registered_user):
-        """Wrong password returns 401."""
-        response = client.post(
-            "/auth/login",
-            data={
-                "username": registered_user["username"],
-                "password": "WrongPassword!",
-            },
-        )
-        assert response.status_code == 401
-        assert "Incorrect" in response.json()["detail"]
-
-    def test_login_nonexistent_user(self, client: TestClient):
-        """Logging in as a user that does not exist returns 401."""
-        response = client.post(
-            "/auth/login",
-            data={"username": "ghost", "password": "whatever"},
-        )
-        assert response.status_code == 401
-
-
-# ==============================================================
-#  JWT TOKEN VALIDATION
-# ==============================================================
-
-
-class TestTokenValidation:
-    """Verify JWT-based authentication works end-to-end."""
-
-    def test_valid_token_accepted(self, client: TestClient, auth_headers):
-        """A valid token grants access to a protected endpoint."""
-        response = client.get("/me/progress", headers=auth_headers)
-        assert response.status_code == 200
-
-    def test_invalid_token_rejected(self, client: TestClient):
-        """A garbage token returns 401."""
-        response = client.get(
-            "/file-courses/nonexistent",
-            headers={"Authorization": "Bearer this-is-not-a-real-token"},
-        )
-        assert response.status_code == 401
-
-    def test_missing_token_rejected(self, client: TestClient):
-        """No Authorization header returns 401 on protected endpoints."""
-        # Hit a protected file-course detail endpoint
-        response = client.get("/file-courses/nonexistent")
-        assert response.status_code == 401
-
-    def test_expired_token_rejected(self, client: TestClient, registered_user):
-        """A token with an expiration in the past is rejected."""
-        from datetime import timedelta
-
-        from auth import create_access_token
-
-        expired_token = create_access_token(
-            data={"sub": registered_user["username"], "role": "student"},
-            expires_delta=timedelta(seconds=-10),  # already expired
-        )
-        response = client.get(
-            "/file-courses/nonexistent",
-            headers={"Authorization": f"Bearer {expired_token}"},
-        )
-        assert response.status_code == 401
-
-
-# ==============================================================
-#  ADMIN ACCESS CONTROL
-# ==============================================================
-
-
-class TestAdminAccess:
-    """Verify admin-only routes are properly guarded."""
-
-    def test_admin_can_access_admin_routes(self, client: TestClient, admin_headers):
-        """Admin user can hit admin-protected endpoints."""
-        response = client.get("/auth/admin-check", headers=admin_headers)
-        assert response.status_code == 200
-        assert response.json()["role"] == "admin"
-
-    def test_student_cannot_access_admin_routes(self, client: TestClient, auth_headers):
-        """A student token is rejected from admin-protected endpoints."""
-        response = client.get("/auth/admin-check", headers=auth_headers)
-        assert response.status_code == 403
-
-
-# ==============================================================
-#  GOOGLE OAUTH (mocked)
-# ==============================================================
-
-
-class TestGoogleLogin:
-    """Google OAuth endpoint tests with mocked token verification."""
-
-    MOCK_GOOGLE_IDINFO = {
-        "email": "googleuser@gmail.com",
-        "name": "Google User",
-        "sub": "1234567890",
-    }
-
-    @patch("auth.id_token.verify_oauth2_token")
-    def test_google_login_creates_new_user(self, mock_verify, client: TestClient):
-        """First Google login creates a new account and returns a JWT."""
-        mock_verify.return_value = self.MOCK_GOOGLE_IDINFO
-
-        response = client.post(
-            "/auth/google",
-            json={"credential": "fake-google-id-token"},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert "access_token" in body
-        assert body["token_type"] == "bearer"
-
-    @patch("auth.id_token.verify_oauth2_token")
-    def test_google_login_links_existing_user(self, mock_verify, client: TestClient):
-        """If a user with the same email already exists, Google login links to it."""
-        # First, create a user with the same email via signup
-        existing = {
-            "username": "existinguser",
-            "email": "googleuser@gmail.com",
-            "password": "SomePass789!",
-            "role": "student",
-        }
-        signup_resp = client.post("/auth/signup", json=existing)
-        assert signup_resp.status_code == 200
-
-        # Now log in via Google with the same email
-        mock_verify.return_value = self.MOCK_GOOGLE_IDINFO
-        response = client.post(
-            "/auth/google",
-            json={"credential": "fake-google-id-token"},
-        )
-        assert response.status_code == 200
-
-        # Verify the token belongs to the existing user, not a new one
-        from jose import jwt as jose_jwt
-
-        token = response.json()["access_token"]
-        payload = jose_jwt.decode(token, "test-secret-key-for-testing-only", algorithms=["HS256"])
-        assert payload["sub"] == "existinguser"
-
-    @patch("auth.id_token.verify_oauth2_token")
-    def test_google_login_handles_username_collision(self, mock_verify, client: TestClient):
-        """If the email prefix is already taken as a username, a suffix is appended."""
-        # Create a user with username = the email prefix
-        existing = {
-            "username": "googleuser",
-            "email": "other@example.com",
-            "password": "Pass123!",
-            "role": "student",
-        }
-        client.post("/auth/signup", json=existing)
-
-        # Google login with email "googleuser@gmail.com"
-        mock_verify.return_value = self.MOCK_GOOGLE_IDINFO
-        response = client.post(
-            "/auth/google",
-            json={"credential": "fake-google-id-token"},
-        )
-        assert response.status_code == 200
-
-        from jose import jwt as jose_jwt
-
-        token = response.json()["access_token"]
-        payload = jose_jwt.decode(token, "test-secret-key-for-testing-only", algorithms=["HS256"])
-        # Username should NOT be "googleuser" (taken), should be "googleuser_1"
-        assert payload["sub"] == "googleuser_1"
-
-    @patch("auth.id_token.verify_oauth2_token", side_effect=ValueError("Invalid token"))
-    def test_google_login_invalid_token(self, mock_verify, client: TestClient):
-        """An invalid Google token returns 401."""
-        response = client.post(
-            "/auth/google",
-            json={"credential": "garbage-token"},
-        )
-        assert response.status_code == 401
-        assert "Invalid Google token" in response.json()["detail"]
-
-    def test_google_login_without_client_id(self, client: TestClient):
-        """If GOOGLE_CLIENT_ID is not set, return 500."""
-        import auth
-
-        original = auth.GOOGLE_CLIENT_ID
-        auth.GOOGLE_CLIENT_ID = None
-        try:
-            response = client.post(
-                "/auth/google",
-                json={"credential": "some-token"},
-            )
-            assert response.status_code == 500
-            assert "not configured" in response.json()["detail"]
-        finally:
-            auth.GOOGLE_CLIENT_ID = original
-
-
-# ==============================================================
-#  GUEST MODE (unauthenticated access)
-# ==============================================================
-
-
-class TestGuestAccess:
-    """Verify that guests can browse the catalog but not access course details."""
-
-    def test_guest_can_list_courses(self, client: TestClient):
-        """The course catalog endpoint is publicly accessible."""
-        response = client.get("/file-courses/")
-        assert response.status_code == 200
-        # Should return a list (empty is fine)
-        assert isinstance(response.json(), list)
-
-    def test_guest_cannot_access_course_detail(self, client: TestClient):
-        """Course detail requires authentication; guest gets 401."""
-        response = client.get("/file-courses/some-course-slug")
-        assert response.status_code == 401
-
-    def test_guest_cannot_access_lesson_detail(self, client: TestClient):
-        """Lesson detail requires authentication; guest gets 401."""
-        response = client.get("/file-courses/some-course/some-lesson")
-        assert response.status_code == 401
-
-    def test_authenticated_user_can_access_course_detail(self, client: TestClient, auth_headers):
-        """An authenticated user gets past the auth guard (may get 404 for
-        a nonexistent course, but NOT 401)."""
-        response = client.get("/file-courses/nonexistent", headers=auth_headers)
-        # 404 means auth passed, course just does not exist
-        assert response.status_code in (200, 404)
-        assert response.status_code != 401
-
-
-# ==============================================================
-#  DIRECT HELPER AND EDGE-CASE TESTS (for 100% branch coverage)
-# ==============================================================
-
-
-class TestAuthHelpersDirect:
-    """Direct tests for auth.py functions to ensure full mutation & branch coverage."""
-
-    def test_verify_password_bytes_and_string(self):
-        from auth import get_password_hash, verify_password
-
-        hashed = get_password_hash("secret")
-        assert verify_password("secret", hashed)
-        assert verify_password("secret", hashed.encode("utf-8"))
-        assert not verify_password("wrong", hashed)
-
-    def test_create_access_token_default_expiry(self):
-        from datetime import datetime, timezone
-
-        from jose import jwt
-
-        from auth import ALGORITHM, SECRET_KEY, create_access_token
-
-        token = create_access_token(data={"sub": "user1"})
-        decoded = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        assert decoded["sub"] == "user1"
-        assert "exp" in decoded
-        exp_dt = datetime.fromtimestamp(decoded["exp"], tz=timezone.utc)
-        now_dt = datetime.now(timezone.utc)
-        diff = (exp_dt - now_dt).total_seconds()
-        assert 890 <= diff <= 910
-
-    @pytest.mark.anyio
-    async def test_get_current_user_token_without_sub(self):
-        from fastapi import HTTPException
-
-        from auth import create_access_token, get_current_user
-
-        token_no_sub = create_access_token(data={"role": "student"})
-        mock_session = MagicMock()
-
-        with pytest.raises(HTTPException) as exc:
-            await get_current_user(token=token_no_sub, session=mock_session)
-        assert exc.value.status_code == 401
-        assert exc.value.detail == "Could not validate credentials"
-        assert exc.value.headers == {"WWW-Authenticate": "Bearer"}
-
-    @pytest.mark.anyio
-    async def test_get_current_user_user_not_found(self):
-        from fastapi import HTTPException
-
-        from auth import create_access_token, get_current_user
-
-        token = create_access_token(data={"sub": "missing_user", "role": "student"})
-        mock_session = MagicMock()
-        mock_exec = MagicMock()
-        mock_exec.first.return_value = None
-        mock_session.exec.return_value = mock_exec
-
-        with pytest.raises(HTTPException) as exc:
-            await get_current_user(token=token, session=mock_session)
-        assert exc.value.status_code == 401
-        assert exc.value.detail == "Could not validate credentials"
-        assert exc.value.headers == {"WWW-Authenticate": "Bearer"}
-
-    @pytest.mark.anyio
-    async def test_get_current_admin_direct(self):
-        from fastapi import HTTPException
-
-        from auth import get_current_admin
-        from models import User
-
-        admin_user = User(username="adm", email="a@e.com", role="admin", hashed_password="h")
-        assert await get_current_admin(user=admin_user) == admin_user
-
-        student_user = User(username="stu", email="s@e.com", role="student", hashed_password="h")
-        with pytest.raises(HTTPException) as exc:
-            await get_current_admin(user=student_user)
-        assert exc.value.status_code == 403
-        assert exc.value.detail == "You do not have administrative privileges"
-
-    @pytest.mark.anyio
-    async def test_get_optional_user_cases(self, client: TestClient):
-        from auth import create_access_token, get_optional_user, get_password_hash
-        from models import User
-        from tests.conftest import get_test_session
-
-        session = next(get_test_session())
-
-        # Create real test user
-        test_u = User(
-            username="opt_user",
-            email="opt@example.com",
-            role="student",
-            hashed_password=get_password_hash("p"),
-        )
-        session.add(test_u)
-        session.commit()
-        session.refresh(test_u)
-
-        # Case 1: No token
-        assert await get_optional_user(token="", session=session) is None
-
-        # Case 2: Invalid JWT
-        assert await get_optional_user(token="not-valid-jwt", session=session) is None
-
-        # Case 3: JWT without sub
-        no_sub_jwt = create_access_token(data={"role": "student"})
-        assert await get_optional_user(token=no_sub_jwt, session=session) is None
-
-        # Case 4: Valid JWT, user found
-        valid_jwt = create_access_token(data={"sub": "opt_user", "role": "student"})
-        res_user = await get_optional_user(token=valid_jwt, session=session)
-        assert res_user is not None
-        assert res_user.username == "opt_user"
-
-        # Case 5: Valid JWT, user not found in DB
-        ghost_jwt = create_access_token(data={"sub": "ghost_opt_user", "role": "student"})
-        assert await get_optional_user(token=ghost_jwt, session=session) is None
-
-
-# ==============================================================
-#  SECRET_KEY CONFIG
-# ==============================================================
-
-
-class TestSecretKeyConfig:
-    """auth.py must fail fast when SECRET_KEY is missing or is the default placeholder."""
-
-    IMPORT_CMD = (
-        "import os; "
-        "os.environ.pop('SECRET_KEY', None); "
-        "os.environ['GOOGLE_CLIENT_ID']='test'; "
-        "os.environ['DATABASE_URL']='sqlite://'; "
-        "import auth"
-    )
-
-    def test_missing_secret_key_fails_fast(self):
-        import subprocess
-        import sys
-        from pathlib import Path
-
-        result = subprocess.run(
-            [sys.executable, "-c", self.IMPORT_CMD],
-            capture_output=True,
-            text=True,
-            cwd=Path(__file__).resolve().parents[1],
-        )
-        assert result.returncode != 0
-        assert "SECRET_KEY" in result.stderr
-
-    def test_placeholder_secret_key_fails_fast(self):
-        import subprocess
-        import sys
-        from pathlib import Path
-
-        code = self.IMPORT_CMD.replace(
-            "os.environ.pop('SECRET_KEY', None);",
-            "os.environ['SECRET_KEY']='super-secret-key-change-me-in-production';",
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", code],
-            capture_output=True,
-            text=True,
-            cwd=Path(__file__).resolve().parents[1],
-        )
-        assert result.returncode != 0
-        assert "SECRET_KEY" in result.stderr
+    def test_password_placeholders(self):
+        assert verify_password("any_pass", "any_hash") is True
+        assert get_password_hash("pass") == "local_no_password"

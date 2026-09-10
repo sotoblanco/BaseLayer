@@ -49,16 +49,18 @@ async function parseJsonResponse<T>(response: Response, fallbackError: string): 
   return response.json();
 }
 
-export const getLearningProfile = async (): Promise<LearningProfileResponse> => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    throw new Error('Please sign in to view your learning profile.');
-  }
+export function getLocalHeaders(): Record<string, string> {
+  const learnerName = localStorage.getItem('baselayer_learner_name') || 'Local Learner';
+  const token = localStorage.getItem('token') || 'local-session-token';
+  return {
+    'X-Learner-Name': learnerName,
+    Authorization: `Bearer ${token}`,
+  };
+}
 
+export const getLearningProfile = async (): Promise<LearningProfileResponse> => {
   const response = await fetch(`${API_BASE_URL}/me/learning-profile`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: getLocalHeaders(),
   });
 
   return parseJsonResponse<LearningProfileResponse>(response, 'Failed to fetch learning profile');
@@ -67,16 +69,11 @@ export const getLearningProfile = async (): Promise<LearningProfileResponse> => 
 export const updateLearningProfile = async (
   markdown: string
 ): Promise<LearningProfileResponse> => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    throw new Error('Please sign in to update your learning profile.');
-  }
-
   const response = await fetch(`${API_BASE_URL}/me/learning-profile`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      ...getLocalHeaders(),
     },
     body: JSON.stringify({ markdown }),
   });
@@ -88,15 +85,12 @@ export const emitLearnerEvent = async (
   eventType: string,
   payload: Record<string, unknown>
 ): Promise<void> => {
-  const token = localStorage.getItem('token');
-  if (!token) return;
-
   try {
     await fetch(`${API_BASE_URL}/me/learning-profile/events`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...getLocalHeaders(),
       },
       body: JSON.stringify({ event_type: eventType, payload }),
     });
@@ -118,12 +112,9 @@ export interface CourseProgressSummary {
 }
 
 export const fetchMyProgress = async (): Promise<CourseProgressSummary[]> => {
-  const token = localStorage.getItem('token');
-  if (!token) return [];
-
   try {
     const response = await fetch(`${API_BASE_URL}/me/progress`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: getLocalHeaders(),
     });
     if (!response.ok) return [];
     const data = await response.json();
@@ -152,16 +143,11 @@ export interface LearnerQuestionnaire {
 export const submitLearnerQuestionnaire = async (
   answers: LearnerQuestionnaire
 ): Promise<LearningProfileResponse> => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    throw new Error('Please sign in to customize your learning profile.');
-  }
-
   const response = await fetch(`${API_BASE_URL}/me/learning-profile/questionnaire`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      ...getLocalHeaders(),
     },
     body: JSON.stringify(answers),
   });

@@ -122,11 +122,12 @@ def fake_executor(monkeypatch: pytest.MonkeyPatch):
 
 
 class TestInstructionsEndpoint:
-    def test_requires_auth(self, client: TestClient):
+    def test_instructions_unauthenticated_resolves_local_learner(self, client: TestClient):
         response = client.post(
             "/ai/learning-path/instructions", json={"topic": "numpy broadcasting"}
         )
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert "instructions" in response.json()
 
     def test_returns_a_self_contained_prompt(self, client: TestClient, auth_headers):
         response = client.post(
@@ -390,6 +391,77 @@ class TestExtractAndNormalize:
         with pytest.raises(CourseImportError, match="from main import"):
             normalize_course_payload(payload)
 
+    def test_blended_modalities_normalize(self):
+        from course_import import normalize_course_payload
+
+        payload = build_course()
+        payload["lessons"][1] = {
+            "title": "Shape intuition",
+            "modality": "spreadsheet",
+            "objective": "Feel broadcasting in cells.",
+            "sample_data": "B2:D4 block of 1..9",
+            "expected_result": "G2 shows 3x3",
+            "micro_task": "Enter the shape formula in G2.",
+            "inspect_prompt": "Predict what G2 shows before running.",
+            "sheet_cells": {"G2": "=ROWS(B2:D4)"},
+            "success_cells": [{"cell": "G2", "expected": 3}],
+        }
+        payload["lessons"][2] = {
+            "title": "Sketch the flow",
+            "modality": "drawing",
+            "objective": "See the pipeline.",
+            "sample_data": "3-stage pipeline",
+            "expected_result": "one labeled sketch",
+            "micro_task": "Sketch the flow.",
+            "inspect_prompt": "Labeled stages?",
+            "drawing_prompt": "Sketch the 3-stage pipeline with labels.",
+        }
+        res = normalize_course_payload(payload)
+        assert [lesson.modality for lesson in res.lessons] == [
+            "code",
+            "spreadsheet",
+            "drawing",
+            "code",
+        ]
+        sheet_lesson = [lesson for lesson in res.lessons if lesson.modality == "spreadsheet"][0]
+        assert sheet_lesson.sheet_cells["G2"] == "=ROWS(B2:D4)"
+        assert sheet_lesson.success_cells[0]["cell"] == "G2"
+        draw_lesson = [lesson for lesson in res.lessons if lesson.modality == "drawing"][0]
+        assert "pipeline" in draw_lesson.drawing_prompt
+
+    def test_spreadsheet_without_targets_rejected(self):
+        from course_import import normalize_course_payload
+
+        payload = build_course()
+        payload["lessons"][0] = {
+            "title": "Sheets",
+            "modality": "spreadsheet",
+            "objective": "obj",
+            "sample_data": "data",
+            "expected_result": "1",
+            "micro_task": "task",
+            "inspect_prompt": "inspect",
+            "sheet_cells": {"A1": 1},
+        }
+        with pytest.raises(CourseImportError, match="success_cells"):
+            normalize_course_payload(payload)
+
+    def test_drawing_without_prompt_rejected(self):
+        from course_import import normalize_course_payload
+
+        payload = build_course()
+        payload["lessons"][0] = {
+            "title": "Sketch",
+            "modality": "drawing",
+            "objective": "obj",
+            "sample_data": "data",
+            "expected_result": "1",
+            "micro_task": "task",
+            "inspect_prompt": "inspect",
+        }
+        with pytest.raises(CourseImportError, match="drawing_prompt"):
+            normalize_course_payload(payload)
+
 
 # ---------------------------------------------------------------------------
 # Import endpoint
@@ -397,9 +469,10 @@ class TestExtractAndNormalize:
 
 
 class TestImportEndpoint:
-    def test_requires_auth(self, client: TestClient):
+    def test_import_unauthenticated_resolves_local_learner(self, client: TestClient):
+        # Empty text fails validation with 422, proving auth passed and request reached validator
         response = client.post("/ai/learning-path/import", json={"raw_text": "{}"})
-        assert response.status_code == 401
+        assert response.status_code == 422
 
     def test_empty_reply_is_422(self, client: TestClient, auth_headers, courses_dir):
         response = client.post(

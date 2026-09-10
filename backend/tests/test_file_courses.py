@@ -453,9 +453,10 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "README.md").write_text("# Img")
         (lesson_dir / "question.png").write_bytes(b"fake_image_bytes")
 
-        # Unauthenticated request is rejected (Issue #28)
+        # Unauthenticated request in local mode succeeds
         unauth = client.get("/file-courses/c_img/l_img/image")
-        assert unauth.status_code == 401
+        assert unauth.status_code == 200
+        assert unauth.content == b"fake_image_bytes"
 
         # Found with auth headers
         res = client.get("/file-courses/c_img/l_img/image", headers=auth_headers)
@@ -494,9 +495,10 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "README.md").write_text("# Sol")
         (lesson_dir / "solution.png").write_bytes(b"fake_sol_bytes")
 
-        # Unauthenticated request is rejected (Issue #28)
+        # Unauthenticated request in local mode succeeds
         unauth = client.get("/file-courses/c_sol/l_sol/solution")
-        assert unauth.status_code == 401
+        assert unauth.status_code == 200
+        assert unauth.content == b"fake_sol_bytes"
 
         # Found with auth headers
         res = client.get("/file-courses/c_sol/l_sol/solution", headers=auth_headers)
@@ -593,8 +595,9 @@ class TestFileCoursesEndpoints:
         (lesson_dir / "main.py").write_text("pass")
         (lesson_dir / "solution.py").write_text("SECRET_ANSWER = 42\n")
 
-        denied = client.get("/file-courses/c_secret/l1/solution-code")
-        assert denied.status_code == 401
+        unauth = client.get("/file-courses/c_secret/l1/solution-code")
+        assert unauth.status_code == 200
+        assert unauth.json()["solution_code"] == "SECRET_ANSWER = 42\n"
 
         ok = client.get("/file-courses/c_secret/l1/solution-code", headers=auth_headers)
         assert ok.status_code == 200
@@ -991,7 +994,9 @@ class TestSpreadsheetVerification:
             {"cell": "C5", "expected": "3x3"},
         ]
 
-    def test_verify_sheet_requires_auth(self, client: TestClient, tmp_path: Path, monkeypatch):
+    def test_verify_sheet_unauthenticated_resolves_local_learner(
+        self, client: TestClient, tmp_path: Path, monkeypatch
+    ):
         self._write_lesson(
             tmp_path,
             monkeypatch,
@@ -1000,7 +1005,8 @@ class TestSpreadsheetVerification:
         res = client.post(
             "/file-courses/c_sheet/l_sheet/verify-sheet", json={"sheet_id": "sheet_abc123"}
         )
-        assert res.status_code == 401
+        # Auth passes, reaches sheet credentials check
+        assert res.status_code == 501
 
     def test_verify_sheet_not_spreadsheet(
         self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
@@ -1582,6 +1588,72 @@ class TestShareExportImport:
         assert (imported_dir / "main.py").is_file()
         assert "vector_dot" in (imported_dir / "main.py").read_text()
         assert "Calculate dot product" in (imported_dir / "README.md").read_text()
+
+    def test_import_chat_dialect_keeps_modality_tools(
+        self, client: TestClient, auth_headers, tmp_path: Path, monkeypatch
+    ):
+        """A generated-course JSON using the chat `modality` dialect must keep
+        its spreadsheet/drawing tools through the bundle importer (regression:
+        modality was silently dropped and everything became code)."""
+        import json as json_lib
+
+        courses_dir = tmp_path / "courses"
+        courses_dir.mkdir()
+        monkeypatch.setattr("routers.file_courses.COURSES_DIR", courses_dir)
+        clear_course_summary_cache()
+
+        payload = {
+            "title": "Pixel Gym",
+            "description": "Sketch, sheet, code.",
+            "lessons": [
+                {
+                    "title": "Sketch the pipeline",
+                    "modality": "drawing",
+                    "objective": "See the flow.",
+                    "micro_task": "Sketch it.",
+                    "inspect_prompt": "Labeled?",
+                    "drawing_prompt": "Sketch the 3-stage pipeline with labels.",
+                },
+                {
+                    "title": "Normalize in cells",
+                    "modality": "spreadsheet",
+                    "objective": "Feel the math.",
+                    "micro_task": "Enter the formula.",
+                    "inspect_prompt": "Check G2.",
+                    "sheet_cells": {"G2": "=ROWS(B2:D4)"},
+                    "success_cells": [{"cell": "G2", "expected": 3}],
+                },
+            ],
+        }
+
+        res = client.post("/file-courses/import", json=payload, headers=auth_headers)
+        assert res.status_code == 200, res.text
+        data = res.json()
+        assert data["lesson_count"] == 2
+
+        draw_meta = json_lib.loads(
+            (
+                courses_dir
+                / data["course_slug"]
+                / "chapter1"
+                / "sketch-the-pipeline"
+                / "metadata.json"
+            ).read_text()
+        )
+        assert draw_meta["exercise_type"] == "drawing"
+        assert "pipeline" in draw_meta["drawing"]["prompt_text"]
+
+        sheet_meta = json_lib.loads(
+            (
+                courses_dir
+                / data["course_slug"]
+                / "chapter1"
+                / "normalize-in-cells"
+                / "metadata.json"
+            ).read_text()
+        )
+        assert sheet_meta["exercise_type"] == "spreadsheet"
+        assert sheet_meta["sheet"]["cells"]["G2"] == "=ROWS(B2:D4)"
 
     def test_helper_unit_functions(self, tmp_path: Path):
         from routers.file_courses import (

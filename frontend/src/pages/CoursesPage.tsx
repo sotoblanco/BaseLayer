@@ -22,7 +22,7 @@ import CourseBuilder from '../components/CourseBuilder';
 import { LearningProfileModal } from '../components/LearningProfileModal';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
-import { fetchMyProgress, type CourseProgressSummary } from '../services/profileService';
+import { fetchMyProgress, getLocalHeaders, type CourseProgressSummary } from '../services/profileService';
 
 interface FileCourse {
   slug: string;
@@ -95,10 +95,9 @@ export default function CoursesPage() {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/file-courses/${courseToDelete.slug}`, {
         method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: getLocalHeaders(),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

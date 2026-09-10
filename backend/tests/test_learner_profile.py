@@ -362,9 +362,10 @@ I prefer visual and drawing warm-ups before jumping to code.
 
 
 class TestLearnerProfileAPI:
-    def test_get_learning_profile_requires_auth(self, client):
+    def test_get_learning_profile_unauthenticated_resolves_local_learner(self, client):
         response = client.get("/me/learning-profile")
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert "markdown" in response.json()
 
     def test_get_learning_profile_authenticated(self, client, auth_headers, tmp_path: Path):
         with patch("learner_profile.get_learners_data_dir", return_value=tmp_path):
@@ -422,9 +423,10 @@ Advanced test runner.
         signals = response.json()["profile"]["signals"]
         assert any("Reset exercise on tinytorch" in s for s in signals)
 
-    def test_get_progress_requires_auth(self, client):
+    def test_get_progress_unauthenticated_resolves_local_learner(self, client):
         response = client.get("/me/progress")
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert "courses" in response.json()
 
     def test_get_progress_returns_resume_and_completions(self, client, auth_headers):
         event = client.post(
@@ -726,6 +728,19 @@ Advanced test runner.
         md2 = aggregate_questionnaire_to_markdown("code_sheet_learner", q2)
         fm2, _ = parse_frontmatter(md2)
         assert fm2["preferred_modalities"] == ["code", "spreadsheet"]
+
+    def test_explicit_modalities_beat_unblock_inference(self):
+        # The onboard "Tool Focus" answer is explicit: it must survive even
+        # when the unblock strategy would infer a narrower set.
+        from learner_profile import aggregate_questionnaire_to_markdown, parse_frontmatter
+
+        q = LearnerQuestionnaire(
+            unblock_strategies=["breakdown_code"],
+            preferred_modalities=["code", "spreadsheet", "drawing"],
+        )
+        md = aggregate_questionnaire_to_markdown("explicit_learner", q)
+        fm, _ = parse_frontmatter(md)
+        assert fm["preferred_modalities"] == ["code", "spreadsheet", "drawing"]
 
     def test_apply_course_builder_preferences_blends_profile_and_records_signal(self, tmp_path):
         from learner_profile import apply_course_builder_preferences, get_or_create_profile
