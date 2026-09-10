@@ -1,26 +1,30 @@
 # BaseLayer
 
-An open-source studio for **learning by doing**. You take (or write) file-based exercises in a browser IDE: run Python or Rust in a sandbox, build intuition in Google Sheets, or draw on a diagram. SocratiQ, the built-in tutor, hints without dumping the full solution.
+An open-source, local-first studio for **learning by doing**. You take (or write) file-based exercises in a browser IDE: run Python or Rust in a sandbox, build intuition in Google Sheets, or draw on a realistic chalkboard. SocratiQ, the built-in tutor, hints without dumping the full solution.
 
 ![Integrated AI and Spreadsheet Layout](images/image.png)
 
-**Studio:** [http://localhost:5173](http://localhost:5173) after `./dev.sh`  
+**Studio:** [http://localhost:5173](http://localhost:5173) after `baselayer up` or `./dev.sh`  
 **API:** [http://localhost:8000](http://localhost:8000)
 
 ---
 
 ## What it does
 
-BaseLayer is not a video platform and not a blank notebook. Each lesson is a folder on disk. Opening a course loads instructions on the left and the matching workspace on the right (editor, sheet, or canvas). You run, inspect, and submit. Tests grade code; a connected LLM grades drawings when one is configured.
+BaseLayer is not a video platform and not a blank notebook. Each lesson is a folder on disk. Opening a course loads instructions on the left and the matching workspace on the right (editor, sheet, or canvas). You run, inspect, and submit. Pure Python and NumPy execute instantly in-browser via WebAssembly, while native code runs in an isolated local Docker container.
 
-| You want to… | What BaseLayer does |
+| You want to... | What BaseLayer does |
 |---|---|
 | Learn a shipped course | Pick it on the home page, work lesson by lesson |
-| Run code safely | `Run` / `Submit` execute in Docker (local) or Modal (cloud) |
-| Get unstuck | Ask **SocratiQ** with the lesson + your current code as context |
-| Learn visually | Spreadsheet lessons (`MMULT`, `ARRAYFORMULA`) or hand-drawing on a diagram |
-| Track your style | Living `LEARNING.md` profile records struggles, modalities, and signals |
-| Teach / customize | Add folders under `courses/` — they show up on refresh |
+| Onboard and configure | Run `baselayer onboard` to set up workspace, tutor style, and AI keys |
+| Run code instantly | Client-side Pyodide WebAssembly executes Python and NumPy with zero Docker overhead |
+| Run native code safely | PyTorch, native C extensions, and Rust execute in an isolated local Docker container |
+| Build real projects | Build-Project mode chains sequential steps that accumulate one working artifact |
+| Learn visually | Spreadsheet lessons (`MMULT`, `ARRAYFORMULA`) and realistic chalkboard drawings |
+| Self-evaluate drawings | Pure-JSON chalkboard lessons compare with solution cards without requiring AI |
+| Get unstuck | Ask **SocratiQ** with the lesson, your current code, and learning history as context |
+| Personalize tutoring | Living `LEARNING.md` profile records struggles, modalities, pace, and mastery signals |
+| Teach and customize | Add folders under `courses/` or your local workspace; they appear immediately |
 
 ---
 
@@ -28,53 +32,99 @@ BaseLayer is not a video platform and not a blank notebook. Each lesson is a fol
 
 ### Courses
 
-Anything under `courses/` with at least one lesson folder appears on the home page.
+The studio automatically discovers courses from both the repository `courses/` directory and your local workspace `~/.baselayer/courses/`.
 
-| Course | What you build |
-|---|---|
-| **tinytorch** | A tiny neural-net library from scratch on NumPy (code, sheets, drawings) |
-| **llms-from-scratch** | Llama-style architecture, starting with drawings of the periphery |
-| **data-modeling** | Foundational data modeling across five chapters from raw records to structured tables |
-| **pytorch** | First tensor exercise |
+| Course | Modality / Mode | What you build |
+|---|---|---|
+| **tinytorch** | Code, Sheets, Drawings | A tiny neural-net library from scratch on NumPy |
+| **llms-from-scratch** | Code, Drawings | Llama-style architecture, starting with drawings of the periphery |
+| **tabular-project** | Build-Project Mode | End-to-end data pipeline accumulating artifacts across 3 connected steps |
+| **demo-modalities** | Code, Sheets, Chalkboard | Comprehensive showcase of all three learning modalities |
+| **ai-by-hand-embeddings** | Chalkboard | 2D vector coordinate spaces and token embeddings on a slate board |
+| **data-modeling** | Code, Sheets | Foundational data modeling across five chapters from raw records to tables |
+| **pytorch** | Code | Tensor manipulation and deep learning primitives |
 
-### Ways to learn (modalities)
+### Ways to learn (modalities and modes)
 
 | Type | In the player | Good for |
 |---|---|---|
-| **Code** | Monaco editor, Python or Rust, Run + tests | Implementations, APIs, numerics |
-| **Spreadsheet** | Embedded Google Sheet | Shapes, `MMULT`, broadcasting, tensor intuition |
-| **Drawing** | Canvas over `question.png` | Data flow, architecture, connections |
+| **Code** | Monaco editor, Python or Rust, Run + tests | Implementations, algorithms, APIs, numerics |
+| **Spreadsheet** | Embedded Google Sheet or declarative cells | Shapes, `MMULT`, broadcasting, tensor intuition |
+| **Chalkboard** | Green slate board, chalk tools, diagram solution | Data flow, vector spaces, architecture, self-evaluation |
+| **Build-Project** | Sequentially locked steps with artifact contracts | Pipelines and libraries where Step N builds on Step N-1 |
 
 Reopen this overview anytime with **Learning Guide** in the header.
 
-### Sandbox libraries (code lessons)
+### Execution environments
 
-The runner already has **NumPy**, **PyTorch**, and **Matplotlib** (see `research/sandbox/Dockerfile` and the Modal image). Lessons should `import` only what is installed.
+- **In-Browser WebAssembly (Pyodide)**: Pure Python and NumPy lessons run directly in an isolated browser Web Worker. Submissions execute with sub-millisecond latency and require zero background daemons.
+- **Local Docker Sandbox**: Exercises requiring native extensions, PyTorch (`import torch`), or Rust automatically route to `POST /run` against the local `sandbox-runner` Docker image (built automatically with capped memory, CPU, and no network).
 
 ### AI & SocratiQ Tutoring (optional)
 
 Pick a provider:
 - **Ollama** — 100% free, private, local AI with zero API keys. See the step-by-step [Ollama Setup Guide](docs/ollama_setup.md).
-- **Google Gemini** — fastest free cloud path with an AI Studio key.
+- **Google Gemini** — Fast cloud path with an AI Studio key.
 - **Groq**, **LM Studio**, **OpenAI**, **OpenRouter**, or any OpenAI-compatible custom endpoint.
 
 With a provider configured:
+- **SocratiQ** — Chat tutor (Solveit, Beginner, Intermediate, Advanced, Bloom's) tailored to your learning pace.
+- **Agentic Course Builder** — 4-step tool-calling workflow generating micro-step courses from any topic with depth control and preview gating.
+- **Drawing grading** — Optional automated rubric evaluation for diagrams using vision-capable models.
 
-- **SocratiQ** — chat tutor (Solveit / Beginner / Intermediate / Advanced / Bloom’s)
-- **Agentic Course Builder** — 4-step tool-calling workflow generating micro-step courses from any topic
-- **Drawing grades** — intent, not pixel-perfect match (needs a vision-capable model)
+Without a provider, code execution, spreadsheets, and chalkboard self-evaluation still work completely offline.
 
-Without a provider, code execution and spreadsheets still work. Configure in the Local Studio **AI Features** tab or `.env`. `GEMINI_API_KEY` still works.
+### Living Learner Profile (`LEARNING.md`) & Workspace
 
-### Living Learner Profile (`LEARNING.md`)
-
-Each learner has a personal profile file at `data/learners/{username}/LEARNING.md` tracking preferred modalities, pace, tutor style, and live learning signals (e.g. test retries, reset exercises, completions). View and edit it anytime from the user menu.
+Each learner's profile lives at `~/.baselayer/data/learners/{username}/LEARNING.md` (or in the repository `data/learners/`). It tracks preferred modalities, pace, tutor style, and live learning signals (e.g. test retries, reset exercises, completions). Global defaults are defined in `INSTRUCTOR.md`, and cross-session progress is recorded in `MEMORY.md`.
 
 ---
 
 ## Getting started (run locally)
 
-**Need:** [Docker Desktop](https://www.docker.com/products/docker-desktop/), Node.js, [uv](https://docs.astral.sh/uv/).
+### Prerequisites
+
+- Node.js (v18+)
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (needed for native/PyTorch/Rust execution)
+
+---
+
+### Option 1: BaseLayer CLI (Recommended)
+
+The `baselayer` CLI is a zero-dependency local manager:
+
+```bash
+# Link the CLI globally or run directly from checkout
+npm install -g ./cli
+
+# 1. Run the interactive onboarding wizard
+baselayer onboard
+
+# 2. Check environment and toolchain health
+baselayer doctor
+
+# 3. Start the studio
+baselayer up
+```
+
+The onboarding wizard asks for your username, target learning goals, tutor style, and optional AI keys, creating your workspace at `~/.baselayer` with validated configuration.
+
+To run non-interactively:
+```bash
+baselayer onboard --username ada --provider gemini --api-key YOUR_KEY --non-interactive
+```
+
+To run completely offline without AI:
+```bash
+baselayer onboard --username ada --skip-ai --non-interactive
+```
+
+---
+
+### Option 2: Host startup script
+
+You can also start the studio directly using the repository helper:
 
 ```bash
 ./dev.sh
@@ -83,17 +133,21 @@ Each learner has a personal profile file at `data/learners/{username}/LEARNING.m
 - Frontend: http://localhost:5173  
 - Backend: http://localhost:8000  
 
-`./dev.sh` creates the venv and starts API + UI. Copy `.env.example` → `.env` only if you want an LLM provider (`LLM_PROVIDER` / `LLM_API_KEY`). `SECRET_KEY` is optional locally (stable default across restarts); production still requires a real key.
+`./dev.sh` initializes the Python virtual environment, installs dependencies via `uv`, builds the local Docker sandbox image, and launches both backend and frontend.
 
-**Stuck**
+Copy `.env.example` to `.env` if you wish to configure an LLM provider (`LLM_PROVIDER` / `LLM_API_KEY`) on the host. `SECRET_KEY` is optional locally (a stable dev key is used automatically across restarts).
 
-- `uv` not found → put `~/.cargo/bin` (or uv’s install dir) on `PATH`
-- Code won’t run → Docker Desktop is running
-- Ports busy → free **8000** (API) and **5173** (Vite)
+#### Troubleshooting
 
-### Docker Compose (whole stack in containers)
+- `uv` not found: Ensure `~/.cargo/bin` (or uv install directory) is in your `PATH`.
+- Code execution fails: Verify Docker Desktop is running (`docker ps`). Pure Python/NumPy exercises will still run via in-browser Pyodide even without Docker.
+- Ports busy: Ensure ports **8000** (API) and **5173** (Vite) are free.
 
-Prefer `./docker-compose.yml` when you want every service containerized:
+---
+
+### Option 3: Docker Compose
+
+To run the frontend and backend services inside containers:
 
 ```bash
 ./docker-dev.sh            # generates .env.docker from .env, builds, starts
@@ -101,17 +155,25 @@ Prefer `./docker-compose.yml` when you want every service containerized:
 ./docker-dev.sh down
 ```
 
-The compose backend never mounts the Docker socket (security), so it runs student
-code through the **remote Modal sandbox** (`EXECUTION_ENV=modal`, the same engine
-production uses). For that, put Modal credentials in `.env`
-(`MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`, from `modal token new`) and have the app
-reachable (deployed with `modal deploy modal_app.py`, see [Deploy (Modal)](#deploy-modal)).
-The compose frontend reads `VITE_GOOGLE_CLIENT_ID` from `.env` (same value as
-`GOOGLE_CLIENT_ID`); leave it unset to hide “Sign in with Google”.
+---
 
-No Modal account? Run the stack on the host with `./dev.sh` instead — the backend
-then executes student code against your **local Docker daemon** using the
-`sandbox-runner` image (built automatically from `research/sandbox`).
+## Local-First Architecture and Identity
+
+BaseLayer is designed around a local-first philosophy with zero cloud lock-in. For technical details, see the [Local-First Architecture Guide](docs/local_first_setup.md).
+
+- **Zero-Friction Identity**: No sign-up walls, passwords, or OAuth credentials. The studio resolves your active identity from your local workspace or defaults seamlessly to `local-learner`.
+- **Local Workspace (`~/.baselayer`)**:
+  - `.env`: Validated provider keys and local configuration.
+  - `config.json`: Workspace metadata.
+  - `INSTRUCTOR.md`: Global pedagogical preferences (tone, pace, explanation depth).
+  - `MEMORY.md`: Shared progress and notes digest updated as you complete lessons.
+  - `data/learners/{user}/LEARNING.md`: Durable learner profile.
+  - `courses/`: Directory where AI-generated courses are saved.
+- **Union Course Catalog**: Automatically merges courses from the repository `courses/` directory and your local workspace `~/.baselayer/courses/`.
+- **Terminal Profile Builder**: Configure or inspect your profile at any time:
+  ```bash
+  uv run python backend/scripts/build_profile.py
+  ```
 
 ---
 
@@ -119,38 +181,37 @@ then executes student code against your **local Docker daemon** using the
 
 Click **Build a course** on the courses page and describe what you want to learn (e.g. `NumPy broadcasting and matrix multiplication`). You can optionally paste documentation excerpts, formulas, or code snippets.
 
-The backend executes a 4-step agentic workflow defining explicit tool calls:
+The backend executes a 4-step agentic workflow:
 
 1. **`get_learning_intent`**: Analyzes the topic, extracts core target concepts, extracts snippets from learner materials, and searches existing platform courses for conceptual anchors.
-2. **`get_context_learning`**: Retrieves the learner's profile (`data/learners/{user}/LEARNING.md`) or initializes an adaptive profile (understanding level, pace, preferred modalities).
-3. **`get_platform_content_tools`**: Inspects platform capabilities across Coding Studio (sandbox libraries: `numpy`, `torch`, `matplotlib`), Google Sheets workspaces (`MMULT`, `ARRAYFORMULA`), and Hand Drawing canvases.
-4. **`curate_solveit_course`**: Curates the curriculum (Topic → Explanation → Example → Assignment):
-   - **Explanation**: concept first; Lesson 1 is always a foundations explainer.
-   - **Sources**: named citations (RFCs, vendor docs, papers) in each lesson.
-   - **Example**: a small, domain-relevant input with the expected result.
-   - **Assignment**: 1 to 3 lines (code), formulas (spreadsheet), or a sketch (drawing); modality blend honored.
-   - **Live Inspection + Curiosity**: verify output immediately, then reflect.
-   - **Narrative Arc**: A cohesive storyline connecting the lessons from intuition to working implementation.
+2. **`get_context_learning`**: Retrieves the learner's profile (`~/.baselayer/data/learners/{user}/LEARNING.md`) to adapt the curriculum to your pace, experience level, and preferred learning modalities.
+3. **`get_platform_content_tools`**: Inspects platform capabilities across Coding Studio (NumPy, PyTorch, Matplotlib), Google Sheets workspaces (`MMULT`, `ARRAYFORMULA`), and Chalkboard canvases.
+4. **`curate_solveit_course`**: Curates the curriculum following the Solveit methodology:
+   - **Concept First**: Lesson 1 is always a foundations explainer.
+   - **Structure**: Topic -> Explanation -> Example (sample data) -> Assignment.
+   - **Sources**: Includes cited source references (`source_refs`) to official documentation, RFCs, and papers.
+   - **Modality Blend**: Harmonious mix of code, spreadsheet, and drawing exercises tailored to the topic.
+   - **Interactive Preview Gate**: Choose course depth (Auto, Short, Standard, Deep) with AI-suggested lesson count, and review or edit the full lesson outline before writing files to disk.
 
-The workflow materializes the course into the `courses/` directory so it is immediately playable in the BaseLayer IDE.
+The workflow materializes the course into your workspace `courses/` directory (or repo `courses/`), where it is immediately playable in the BaseLayer IDE.
 
 ---
 
-## Exercise types
+## Exercise types and modes
 
-### Coding (default)
+### 1. Coding (default)
 
 ```text
 courses/my-course/my-lesson/
 ├── README.md
-├── main.py      # starter
-├── test.py      # run on Submit
-└── solution.py  # optional
+├── main.py      # starter code
+├── test.py      # automated verification run on Submit
+└── solution.py  # optional reference solution
 ```
 
-Rust: `main.rs`, `test.rs`, `solution.rs`. Language is detected from the extension. No `metadata.json` required.
+Rust: `main.rs`, `test.rs`, `solution.rs`. Language is detected automatically from the file extension. No `metadata.json` is required for standard coding exercises.
 
-### Spreadsheet
+### 2. Spreadsheet
 
 ```text
 courses/my-course/my-lesson/
@@ -166,27 +227,54 @@ courses/my-course/my-lesson/
 }
 ```
 
-Sheet ID is the path segment in `https://docs.google.com/spreadsheets/d/SHEET_ID/edit`. See [`docs/google_sheets_guide.md`](docs/google_sheets_guide.md).
+Supports live Google Sheets embeds as well as declarative cell templates. See the [Google Sheets Guide](docs/google_sheets_guide.md).
 
-### Hand drawing
+### 3. Chalkboard and Hand Drawing
 
 ```text
 courses/my-course/chapter1/my-lesson/
 ├── README.md
-├── metadata.json
-├── question.png
-└── solution.png   # optional, improves grading
+└── metadata.json
 ```
 
 ```json
 {
-  "exercise_type": "drawing",
-  "stroke_color": "#e11d48",
-  "stroke_width": 4
+  "exercise_type": "hand_drawn",
+  "board_theme": "chalkboard",
+  "stroke_color": "#f8fafc",
+  "stroke_width": 3,
+  "drawing": {
+    "prompt_text": "Draw 2D vector plane with King [0.9, 0.1] and Queen [0.8, 0.3], showing angle theta.",
+    "solution_diagram": "      y ^\n        |\n  0.3 - |       * Queen [0.8, 0.3]\n  0.1 - |         * King [0.9, 0.1]\n        +-------------> x\n             0.8 0.9",
+    "solution_explanation": "King and Queen vectors point in almost the same direction into the positive quadrant, forming an acute angle theta (~10 degrees)."
+  }
 }
 ```
 
-Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). A vision-capable LLM grades using instructions, `question.png`, optional `solution.png`, and the sketch. Toolbar: pencil, eraser, color, width, undo, clear.
+Renders a realistic dark green chalkboard with colored chalk tools. When learners submit their sketch, a reference solution card appears showing the solution diagram and theoretical explanation. Learners can self-evaluate by clicking **"I evaluated my drawing — mark complete"**, which emits completion events and awards XP without requiring an AI vision model. If an AI vision provider is configured, automated rubric grading is also supported. See the [Chalkboard Guide](docs/chalkboard_hand_drawn_guide.md).
+
+### 4. Build-Project Mode
+
+A course can be configured as a multi-step accumulating project by placing a `project.json` in the course root (or setting `"is_project": true` in `metadata.json`):
+
+```json
+{
+  "is_project": true,
+  "title": "Tabular Data Pipeline",
+  "description": "Build an end-to-end data processing and prediction pipeline across 3 connected steps.",
+  "steps": [
+    { "slug": "step01-ingest", "consumes": [], "produces": "dataset.csv" },
+    { "slug": "step02-scale", "consumes": ["dataset.csv"], "produces": "scaled_data.py" },
+    { "slug": "step03-predict", "consumes": ["dataset.csv", "scaled_data.py"], "produces": "predictions.csv" }
+  ]
+}
+```
+
+In Build-Project mode:
+- Each step defines `consumes` (prerequisite files) and `produces` (the generated output artifact).
+- Unfinished subsequent steps are locked in the player until prerequisite artifacts are produced.
+- Upon successful submission, the produced artifact is saved to user storage (`learners/{user}/projects/{course}/`) and automatically injected into subsequent steps.
+- See the [Build-Project Mode Guide](docs/build_project_mode.md).
 
 ---
 
@@ -196,8 +284,8 @@ Nested lessons get slug `{chapter}--{lesson}` (e.g. `chapter1--lesson1`). A visi
 flowchart TB
     subgraph Client["Browser (React + Vite :5173)"]
         direction TB
-        UI["UI and Studio Views<br/>(FileCodingPage, UXLightPage, DrawingCanvas)"]
-        Auth["AuthContext<br/>(Local dev auto-login / OAuth2)"]
+        UI["UI and Studio Views<br/>(FileCodingPage, UXLightPage, ChalkboardCanvas)"]
+        Auth["AuthContext<br/>(Local-first identity / zero friction)"]
         Router["codeRunner Service<br/>(Intelligent Execution Router)"]
         Pyodide["Pyodide Web Worker<br/>(Wasm In-Browser Execution)"]
 
@@ -207,70 +295,68 @@ flowchart TB
 
     subgraph Backend["FastAPI Backend (:8000)"]
         direction TB
-        AuthBackend["Auth and Me Router<br/>(local-learner fallback / JWT)"]
-        CoursesBackend["File Courses Router<br/>(courses/ discovery and drawings)"]
+        Workspace["Workspace Resolver<br/>(~/.baselayer / INSTRUCTOR / MEMORY)"]
+        CoursesBackend["File Courses Router<br/>(Repo courses/ + Workspace courses/)"]
         AI["SocratiQ AI Service<br/>(Ollama / Gemini / Course Builder)"]
-        RunEndpoint["POST /run<br/>(Sandbox Execution Handler)"]
+        ProjectArtifacts["Project Artifacts Service<br/>(Step contracts / user isolation)"]
+        RunEndpoint["POST /run<br/>(Docker Sandbox Execution Handler)"]
     end
 
-    Router -->|"Native libs / torch / Rust / fallback<br/>HTTP POST /run"| RunEndpoint
+    Router -->|"Native libs / PyTorch / Rust<br/>HTTP POST /run"| RunEndpoint
 
-    subgraph Sandboxes["Execution Sandboxes"]
-        DockerDaemon["Local Docker Daemon<br/>(image: sandbox-runner)<br/>Capped CPU, memory, and no network"]
-        ModalCloud["Cloud Modal Sandbox<br/>(EXECUTION_ENV=modal)<br/>Serverless GPU / CPU"]
+    subgraph Sandbox["Local Execution Sandbox"]
+        DockerDaemon["Local Docker Daemon<br/>(image: sandbox-runner)<br/>Capped CPU, memory, no network"]
     end
 
-    RunEndpoint -->|"EXECUTION_ENV=docker"| DockerDaemon
-    RunEndpoint -->|"EXECUTION_ENV=modal"| ModalCloud
+    RunEndpoint --> DockerDaemon
 ```
 
 ### Architectural Pillars
 
 1. **Hybrid Execution Engine (`codeRunner`)**:
-   - **In-Browser WebAssembly (Pyodide)**: Runs pure Python and NumPy code directly inside an isolated browser Web Worker with dynamic ESM imports. Exercises like TinyTorch run instantly with ~0ms latency, require zero Docker daemon, and consume no backend compute.
-   - **Backend Sandbox Fallback (`/run`)**: Code importing native C++ extensions like PyTorch (`import torch`), Transformers, or Rust automatically routes to the backend sandbox.
-   - **Execution Sandboxing**: Backend runs are isolated via Docker (`sandbox-runner` image with memory, CPU, and process caps and no network access) or remote serverless sandboxes via Modal (`EXECUTION_ENV=modal`).
+   - **In-Browser WebAssembly (Pyodide)**: Pure Python and NumPy exercises run directly inside an isolated browser Web Worker with dynamic ESM imports. Lessons execute with sub-millisecond latency, require zero Docker daemon, and consume no backend resources.
+   - **Local Docker Sandbox (`POST /run`)**: Exercises requiring native extensions, PyTorch (`import torch`), or Rust route seamlessly to the local Docker sandbox runner (`sandbox-runner` image with memory, CPU, process caps, and network isolation).
 
-2. **Frictionless Local Auth & File System Discovery**:
-   - Courses are simple folder hierarchies under `courses/` (`README.md`, `main.py`, `test.py`, `metadata.json`).
-   - On `localhost`, local welcome is on by default (`ALLOW_LOCAL_WELCOME=true` unless production), dropping the learner into a local session without a sign-in wall. A leftover JWT from a previous key is treated as that local learner instead of a 401.
+2. **Local-First Identity and Workspace Integration**:
+   - **Zero-Friction Identity**: Learners are automatically resolved locally without login walls, OAuth setup, or password prompts.
+   - **Workspace Directory (`~/.baselayer`)**: Houses environment keys, global instructional defaults (`INSTRUCTOR.md`), active progress digest (`MEMORY.md`), personal learner profiles (`LEARNING.md`), and custom courses.
+   - **Union Course Catalog**: Automatically presents courses from both the repository and the user's workspace in a unified view.
 
 3. **Multi-Modal Learning Studio**:
-   - **Interactive Code**: Monaco editor with real-time test verification and student/author test visibility.
-   - **Spreadsheet Integration**: Live Google Sheets embeds for visual tensor operations (`MMULT`, `ARRAYFORMULA`, broadcasting).
-   - **Freehand Canvas**: Drawing exercises evaluated against architectural questions using multimodal vision LLMs.
-   - **Adaptive Tutoring & Profiling**: SocratiQ AI tutor using the Solveit method and living `data/learners/{user}/LEARNING.md` profile tracking mastery signals.
+   - **Interactive Code**: Monaco editor with real-time test execution and author test visibility.
+   - **Spreadsheet Integration**: Live Google Sheets embeds and declarative templates for tensor intuition (`MMULT`, `ARRAYFORMULA`, broadcasting).
+   - **Chalkboard & Diagram Studio**: Realistic green chalkboard with colored chalk tools, ASCII/text reference diagrams, and self-evaluation mode (no AI required, with optional AI vision grading).
+   - **Build-Project Mode**: Sequential exercises where each step accumulates real files into one final working artifact, enforcing prerequisite artifact dependencies.
+
+4. **Adaptive Pedagogical AI (SocratiQ)**:
+   - Socratic hints and guided questions without code dumping; supports Ollama, Gemini, Groq, OpenAI, and OpenRouter.
+   - Agentic course generation adapted to personal learning profiles, with outline preview gating and source citations.
 
 ---
 
 ## Core Features
 
-- **Zero-Install Client Execution**: Test-drive Python and NumPy exercises in WebAssembly directly in Chrome/Firefox/Safari without starting Docker.
+- **Zero-Install Client Execution**: Test-drive Python and NumPy exercises in WebAssembly directly in the browser without starting Docker.
+- **Local-First Identity**: No sign-up friction, passwords, or OAuth setup; identity is managed via local configuration.
+- **Baselayer CLI**: First-run onboarding wizard (`baselayer onboard`), health checker (`baselayer doctor`), and studio launcher (`baselayer up`).
+- **Union Course Catalog**: Automatically merges repository courses with user courses stored in your workspace.
+- **Chalkboard Drawing Studio**: Realistic green chalkboard with chalk strokes, ASCII/diagram solutions, and self-evaluation mode requiring zero AI.
+- **Build-Project Mode**: Sequential exercises with explicit `consumes`/`produces` contracts that accumulate real artifacts into one working project.
 - **File-Based Curriculums**: Build and share courses as standard markdown and python files in Git.
-- **Multi-Modal Workspaces**: Code exercises, interactive Google Sheets, and freehand drawing diagrams on one platform.
-- **SocratiQ Pedagogical AI Tutor**: Socratic hints and guided questions without code dumping; supports Ollama, Gemini, Groq, OpenAI, and OpenRouter.
-- **Agentic Course Builder**: 4-step tool-calling agent generating micro-step curricula adapted to your personal learning profile.
+- **Multi-Modal Workspaces**: Code exercises, interactive Google Sheets, and freehand chalkboard diagrams on one platform.
+- **SocratiQ AI Tutor**: Pedagogical tutoring with Socratic guidance; supports Ollama, Gemini, Groq, OpenAI, and OpenRouter.
+- **Agentic Course Builder**: 4-step tool-calling agent generating micro-step curricula adapted to your personal learning profile with outline preview gating and source citations.
 - **Living Learner Profile (`LEARNING.md`)**: Durable tracking of struggle signals, test attempts, velocity, and modality preferences.
-- **Dual Deployment**: Run 100% locally on your machine or deploy serverless to Modal cloud with one command.
 
 ---
 
 ## Project layout
 
-- `backend/` — FastAPI, `/run`, AI, auth, `routers/file_courses.py`, `routers/me.py`, `learner_profile.py`
-- `frontend/` — React studio (classic + UX Light player, `CourseBuilder`, `LearningProfileModal`)
-- `courses/` — all file-based curricula
-- `docs/` — AI setup, sheets, Modal, lesson script
-- `research/` — sandbox image and experiments
-- `dev.sh` / `docker-dev.sh` — local start
-
----
-
-## Deploy (Modal)
-
-```bash
-cd frontend && npm install && npm run build
-cd ../backend && modal deploy modal_app.py
-```
-
-Needs a [Modal](https://modal.com) account (`pip install modal` then `modal setup`). The app serves the built UI, keeps SQLite on volume `code-app-volume`, and runs code in serverless sandboxes. `COURSES_DIR=/courses` inside the container. Guide: [`docs/modal_deployment_guide.md`](docs/modal_deployment_guide.md).
+- `backend/` — FastAPI backend, `/run`, AI services, `routers/file_courses.py`, `routers/me.py`, `workspace.py`, `project_artifacts.py`
+- `cli/` — BaseLayer CLI package (`onboard`, `up`, `doctor`, `learn`)
+- `frontend/` — React studio (classic and light player, `CourseBuilder`, `DrawingCanvas`, `ChalkboardSolution`)
+- `courses/` — Repository curricula (TinyTorch, LLMs from Scratch, Tabular Project, Demo Modalities, etc.)
+- `templates/` — Starter templates for `INSTRUCTOR.template.md`, etc.
+- `docs/` — Guides for local-first setup, chalkboard exercises, build-project mode, Ollama, and sheets
+- `research/` — Sandbox runner Dockerfile and environment setup
+- `dev.sh` / `docker-dev.sh` — Local launch scripts
