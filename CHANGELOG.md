@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.67](https://github.com/sotoblanco/BaseLayer/compare/v0.1.66...v0.1.67) (2026-09-10)
+
+
+### Documentation
+
+* sync version 0.1.66 in README and CLI package ([b12b3af](https://github.com/sotoblanco/BaseLayer/commit/b12b3af6c781fb76f6e4da0afd54bd4bc9d57f96))
+
 ### [0.1.66](https://github.com/sotoblanco/BaseLayer/compare/v0.1.65...v0.1.66) (2026-09-10)
 
 
